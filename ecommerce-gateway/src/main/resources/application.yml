@@ -1,0 +1,41 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ecommerce-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: auth
+              uri: lb://ecommerce-auth
+              predicates:
+                - Path=/api/v1/auth/**,/api/v1/admin/users
+            - id: file
+              uri: lb://ecommerce-file
+              predicates:
+                - Path=/api/v1/files/**
+            - id: user
+              uri: lb://ecommerce-user
+              predicates:
+                - Path=/api/v1/users/**,/api/v1/admin/users
+            - id: product
+              uri: lb://ecommerce-product
+              predicates:
+                - Path=/api/v1/products/**,/api/v1/categories/**,/api/v1/reviews/**,/api/v1/admin/products/**,/api/v1/admin/categories/**
+            - id: inventory
+              uri: lb://ecommerce-inventory
+              predicates:
+                - Path=/api/v1/inventory/**,/api/v1/admin/inventory/**
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            allowCredentials: true

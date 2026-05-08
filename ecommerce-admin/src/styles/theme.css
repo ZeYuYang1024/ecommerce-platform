@@ -1,0 +1,259 @@
+/* ===== Brutalist Editorial Theme ===== */
+:root {
+  --bg-root: #f7f5f0;
+  --bg-sidebar: #eeeeea;
+  --bg-surface: #f0eee8;
+  --bg-card: #fafaf7;
+  --bg-hover: #e8e6e0;
+  --bg-input: #fafaf7;
+
+  --border-subtle: #d9d6cf;
+  --border-default: #2a2a2a;
+  --border-accent: #2a2a2a;
+
+  --text-primary: #1a1a1a;
+  --text-secondary: #5c5852;
+  --text-muted: #999590;
+
+  --accent: #0047ff;
+  --accent-glow: rgba(0, 71, 255, 0.06);
+  --accent-hover: #0037cc;
+
+  --green: #0d7b4a;
+  --red: #d93030;
+  --blue: #0047ff;
+
+  --radius-sm: 0px;
+  --radius: 0px;
+  --radius-lg: 0px;
+
+  --font-body: 'Public Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  --transition: 120ms ease;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #app {
+  height: 100%;
+  background: var(--bg-root);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+/* ===== Element Plus Overrides: Brutalist ===== */
+
+.el-menu {
+  border-right: none !important;
+  background: var(--bg-sidebar) !important;
+}
+.el-menu-item, .el-sub-menu__title {
+  color: var(--text-secondary) !important;
+  font-family: var(--font-body);
+  font-size: 13.5px !important;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  height: 42px !important;
+  line-height: 42px !important;
+  margin: 1px 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: all var(--transition);
+}
+.el-menu-item:hover, .el-sub-menu__title:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-default);
+}
+.el-menu-item.is-active {
+  background: var(--text-primary) !important;
+  color: #fff !important;
+  font-weight: 600;
+  border-color: var(--text-primary);
+}
+
+.el-sub-menu .el-menu { background: transparent !important; }
+.el-sub-menu .el-menu-item { padding-left: 50px !important; }
+
+.el-header {
+  background: var(--bg-root) !important;
+  border-color: var(--border-default) !important;
+  border-bottom-width: 2px !important;
+  padding: 0 28px !important;
+  height: 56px !important;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.el-main {
+  background: var(--bg-root) !important;
+  padding: 28px !important;
+}
+
+/* Cards: heavy border, no radius, no shadow */
+.el-card {
+  background: var(--bg-card) !important;
+  border: 2px solid var(--border-default) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.el-card__header {
+  border-color: var(--border-default) !important;
+  border-bottom-width: 2px !important;
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 16px 24px !important;
+  letter-spacing: -0.02em;
+}
+.el-card__body { padding: 24px !important; }
+
+/* Table: sharp, bold headers */
+.el-table {
+  --el-table-bg-color: var(--bg-card);
+  --el-table-tr-bg-color: var(--bg-card);
+  --el-table-header-bg-color: var(--text-primary);
+  --el-table-border-color: var(--border-subtle);
+  --el-table-text-color: var(--text-primary);
+  --el-table-header-text-color: #ffffff;
+  --el-table-row-hover-bg-color: var(--accent-glow);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  border: 2px solid var(--border-default);
+  border-radius: 0;
+}
+.el-table th.el-table__cell {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-color: var(--border-default) !important;
+  border-right: 1px solid rgba(255,255,255,0.15) !important;
+  padding: 12px 16px;
+}
+.el-table td.el-table__cell {
+  border-color: var(--border-subtle) !important;
+}
+
+/* Input: sharp borders */
+.el-input__wrapper {
+  background: var(--bg-input) !important;
+  border: 2px solid var(--border-subtle) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  transition: border-color var(--transition);
+  font-family: var(--font-body);
+}
+.el-input__wrapper:hover { border-color: var(--text-secondary) !important; }
+.el-input__wrapper.is-focus { border-color: var(--text-primary) !important; box-shadow: none !important; }
+.el-input__inner { color: var(--text-primary) !important; font-family: var(--font-body); }
+.el-input__inner::placeholder { color: var(--text-muted) !important; }
+
+.el-select .el-input__wrapper { background: var(--bg-input) !important; }
+.el-select-dropdown {
+  background: var(--bg-card) !important;
+  border: 2px solid var(--border-default) !important;
+  border-radius: 0 !important;
+  box-shadow: 4px 4px 0 rgba(0,0,0,0.08);
+}
+.el-select-dropdown__item { color: var(--text-secondary) !important; font-family: var(--font-body); border-radius: 0; }
+.el-select-dropdown__item.hover, .el-select-dropdown__item:hover {
+  background: var(--text-primary) !important; color: #fff !important;
+}
+.el-select-dropdown__item.selected { color: var(--text-primary) !important; font-weight: 700; }
+
+/* Buttons: monochrome, sharp */
+.el-button--primary {
+  --el-button-bg-color: var(--text-primary);
+  --el-button-border-color: var(--text-primary);
+  --el-button-hover-bg-color: #333;
+  --el-button-hover-border-color: #333;
+  --el-button-text-color: #fff;
+  border-radius: 0 !important;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-family: var(--font-body);
+}
+.el-button--default {
+  --el-button-bg-color: transparent;
+  --el-button-border-color: var(--border-default);
+  --el-button-text-color: var(--text-primary);
+  --el-button-hover-bg-color: var(--text-primary);
+  --el-button-hover-border-color: var(--text-primary);
+  --el-button-hover-text-color: #fff;
+  border-radius: 0 !important;
+  border-width: 2px !important;
+  font-weight: 600;
+  font-family: var(--font-body);
+}
+
+.el-switch.is-checked .el-switch__core {
+  background: var(--text-primary) !important;
+  border-color: var(--text-primary) !important;
+}
+
+.el-dialog {
+  background: var(--bg-card) !important;
+  border: 2px solid var(--border-default) !important;
+  border-radius: 0 !important;
+  box-shadow: 8px 8px 0 rgba(0,0,0,0.08);
+}
+.el-dialog__header { border-color: var(--border-default) !important; border-bottom-width: 2px !important; }
+.el-dialog__title { color: var(--text-primary) !important; font-weight: 700; }
+
+.el-form-item__label {
+  color: var(--text-primary) !important;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.el-divider { border-color: var(--border-default) !important; }
+
+.el-pagination__total, .el-pager li {
+  color: var(--text-secondary) !important;
+  font-family: var(--font-mono);
+  border-radius: 0 !important;
+}
+.el-pager li.is-active {
+  background: var(--text-primary) !important;
+  color: #fff !important;
+  font-weight: 700;
+  border: 2px solid var(--text-primary);
+}
+.el-pager li:hover { color: var(--text-primary) !important; }
+
+.el-input-number .el-input__wrapper { background: var(--bg-input) !important; }
+
+.el-message {
+  background: var(--bg-card) !important;
+  border: 2px solid var(--border-default) !important;
+  border-radius: 0 !important;
+}
+.el-message__content { color: var(--text-primary) !important; font-family: var(--font-body); }
+
+.el-popconfirm {
+  background: var(--bg-card) !important;
+  border: 2px solid var(--border-default) !important;
+  border-radius: 0 !important;
+}
+
+/* Page title */
+.section-label {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
