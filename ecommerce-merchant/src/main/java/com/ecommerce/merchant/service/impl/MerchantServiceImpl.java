@@ -1,6 +1,7 @@
 package com.ecommerce.merchant.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.merchant.common.MerchantErrorCode;
@@ -88,10 +89,12 @@ public class MerchantServiceImpl implements MerchantService {
             throw new BusinessException(MerchantErrorCode.MERCHANT_NOT_PENDING);
         }
 
-        // 更新商家状态
-        merchant.setStatus(request.getAction());
-        merchant.setReason(request.getComment());
-        merchantMapper.updateById(merchant);
+        // 更新商家状态（null entity + wrapper 方式执行局部更新）
+        merchantMapper.update(null,
+                new LambdaUpdateWrapper<Merchant>()
+                        .eq(Merchant::getId, id)
+                        .set(Merchant::getStatus, request.getAction())
+                        .set(Merchant::getReason, request.getComment()));
 
         // 记录审核日志
         MerchantAudit audit = new MerchantAudit();

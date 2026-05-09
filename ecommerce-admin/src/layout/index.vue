@@ -24,26 +24,38 @@
           <span>数据概览</span>
         </router-link>
 
-        <div class="nav-section">商品</div>
+        <div class="nav-section">商家管理</div>
+
+        <router-link to="/merchants" class="nav-item" :class="{ active: $route.path.startsWith('/merchants') }">
+          <el-icon><Shop /></el-icon>
+          <span>商家列表</span>
+          <span v-if="$route.path.startsWith('/merchants')" class="active-dot"></span>
+        </router-link>
+
+        <div class="nav-section">商品运营</div>
 
         <router-link to="/products" class="nav-item" :class="{ active: $route.path.startsWith('/products') }">
           <el-icon><Goods /></el-icon>
-          <span>商品列表</span>
+          <span>商品管理</span>
+          <span v-if="$route.path.startsWith('/products')" class="active-dot"></span>
         </router-link>
         <router-link to="/categories" class="nav-item" :class="{ active: $route.path === '/categories' }">
           <el-icon><Grid /></el-icon>
-          <span>分类管理</span>
+          <span>类目管理</span>
+          <span v-if="$route.path === '/categories'" class="active-dot"></span>
         </router-link>
-
-        <div class="nav-section">运营</div>
-
         <router-link to="/inventory" class="nav-item" :class="{ active: $route.path === '/inventory' }">
           <el-icon><Box /></el-icon>
           <span>库存管理</span>
+          <span v-if="$route.path === '/inventory'" class="active-dot"></span>
         </router-link>
+
+        <div class="nav-section">用户</div>
+
         <router-link to="/users" class="nav-item" :class="{ active: $route.path === '/users' }">
           <el-icon><User /></el-icon>
           <span>用户管理</span>
+          <span v-if="$route.path === '/users'" class="active-dot"></span>
         </router-link>
       </nav>
 

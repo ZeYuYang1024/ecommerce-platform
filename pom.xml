@@ -18,6 +18,9 @@
         <module>ecommerce-product</module>
         <module>ecommerce-inventory</module>
         <module>ecommerce-merchant</module>
+        <module>ecommerce-cart</module>
+        <module>ecommerce-order</module>
+        <module>ecommerce-payment</module>
     </modules>
 
     <properties>
@@ -121,7 +124,9 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.13.0</version>
                     <configuration>
+                        <release>21</release>
                         <parameters>true</parameters>
                     </configuration>
                 </plugin>

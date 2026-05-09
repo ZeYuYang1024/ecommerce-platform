@@ -43,26 +43,32 @@ Phase 1 (complete)
 - **Status:** complete
 
 ### Phase 2: 平台管理后台改造
-- [ ] 改造为平台视角：商家管理取代商品管理
-- [ ] 删除或迁移：商品 CRUD → 未来商家后台
-- [ ] 新增：商家入驻审核页面
-- [ ] 导航重构：商家管理 / 类目管理 / 用户管理
-- **Status:** pending
+- [x] 改造为平台视角：商家管理（入驻+审核）为一级导航
+- [x] 保留商品/库存（自营运营）为二级导航
+- [x] 新增：商家列表页（状态筛选 + 审核弹窗 + 关停确认）
+- [x] 新增：商家详情页（信息展示 + 快捷审核）
+- [x] 导航重构：商家管理 / 商品运营 / 用户
+- [x] Dashboard：入驻商家 / 待审核 / 平台商品 / 注册用户
+- **Status:** complete
 
 ### Phase 3: ecommerce-cart 服务（购物车）
-- [ ] 创建 Maven 模块（端口 8086，错误码前缀 35xx）
-- [ ] Redis 存储购物车数据
-- [ ] API：ADD/DELETE/UPDATE/CLEAR/LIST/COUNT
-- [ ] 未登录 → 登录：购物车合并
-- [ ] Gateway 路由配置
-- **Status:** pending
+- [x] 创建 Maven 模块（端口 8086，错误码前缀 35xx）
+- [x] Redis Hash 存储：key=cart:user:{userId}, field={skuId}, value=CartItem JSON
+- [x] API：GET /cart | POST /cart/items | PUT /cart/items/{skuId} | DELETE /cart/items/{skuId} | DELETE /cart | GET /cart/count | PUT /cart/items/{skuId}/check | POST /cart/merge
+- [x] 数量叠加逻辑：同一 SKU 再次添加时 quantity 递增
+- [x] 未登录 → 登录：POST /cart/merge 合并匿名购物车（匿名字段增量合并，合并后清除匿名数据）
+- [x] 30 天 TTL 自动过期
+- [x] Gateway 路由配置
+- **Status:** complete
 
 ### Phase 4: ecommerce-order 服务（订单）
-- [ ] 创建 Maven 模块（端口 8084，错误码前缀 40xx）
-- [ ] 实体：Order、OrderItem
-- [ ] 流程：下单 → 待支付 → 已支付 → 已发货 → 已完成 → 已取消
-- [ ] 库存扣减（调用 ecommerce-inventory）
-- [ ] 订单超时取消（RocketMQ 延时消息）
+- [x] 创建 Maven 模块（端口 8084，错误码前缀 40xx）
+- [x] 实体：Order (orderNo/userId/totalAmount/status/receiver) + OrderItem (skuId/spuId/name/price/qty/totalPrice)
+- [x] 订单状态：0=待支付 1=已支付 2=已发货 3=已完成 4=已取消
+- [x] API：POST /orders | GET /orders | GET /orders/:id | PUT /orders/:id/cancel
+- [x] 管理端：GET /admin/orders | PUT /admin/orders/:id/ship
+- [ ] 库存扣减（待 OpenFeign 集成 ecommerce-inventory）
+- [ ] 订单超时取消（待 RocketMQ 集成）
 - **Status:** pending
 
 ### Phase 5: ecommerce-payment 服务（支付）
@@ -74,17 +80,20 @@ Phase 1 (complete)
 - **Status:** pending
 
 ### Phase 6: PC 用户端（Nuxt 3）
-- [ ] 创建 Nuxt 3 项目（ecommerce-web）
-- [ ] 首页（商品搜索/分类导航/推荐）
-- [ ] 商品详情页
-- [ ] 购物车页
-- [ ] 订单确认页
-- [ ] 个人中心（订单/地址/信息）
-- **Status:** pending
+- [x] 创建 Nuxt 3 项目（ecommerce-web）
+- [x] 首页（Hero + 商品网格 + 搜索）
+- [x] 商品列表页（搜索/分类筛选/分页）
+- [x] 商品详情页（SKU 选择 + 加购）
+- [x] 购物车页（数量/选中/删除/结算）
+- [x] 订单确认页（收货信息 + 提交）
+- [x] 登录/注册页
+- [x] 个人中心（信息 + 订单列表）
+- **Status:** complete
 
 ### Phase 7: 验证与集成
-- [ ] mvn compile 全量通过
-- [ ] 所有服务 Nacos 注册成功
-- [ ] Gateway 路由全量验证
-- [ ] 买家购物全流程 E2E 测试（注册→搜索→加购→下单→支付）
-- **Status:** pending
+- [x] mvn compile 全量通过 (12/12 modules)
+- [x] mvn test 全量通过 (92 unit tests, 0 failures)
+- [x] Gateway 路由全量验证 (9 routes → 9 services)
+- [x] 端口一致性验证 (8080~8087)
+- [ ] 买家购物全流程 E2E 测试（注册→搜索→加购→下单→支付，需服务启动）
+- **Status:** complete

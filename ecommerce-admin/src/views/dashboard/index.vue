@@ -2,27 +2,37 @@
   <div class="dashboard">
     <div class="greeting">
       <h1>{{ greeting }}，{{ username }}</h1>
-      <p>欢迎回到 MERCHPANEL 管理后台</p>
+      <p>平台管理后台 · 商家入驻审核</p>
     </div>
 
     <div class="stat-grid">
-      <div class="stat-card">
+      <div class="stat-card" @click="$router.push('/merchants?status=1')">
         <div class="stat-icon-box" style="background: rgba(200, 150, 62, 0.12); color: var(--accent);">
+          <el-icon :size="24"><Shop /></el-icon>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value font-mono">--</div>
+          <div class="stat-label">入驻商家</div>
+        </div>
+        <div class="stat-spark"></div>
+      </div>
+      <div class="stat-card warn" @click="$router.push('/merchants?status=0')">
+        <div class="stat-icon-box" style="background: rgba(217, 119, 6, 0.10); color: var(--orange);">
+          <el-icon :size="24"><Clock /></el-icon>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value font-mono" style="color: var(--orange);">--</div>
+          <div class="stat-label">待审核</div>
+        </div>
+        <div class="stat-spark orange"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon-box" style="background: rgba(5, 150, 105, 0.10); color: var(--green);">
           <el-icon :size="24"><Goods /></el-icon>
         </div>
         <div class="stat-body">
           <div class="stat-value font-mono">--</div>
-          <div class="stat-label">商品总数</div>
-        </div>
-        <div class="stat-spark"></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon-box" style="background: rgba(5, 150, 105, 0.10); color: var(--green);">
-          <el-icon :size="24"><ShoppingCart /></el-icon>
-        </div>
-        <div class="stat-body">
-          <div class="stat-value font-mono">--</div>
-          <div class="stat-label">今日订单</div>
+          <div class="stat-label">平台商品</div>
         </div>
         <div class="stat-spark green"></div>
       </div>
@@ -32,19 +42,9 @@
         </div>
         <div class="stat-body">
           <div class="stat-value font-mono">--</div>
-          <div class="stat-label">用户总数</div>
+          <div class="stat-label">注册用户</div>
         </div>
         <div class="stat-spark blue"></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon-box" style="background: rgba(217, 119, 6, 0.10); color: var(--orange);">
-          <el-icon :size="24"><TrendCharts /></el-icon>
-        </div>
-        <div class="stat-body">
-          <div class="stat-value font-mono">--</div>
-          <div class="stat-label">营收</div>
-        </div>
-        <div class="stat-spark orange"></div>
       </div>
     </div>
 
@@ -53,17 +53,17 @@
       <div class="quick-card">
         <div class="quick-info">
           <h2>快速操作</h2>
-          <p>管理商品、库存和用户</p>
+          <p>审核商家入驻 · 管理平台类目</p>
         </div>
         <div class="quick-links">
-          <el-button type="primary" size="large" @click="$router.push('/products/create')">
-            <el-icon style="margin-right:6px"><Plus /></el-icon> 新增商品
+          <el-button type="primary" size="large" @click="$router.push('/merchants')">
+            <el-icon style="margin-right:6px"><Shop /></el-icon> 商家审核
           </el-button>
-          <el-button size="large" @click="$router.push('/products')">
-            <el-icon style="margin-right:6px"><Goods /></el-icon> 商品列表
+          <el-button size="large" @click="$router.push('/categories')">
+            <el-icon style="margin-right:6px"><Grid /></el-icon> 类目管理
           </el-button>
-          <el-button size="large" @click="$router.push('/inventory')">
-            <el-icon style="margin-right:6px"><Box /></el-icon> 库存管理
+          <el-button size="large" @click="$router.push('/users')">
+            <el-icon style="margin-right:6px"><User /></el-icon> 用户管理
           </el-button>
         </div>
       </div>
@@ -135,6 +135,10 @@ const greeting = computed(() => {
   box-shadow: var(--shadow-xs);
   position: relative;
   overflow: hidden;
+  cursor: default;
+}
+.stat-card:has(.stat-icon-box) {
+  cursor: pointer;
 }
 .stat-card:hover {
   border-color: var(--border-default);

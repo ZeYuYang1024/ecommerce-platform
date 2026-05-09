@@ -64,6 +64,11 @@ public class AuthFilter implements GlobalFilter, Ordered {
         try {
             String token = authHeader.substring(7);
             Claims claims = JwtUtils.parse(token);
+            // 注入 X-User-Id header 供下游服务使用
+            Long userId = Long.valueOf(claims.getSubject());
+            exchange = exchange.mutate()
+                    .request(r -> r.header("X-User-Id", String.valueOf(userId)))
+                    .build();
             // admin 接口需要 admin 角色
             if (isAdminPath && !"admin".equals(claims.get("role"))) {
                 exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);

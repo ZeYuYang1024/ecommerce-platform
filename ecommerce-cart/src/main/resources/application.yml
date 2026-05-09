@@ -1,0 +1,14 @@
+server:
+  port: 8086
+spring:
+  application:
+    name: ecommerce-cart
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: root
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848

@@ -15,6 +15,8 @@ import com.ecommerce.product.dto.request.CreateProductRequest;
 import com.ecommerce.product.dto.response.ProductDetailVO;
 import com.ecommerce.product.dto.response.SkuVO;
 import com.ecommerce.product.dto.response.SpuVO;
+import com.ecommerce.product.client.InventoryClient;
+import com.ecommerce.product.client.StockSetRequest;
 import com.ecommerce.product.service.ProductService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,11 +32,14 @@ public class ProductServiceImpl implements ProductService {
     private final CategoryMapper categoryMapper;
     private final SpuMapper spuMapper;
     private final SkuMapper skuMapper;
+    private final InventoryClient inventoryClient;
 
-    public ProductServiceImpl(CategoryMapper categoryMapper, SpuMapper spuMapper, SkuMapper skuMapper) {
+    public ProductServiceImpl(CategoryMapper categoryMapper, SpuMapper spuMapper, SkuMapper skuMapper,
+                              InventoryClient inventoryClient) {
         this.categoryMapper = categoryMapper;
         this.spuMapper = spuMapper;
         this.skuMapper = skuMapper;
+        this.inventoryClient = inventoryClient;
     }
 
     @Override
@@ -138,6 +143,9 @@ public class ProductServiceImpl implements ProductService {
                 }
                 sku.setImage(sr.getImage());
                 skuMapper.insert(sku);
+
+                // 初始化库存为 0（best-effort）
+                try { inventoryClient.initStock(sku.getId(), new StockSetRequest() {{ setTotalStock(0); }}); } catch (Exception ignored) {}
             }
         }
         return spu;
@@ -200,6 +208,11 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     @Override
     public void deleteSpu(Long id) {
+        // 尝试清理库存记录（best-effort）
+        List<Sku> skus = skuMapper.selectList(new LambdaQueryWrapper<Sku>().eq(Sku::getSpuId, id));
+        for (Sku sku : skus) {
+            try { inventoryClient.initStock(sku.getId(), new StockSetRequest() {{ setTotalStock(0); }}); } catch (Exception ignored) {}
+        }
         skuMapper.delete(new LambdaQueryWrapper<Sku>().eq(Sku::getSpuId, id));
         spuMapper.deleteById(id);
     }

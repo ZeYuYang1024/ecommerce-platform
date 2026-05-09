@@ -36,10 +36,21 @@ spring:
               uri: lb://ecommerce-merchant
               predicates:
                 - Path=/api/v1/merchants/**,/api/v1/admin/merchants/**
+            - id: cart
+              uri: lb://ecommerce-cart
+              predicates:
+                - Path=/api/v1/cart/**
+            - id: order
+              uri: lb://ecommerce-order
+              predicates:
+                - Path=/api/v1/orders/**,/api/v1/admin/orders/**
+            - id: payment
+              uri: lb://ecommerce-payment
+              predicates:
+                - Path=/api/v1/payment/**,/api/v1/admin/payment/**
       globalcors:
         cors-configurations:
           '[/**]':
             allowedOriginPatterns: "*"
             allowedMethods: "*"
             allowedHeaders: "*"
-            allowCredentials: true
