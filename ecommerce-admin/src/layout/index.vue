@@ -3,10 +3,16 @@
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-icon">
-          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-            <rect width="28" height="28" rx="6" fill="#e6a820"/>
-            <path d="M8 10l6-4 6 4v8l-6 4-6-4V10z" stroke="#000" stroke-width="1.5" fill="none"/>
-            <circle cx="14" cy="14" r="2.5" fill="#000"/>
+          <svg width="32" height="32" viewBox="0 0 28 28" fill="none">
+            <defs>
+              <linearGradient id="logo-grad" x1="0" y1="0" x2="28" y2="28">
+                <stop stop-color="#C8963E"/>
+                <stop offset="1" stop-color="#E8C876"/>
+              </linearGradient>
+            </defs>
+            <rect width="28" height="28" rx="8" fill="url(#logo-grad)"/>
+            <path d="M8 10l6-4 6 4v8l-6 4-6-4V10z" stroke="#1A1816" stroke-width="1.8" fill="none"/>
+            <circle cx="14" cy="14" r="2.5" fill="#1A1816"/>
           </svg>
         </div>
         <span class="brand-text">MERCH<span class="brand-accent">PANEL</span></span>
@@ -43,11 +49,11 @@
 
       <div class="sidebar-footer">
         <div class="user-chip">
-          <span class="avatar">{{ username.charAt(0).toUpperCase() }}</span>
+          <img class="avatar-img" :src="avatarUrl" :alt="username" />
           <span class="user-name">{{ username }}</span>
         </div>
         <el-button text class="logout-btn" @click="logout">
-          <el-icon><SwitchButton /></el-icon>
+          <el-icon :size="18"><SwitchButton /></el-icon>
         </el-button>
       </div>
     </aside>
@@ -69,12 +75,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const username = ref(localStorage.getItem('username') || '管理员')
 const time = ref('')
+
+const avatarUrl = computed(() => {
+  const name = username.value || 'A'
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=C8963E&color=1A1816&size=64&font-size=0.4&bold=true&rounded=true`
+})
 
 let timer
 onMounted(() => {
@@ -98,10 +109,9 @@ function logout() {
 }
 
 .sidebar {
-  width: 240px;
+  width: 260px;
   flex-shrink: 0;
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   user-select: none;
@@ -111,57 +121,57 @@ function logout() {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 20px 20px 24px;
+  padding: 22px 20px 28px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
-.brand-icon svg { display: block; }
+.brand-icon svg { display: block; filter: drop-shadow(0 2px 8px rgba(200, 150, 62, 0.5)); }
 .brand-text {
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--text-primary);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--text-on-dark);
 }
 .brand-accent { color: var(--accent); }
 
 .nav {
   flex: 1;
-  padding: 0 12px;
+  padding: 12px 12px 0;
   overflow-y: auto;
 }
 .nav-section {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--text-muted);
-  padding: 16px 8px 6px;
+  letter-spacing: 0.1em;
+  color: rgba(148, 163, 184, 0.6);
+  padding: 20px 12px 8px;
 }
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  color: var(--text-on-dark-muted);
   text-decoration: none;
   font-size: 13.5px;
   font-weight: 500;
-  letter-spacing: 0.01em;
   margin-bottom: 2px;
-  transition: all var(--transition);
-  position: relative;
+  transition: all var(--transition-fast);
 }
 .nav-item:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-on-dark);
 }
 .nav-item.active {
   background: var(--accent-glow);
   color: var(--accent);
+  font-weight: 600;
 }
 
 .sidebar-footer {
-  border-top: 1px solid var(--border-subtle);
-  padding: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 14px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -171,29 +181,28 @@ function logout() {
   align-items: center;
   gap: 10px;
 }
-.avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  background: var(--accent);
-  color: #000;
-  font-weight: 700;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-mono);
+.avatar-img {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.1);
 }
 .user-name {
   font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
+  font-weight: 600;
+  color: var(--text-on-dark);
 }
 .logout-btn {
-  color: var(--text-muted) !important;
-  font-size: 18px;
+  color: var(--text-on-dark-muted) !important;
+  padding: 8px !important;
+  border-radius: var(--radius) !important;
+  transition: all var(--transition-fast);
 }
-.logout-btn:hover { color: var(--red) !important; }
+.logout-btn:hover {
+  color: var(--red) !important;
+  background: rgba(239, 68, 68, 0.1) !important;
+}
 
 .main {
   flex: 1;
@@ -203,30 +212,32 @@ function logout() {
 }
 
 .topbar {
-  height: 56px;
+  height: 60px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 28px;
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-root);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-xs);
 }
 .crumb {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
 }
 .clock {
   font-family: var(--font-mono);
   font-size: 13px;
   color: var(--text-muted);
+  font-weight: 500;
 }
 
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 28px;
 }
 </style>

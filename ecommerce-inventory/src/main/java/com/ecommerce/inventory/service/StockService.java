@@ -1,5 +1,6 @@
 package com.ecommerce.inventory.service;
 
+import com.ecommerce.inventory.dto.response.StockVO;
 import com.ecommerce.inventory.entity.Stock;
 import java.util.List;
 
@@ -9,4 +10,5 @@ public interface StockService {
     void deduct(Long skuId, int quantity);
     void release(Long skuId, int quantity);
     void setStock(Long skuId, int totalStock);
+    StockVO toVO(Stock stock);
 }

@@ -1,7 +1,10 @@
 package com.ecommerce.product.entity;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.ecommerce.common.entity.BaseEntity;
+
+import java.util.List;
 
 @TableName("category")
 public class Category extends BaseEntity {
@@ -10,6 +13,9 @@ public class Category extends BaseEntity {
     private Integer level;
     private Integer sort;
     private String icon;
+
+    @TableField(exist = false)
+    private List<Category> children;
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
@@ -21,4 +27,6 @@ public class Category extends BaseEntity {
     public void setSort(Integer sort) { this.sort = sort; }
     public String getIcon() { return icon; }
     public void setIcon(String icon) { this.icon = icon; }
+    public List<Category> getChildren() { return children; }
+    public void setChildren(List<Category> children) { this.children = children; }
 }

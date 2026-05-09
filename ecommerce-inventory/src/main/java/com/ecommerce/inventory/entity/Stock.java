@@ -1,7 +1,6 @@
 package com.ecommerce.inventory.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.baomidou.mybatisplus.annotation.Version;
 import com.ecommerce.common.entity.BaseEntity;
 
 @TableName("stock")
@@ -11,7 +10,6 @@ public class Stock extends BaseEntity {
     private Integer lockedStock;
     private Integer availableStock;
 
-    @Version
     private Integer version;
 
     public Long getSkuId() { return skuId; }

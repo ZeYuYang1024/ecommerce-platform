@@ -32,6 +32,10 @@ spring:
               uri: lb://ecommerce-inventory
               predicates:
                 - Path=/api/v1/inventory/**,/api/v1/admin/inventory/**
+            - id: merchant
+              uri: lb://ecommerce-merchant
+              predicates:
+                - Path=/api/v1/merchants/**,/api/v1/admin/merchants/**
       globalcors:
         cors-configurations:
           '[/**]':

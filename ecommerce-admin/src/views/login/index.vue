@@ -1,15 +1,24 @@
 <template>
   <div class="login-page">
     <div class="login-bg">
-      <div class="grid-overlay"></div>
+      <div class="bg-gradient"></div>
+      <div class="bg-dots"></div>
     </div>
     <div class="login-card">
       <div class="login-header">
-        <svg width="36" height="36" viewBox="0 0 28 28" fill="none">
-          <rect width="28" height="28" rx="6" fill="#e6a820"/>
-          <path d="M8 10l6-4 6 4v8l-6 4-6-4V10z" stroke="#000" stroke-width="1.5" fill="none"/>
-          <circle cx="14" cy="14" r="2.5" fill="#000"/>
-        </svg>
+        <div class="logo-circle">
+          <svg width="32" height="32" viewBox="0 0 28 28" fill="none">
+            <defs>
+              <linearGradient id="login-logo-grad" x1="0" y1="0" x2="28" y2="28">
+                <stop stop-color="#C8963E"/>
+                <stop offset="1" stop-color="#E8C876"/>
+              </linearGradient>
+            </defs>
+            <rect width="28" height="28" rx="8" fill="url(#login-logo-grad)"/>
+            <path d="M8 10l6-4 6 4v8l-6 4-6-4V10z" stroke="#1A1816" stroke-width="1.8" fill="none"/>
+            <circle cx="14" cy="14" r="2.5" fill="#1A1816"/>
+          </svg>
+        </div>
         <h1>MERCH<span class="accent">PANEL</span></h1>
         <p>登录管理后台</p>
       </div>
@@ -20,7 +29,14 @@
         </div>
         <div class="field-group">
           <label>密码</label>
-          <el-input v-model="form.password" type="password" placeholder="请输入密码" size="large" show-password />
+          <el-input v-model="form.password" :type="pwdType" placeholder="请输入密码" size="large">
+            <template #suffix>
+              <span class="pwd-toggle" @click="togglePwd">
+                <el-icon v-if="pwdType === 'password'"><View /></el-icon>
+                <el-icon v-else><Hide /></el-icon>
+              </span>
+            </template>
+          </el-input>
         </div>
         <el-button type="primary" size="large" class="submit-btn" @click="login" :loading="loading">
           登 录
@@ -34,12 +50,18 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { View, Hide } from '@element-plus/icons-vue'
 import axios from 'axios'
 
 const router = useRouter()
 const formRef = ref(null)
 const loading = ref(false)
+const pwdType = ref('password')
 const form = reactive({ username: '', password: '' })
+
+function togglePwd() {
+  pwdType.value = pwdType.value === 'password' ? 'text' : 'password'
+}
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
@@ -74,69 +96,128 @@ async function login() {
   justify-content: center;
   position: relative;
   overflow: hidden;
+  background: #1A1816;
 }
 .login-bg {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 30% 50%, rgba(230,168,32,0.04) 0%, transparent 60%),
-              radial-gradient(ellipse at 70% 20%, rgba(96,165,250,0.03) 0%, transparent 50%);
+  overflow: hidden;
 }
-.grid-overlay {
+.bg-gradient {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 25% 30%, rgba(200, 150, 62, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 75% 70%, rgba(200, 150, 62, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(232, 213, 176, 0.04) 0%, transparent 60%);
+}
+.bg-dots {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
-  background-size: 60px 60px;
+    radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
 }
 
 .login-card {
   position: relative;
-  width: 420px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  padding: 40px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+  width: 440px;
+  background: rgba(30, 41, 59, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xl);
+  padding: 44px 40px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
 }
 
 .login-header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 36px;
 }
-.login-header svg { margin: 0 auto 16px; display: block; }
+.logo-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-xl);
+  background: rgba(200, 150, 62, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
 .login-header h1 {
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #ffffff;
   margin-bottom: 6px;
 }
 .login-header .accent { color: var(--accent); }
 .login-header p {
-  font-size: 13px;
-  color: var(--text-muted);
+  font-size: 13.5px;
+  color: rgba(148, 163, 184, 0.8);
 }
 
 .field-group {
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 .field-group label {
   display: block;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  margin-bottom: 6px;
+  letter-spacing: 0.06em;
+  color: rgba(148, 163, 184, 0.8);
+  margin-bottom: 8px;
+}
+
+.field-group :deep(.el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: none !important;
+}
+.field-group :deep(.el-input__wrapper:hover) {
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+.field-group :deep(.el-input__wrapper.is-focus) {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(200, 150, 62, 0.15) !important;
+}
+.field-group :deep(.el-input__inner) {
+  color: #ffffff !important;
+}
+.field-group :deep(.el-input__inner::placeholder) {
+  color: rgba(148, 163, 184, 0.5) !important;
 }
 
 .submit-btn {
   width: 100%;
-  height: 44px !important;
-  font-size: 14px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.03em !important;
-  margin-top: 8px;
+  height: 46px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
+  margin-top: 12px;
+  border-radius: var(--radius) !important;
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+.submit-btn:hover {
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
+  box-shadow: 0 8px 20px rgba(200, 150, 62, 0.35) !important;
+  transform: translateY(-1px);
+}
+
+.pwd-toggle {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: rgba(148, 163, 184, 0.6);
+  padding: 0 4px;
+  user-select: none;
+  transition: color var(--transition-fast);
+}
+.pwd-toggle:hover {
+  color: rgba(226, 232, 240, 0.8);
 }
 </style>

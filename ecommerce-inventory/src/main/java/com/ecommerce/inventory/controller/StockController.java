@@ -4,13 +4,12 @@ import com.ecommerce.common.result.Result;
 import com.ecommerce.inventory.dto.request.StockOperateRequest;
 import com.ecommerce.inventory.dto.request.StockSetRequest;
 import com.ecommerce.inventory.dto.response.StockVO;
-import com.ecommerce.inventory.entity.Stock;
 import com.ecommerce.inventory.service.StockService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/inventory")
@@ -24,16 +23,14 @@ public class StockController {
 
     @GetMapping("/{skuId}")
     public Result<StockVO> get(@PathVariable Long skuId) {
-        return Result.ok(toVO(stockService.getBySkuId(skuId)));
+        return Result.ok(stockService.toVO(stockService.getBySkuId(skuId)));
     }
 
     @PostMapping("/batch-query")
     public Result<List<StockVO>> batchQuery(@RequestBody List<Long> skuIds) {
-        List<Stock> stocks = stockService.batchQuery(skuIds);
-        List<StockVO> vos = new ArrayList<>();
-        for (Stock s : stocks) {
-            vos.add(toVO(s));
-        }
+        List<StockVO> vos = stockService.batchQuery(skuIds).stream()
+                .map(stockService::toVO)
+                .collect(Collectors.toList());
         return Result.ok(vos);
     }
 
@@ -53,15 +50,5 @@ public class StockController {
     public Result<Void> setStock(@PathVariable Long skuId, @Valid @RequestBody StockSetRequest request) {
         stockService.setStock(skuId, request.getTotalStock());
         return Result.ok();
-    }
-
-    private StockVO toVO(Stock s) {
-        StockVO vo = new StockVO();
-        vo.setId(s.getId());
-        vo.setSkuId(s.getSkuId());
-        vo.setTotalStock(s.getTotalStock());
-        vo.setLockedStock(s.getLockedStock());
-        vo.setAvailableStock(s.getAvailableStock());
-        return vo;
     }
 }

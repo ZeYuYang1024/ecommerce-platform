@@ -44,6 +44,9 @@ public class ProductServiceImpl implements ProductService {
         Map<Long, List<Category>> childrenMap = all.stream()
                 .filter(c -> c.getParentId() != null && c.getParentId() > 0)
                 .collect(Collectors.groupingBy(Category::getParentId));
+        for (Category c : all) {
+            c.setChildren(childrenMap.getOrDefault(c.getId(), java.util.Collections.emptyList()));
+        }
         List<Category> roots = new ArrayList<>();
         for (Category c : all) {
             if (c.getParentId() == null || c.getParentId() == 0) {
@@ -119,10 +122,20 @@ public class ProductServiceImpl implements ProductService {
                 sku.setSpuId(spu.getId());
                 sku.setName(sr.getName());
                 sku.setSpec(sr.getSpec());
-                if (sr.getPrice() != null && !sr.getPrice().isEmpty())
-                    sku.setPrice(new java.math.BigDecimal(sr.getPrice()));
-                if (sr.getOriginalPrice() != null && !sr.getOriginalPrice().isEmpty())
-                    sku.setOriginalPrice(new java.math.BigDecimal(sr.getOriginalPrice()));
+                if (sr.getPrice() != null && !sr.getPrice().isEmpty()) {
+                    try {
+                        sku.setPrice(new java.math.BigDecimal(sr.getPrice()));
+                    } catch (NumberFormatException e) {
+                        throw new BusinessException(ProductErrorCode.INVALID_PRICE_FORMAT);
+                    }
+                }
+                if (sr.getOriginalPrice() != null && !sr.getOriginalPrice().isEmpty()) {
+                    try {
+                        sku.setOriginalPrice(new java.math.BigDecimal(sr.getOriginalPrice()));
+                    } catch (NumberFormatException e) {
+                        throw new BusinessException(ProductErrorCode.INVALID_PRICE_FORMAT);
+                    }
+                }
                 sku.setImage(sr.getImage());
                 skuMapper.insert(sku);
             }
@@ -137,6 +150,25 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    public SpuVO toSpuVO(Spu spu) {
+        SpuVO vo = new SpuVO();
+        vo.setId(spu.getId());
+        vo.setName(spu.getName());
+        vo.setCategoryId(spu.getCategoryId());
+        vo.setBrandId(spu.getBrandId());
+        vo.setDescription(spu.getDescription());
+        vo.setMainImage(spu.getMainImage());
+        vo.setImages(spu.getImages());
+        vo.setDetail(spu.getDetail());
+        vo.setStatus(spu.getStatus());
+        vo.setAvgRating(spu.getAvgRating());
+        vo.setReviewCount(spu.getReviewCount());
+        vo.setCreatedAt(spu.getCreatedAt());
+        return vo;
+    }
+
+    @Transactional
+    @Override
     public void updateStatus(Long id, Integer status) {
         Spu spu = getSpuById(id);
         spu.setStatus(status);
@@ -144,20 +176,6 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private ProductDetailVO toProductDetailVO(Spu spu, List<Sku> skus) {
-        SpuVO spuVO = new SpuVO();
-        spuVO.setId(spu.getId());
-        spuVO.setName(spu.getName());
-        spuVO.setCategoryId(spu.getCategoryId());
-        spuVO.setBrandId(spu.getBrandId());
-        spuVO.setDescription(spu.getDescription());
-        spuVO.setMainImage(spu.getMainImage());
-        spuVO.setImages(spu.getImages());
-        spuVO.setDetail(spu.getDetail());
-        spuVO.setStatus(spu.getStatus());
-        spuVO.setAvgRating(spu.getAvgRating());
-        spuVO.setReviewCount(spu.getReviewCount());
-        spuVO.setCreatedAt(spu.getCreatedAt());
-
         List<SkuVO> skuVOs = new ArrayList<>();
         if (skus != null) {
             for (Sku sku : skus) {
@@ -174,13 +192,15 @@ public class ProductServiceImpl implements ProductService {
         }
 
         ProductDetailVO vo = new ProductDetailVO();
-        vo.setSpu(spuVO);
+        vo.setSpu(toSpuVO(spu));
         vo.setSkus(skuVOs);
         return vo;
     }
 
+    @Transactional
     @Override
     public void deleteSpu(Long id) {
+        skuMapper.delete(new LambdaQueryWrapper<Sku>().eq(Sku::getSpuId, id));
         spuMapper.deleteById(id);
     }
 

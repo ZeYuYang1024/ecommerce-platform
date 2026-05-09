@@ -21,7 +21,8 @@ public class AuthFilter implements GlobalFilter, Ordered {
     private static final List<String> AUTH_WHITELIST = Arrays.asList(
             "/api/v1/auth/login",
             "/api/v1/auth/register",
-            "/api/v1/auth/admin/login"
+            "/api/v1/auth/admin/login",
+            "/api/v1/merchants/register"
     );
 
     private static final List<String> PUBLIC_GET_PREFIXES = Arrays.asList(
@@ -41,8 +42,11 @@ public class AuthFilter implements GlobalFilter, Ordered {
             return chain.filter(exchange);
         }
 
-        // 公开 GET：商品浏览、文件访问
-        if ("GET".equalsIgnoreCase(method)) {
+        // admin 路径必须鉴权，不受公开 GET 影响
+        boolean isAdminPath = path.startsWith("/api/v1/admin");
+
+        // 公开 GET：商品浏览、文件访问（admin 路径除外）
+        if (!isAdminPath && "GET".equalsIgnoreCase(method)) {
             for (String prefix : PUBLIC_GET_PREFIXES) {
                 if (path.startsWith(prefix)) {
                     return chain.filter(exchange);
@@ -61,7 +65,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
             String token = authHeader.substring(7);
             Claims claims = JwtUtils.parse(token);
             // admin 接口需要 admin 角色
-            if (path.startsWith("/api/v1/admin") && !"admin".equals(claims.get("role"))) {
+            if (isAdminPath && !"admin".equals(claims.get("role"))) {
                 exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
                 return exchange.getResponse().setComplete();
             }

@@ -1,13 +1,16 @@
 <template>
   <div>
     <div class="toolbar">
-      <span class="section-label">分类管理</span>
+      <div>
+        <span class="section-label">分类管理</span>
+        <p class="page-desc">管理商品的分类层级</p>
+      </div>
       <el-button type="primary" @click="showDialog(null)">
-        <el-icon style="margin-right:4px"><Plus /></el-icon> 新增分类
+        <el-icon style="margin-right:6px"><Plus /></el-icon> 新增分类
       </el-button>
     </div>
 
-    <el-card v-if="categories.length > 0">
+    <el-card v-if="categories.length > 0" shadow="never">
       <el-tree
         :data="categories"
         :props="{ children: 'children', label: 'name' }"
@@ -18,8 +21,9 @@
         <template #default="{ node, data }">
           <div class="tree-node">
             <span class="tree-label">
-              <span v-if="data.level === 1" class="level-badge l1">一级</span>
-              <span v-else class="level-badge l2">二级</span>
+              <el-tag :type="data.level === 1 ? '' : 'info'" size="small" effect="plain" class="level-tag">
+                {{ data.level === 1 ? '一级' : '二级' }}
+              </el-tag>
               {{ data.name }}
             </span>
             <span class="tree-actions">
@@ -37,10 +41,10 @@
     </el-card>
     <el-empty v-else description="暂无分类" />
 
-    <el-dialog :title="dialogTitle" v-model="dialogVisible" width="500px">
+    <el-dialog :title="dialogTitle" v-model="dialogVisible" width="520px">
       <el-form :model="form" label-position="top">
         <el-form-item label="分类名称">
-          <el-input v-model="form.name" placeholder="请输入分类名称" />
+          <el-input v-model="form.name" placeholder="请输入分类名称" size="large" />
         </el-form-item>
         <el-form-item label="上级分类">
           <el-tree-select
@@ -128,18 +132,41 @@ onMounted(fetchData)
 </script>
 
 <style scoped>
-.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.section-label { font-size: 15px; font-weight: 600; color: var(--text-primary); }
-
-.tree-node { flex: 1; display: flex; align-items: center; justify-content: space-between; padding: 4px 0; }
-.tree-label { display: flex; align-items: center; gap: 8px; font-weight: 500; }
-.level-badge {
-  font-size: 10px; font-weight: 700; padding: 2px 6px; border: 1px solid;
-  text-transform: uppercase; letter-spacing: 0.08em;
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
 }
-.level-badge.l1 { color: var(--text-primary); border-color: var(--border-default); background: var(--bg-hover); }
-.level-badge.l2 { color: var(--text-muted); border-color: var(--border-subtle); }
-.tree-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.page-desc {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.tree-node {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+.tree-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.level-tag {
+  font-size: 11px;
+  font-weight: 700;
+}
+.tree-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
 
 .btn-danger {
   --el-button-text-color: var(--red);

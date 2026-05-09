@@ -1,67 +1,103 @@
 <template>
   <div class="product-detail" v-loading="loading">
     <div class="detail-header">
-      <el-button text @click="$router.back()"><el-icon><ArrowLeft /></el-icon> 返回</el-button>
+      <el-button @click="$router.back()" class="back-btn">
+        <el-icon><ArrowLeft /></el-icon> 返回商品列表
+      </el-button>
     </div>
 
-    <el-card v-if="detail" class="detail-card">
-      <!-- 图片区域 -->
-      <div class="images-section">
-        <img v-if="detail.spu.mainImage" :src="imageUrl(detail.spu.mainImage)" class="main-image" />
-        <div v-else class="main-image empty">暂无主图</div>
-        <div v-if="allImages.length > 0" class="image-list">
-          <img v-for="(img, i) in allImages" :key="i" :src="imageUrl(img)" class="sub-image" />
+    <div v-if="detail" class="detail-layout">
+      <!-- Left: Images -->
+      <div class="detail-images">
+        <div class="image-gallery">
+          <img v-if="detail.spu.mainImage" :src="imageUrl(detail.spu.mainImage)" class="main-image" />
+          <div v-else class="main-image empty">暂无主图</div>
+          <div v-if="allImages.length > 0" class="image-thumbs">
+            <img v-for="(img, i) in allImages" :key="i" :src="imageUrl(img)" class="thumb-img" />
+          </div>
         </div>
       </div>
 
-      <!-- 基本信息 -->
-      <el-descriptions :column="2" border class="info-table">
-        <el-descriptions-item label="商品 ID">{{ detail.spu.id }}</el-descriptions-item>
-        <el-descriptions-item label="状态">
-          <el-tag :type="detail.spu.status === 1 ? 'success' : 'info'">{{ detail.spu.status === 1 ? '上架' : '下架' }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="商品名称" :span="2">{{ detail.spu.name }}</el-descriptions-item>
-        <el-descriptions-item label="简介" :span="2">{{ detail.spu.description || '暂无' }}</el-descriptions-item>
-        <el-descriptions-item label="平均评分">{{ detail.spu.avgRating || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="评论数">{{ detail.spu.reviewCount || 0 }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间" :span="2">{{ detail.spu.createdAt }}</el-descriptions-item>
-      </el-descriptions>
+      <!-- Right: Info -->
+      <div class="detail-info">
+        <div class="info-header">
+          <h1 class="product-title">{{ detail.spu.name }}</h1>
+          <el-tag :type="detail.spu.status === 1 ? 'success' : 'info'" size="large">
+            {{ detail.spu.status === 1 ? '已上架' : '已下架' }}
+          </el-tag>
+        </div>
 
-      <!-- 商品详情 -->
-      <div v-if="detail.spu.detail" class="detail-html" v-html="detail.spu.detail"></div>
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="info-label">商品 ID</span>
+            <span class="info-value font-mono">{{ detail.spu.id }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">平均评分</span>
+            <span class="info-value">{{ detail.spu.avgRating || '-' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">评论数</span>
+            <span class="info-value">{{ detail.spu.reviewCount || 0 }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">创建时间</span>
+            <span class="info-value font-mono" style="font-size:13px">{{ detail.spu.createdAt }}</span>
+          </div>
+        </div>
 
-      <!-- SKU 列表 -->
-      <div class="section-title">SKU 列表</div>
-      <el-table :data="detail.skus" class="data-table" v-if="detail.skus && detail.skus.length > 0">
+        <div class="info-desc">
+          <span class="info-label">简介</span>
+          <p class="desc-text">{{ detail.spu.description || '暂无简介' }}</p>
+        </div>
+
+        <div class="detail-actions">
+          <el-button type="primary" size="large" @click="$router.push(`/products/${detail.spu.id}/edit`)">
+            <el-icon style="margin-right:6px"><Edit /></el-icon> 编辑商品
+          </el-button>
+          <el-button size="large" @click="$router.back()">返回</el-button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detail HTML -->
+    <el-card v-if="detail && detail.spu.detail" class="detail-html-card" shadow="never">
+      <template #header>
+        <span class="card-title">商品详情</span>
+      </template>
+      <div class="detail-html" v-html="detail.spu.detail"></div>
+    </el-card>
+
+    <!-- SKU List -->
+    <el-card v-if="detail && detail.skus && detail.skus.length > 0" class="sku-card" shadow="never">
+      <template #header>
+        <span class="card-title">SKU 列表</span>
+      </template>
+      <el-table :data="detail.skus">
         <el-table-column label="图片" width="90">
           <template #default="{ row }">
             <img v-if="row.image" :src="imageUrl(row.image)" class="sku-thumb" />
-            <span v-else style="color:var(--text-muted)">-</span>
+            <span v-else class="no-image">-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="SKU 名称" />
-        <el-table-column label="规格" width="200">
+        <el-table-column prop="name" label="SKU 名称" min-width="180" />
+        <el-table-column label="规格" width="220">
           <template #default="{ row }">
-            <span class="font-mono" style="font-size:12px;color:var(--text-secondary)">{{ row.spec || '-' }}</span>
+            <span class="font-mono spec-text">{{ row.spec || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="price" label="售价" width="120">
+        <el-table-column label="售价" width="140">
           <template #default="{ row }">
-            <span class="font-mono" style="font-weight:700">¥{{ row.price }}</span>
+            <span class="price-text">¥{{ row.price }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="原价" width="120">
+        <el-table-column label="原价" width="140">
           <template #default="{ row }">
-            <span v-if="row.originalPrice" class="font-mono" style="text-decoration:line-through;color:var(--text-muted)">¥{{ row.originalPrice }}</span>
-            <span v-else style="color:var(--text-muted)">-</span>
+            <span v-if="row.originalPrice" class="original-price">¥{{ row.originalPrice }}</span>
+            <span v-else class="no-price">-</span>
           </template>
         </el-table-column>
       </el-table>
-
-      <div class="form-actions">
-        <el-button type="primary" @click="$router.push(`/products/${detail.spu.id}/edit`)">编辑商品</el-button>
-        <el-button @click="$router.back()">返回</el-button>
-      </div>
     </el-card>
   </div>
 </template>
@@ -100,24 +136,183 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.product-detail { max-width: 900px; }
-.detail-header { margin-bottom: 16px; }
-.detail-card { padding: 0; }
+.product-detail {
+  max-width: 1100px;
+}
+.detail-header {
+  margin-bottom: 20px;
+}
+.back-btn {
+  border: none !important;
+  padding: 8px 4px !important;
+  color: var(--text-secondary) !important;
+  transition: color var(--transition-fast);
+}
+.back-btn:hover {
+  color: var(--accent) !important;
+  background: transparent !important;
+}
 
-.images-section { margin-bottom: 24px; }
-.main-image { max-width: 400px; max-height: 400px; object-fit: cover; border: 2px solid var(--border-default); display: block; }
-.main-image.empty { width: 400px; height: 300px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface); color: var(--text-muted); border: 2px dashed var(--border-default); }
-.image-list { display: flex; gap: 8px; margin-top: 12px; }
-.sub-image { width: 80px; height: 80px; object-fit: cover; border: 2px solid var(--border-subtle); }
-.sub-image:hover { border-color: var(--border-default); }
+.detail-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  margin-bottom: 28px;
+}
 
-.info-table { margin-bottom: 24px; }
+/* Images */
+.image-gallery {
+  position: sticky;
+  top: 28px;
+}
+.main-image {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-subtle);
+  display: block;
+  box-shadow: var(--shadow-sm);
+}
+.main-image.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 15px;
+  border: 2px dashed var(--border-default);
+}
+.image-thumbs {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.thumb-img {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.thumb-img:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
 
-.detail-html { padding: 20px; background: var(--bg-surface); border: 1px solid var(--border-subtle); margin-bottom: 24px; line-height: 1.8; }
-.detail-html :deep(img) { max-width: 100%; }
+/* Info */
+.detail-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.info-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.product-title {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
 
-.section-title { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--text-primary); }
-.sku-thumb { width: 60px; height: 60px; object-fit: cover; border: 1px solid var(--border-subtle); }
-.font-mono { font-family: var(--font-mono); }
-.form-actions { margin-top: 24px; display: flex; gap: 10px; }
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.info-item {
+  padding: 14px 16px;
+  background: var(--bg-surface);
+  border-radius: var(--radius);
+}
+.info-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.info-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.info-desc {
+  margin-bottom: 24px;
+}
+.desc-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-top: 6px;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* Cards */
+.detail-html-card,
+.sku-card {
+  margin-bottom: 28px;
+}
+.card-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.detail-html {
+  line-height: 1.9;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.detail-html :deep(img) {
+  max-width: 100%;
+  border-radius: var(--radius);
+}
+
+/* SKU */
+.sku-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+.no-image {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.spec-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.price-text {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+.original-price {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-decoration: line-through;
+  font-family: var(--font-mono);
+}
+.no-price {
+  color: var(--text-muted);
+}
 </style>

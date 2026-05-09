@@ -30,7 +30,7 @@ public class ProductController {
                                      @RequestParam(name = "categoryId", required = false) Long categoryId,
                                      @RequestParam(name = "keyword", required = false) String keyword) {
         Page<Spu> result = productService.spuPage(page, size, categoryId, 1, keyword);
-        List<SpuVO> vos = result.getRecords().stream().map(this::toSpuVO).collect(Collectors.toList());
+        List<SpuVO> vos = result.getRecords().stream().map(productService::toSpuVO).collect(Collectors.toList());
         Page<SpuVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         voPage.setRecords(vos);
         return Result.ok(voPage);
@@ -43,7 +43,7 @@ public class ProductController {
                                           @RequestParam(name = "status", required = false) Integer status,
                                           @RequestParam(name = "keyword", required = false) String keyword) {
         Page<Spu> result = productService.spuPage(page, size, categoryId, status, keyword);
-        List<SpuVO> vos = result.getRecords().stream().map(this::toSpuVO).collect(Collectors.toList());
+        List<SpuVO> vos = result.getRecords().stream().map(productService::toSpuVO).collect(Collectors.toList());
         Page<SpuVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         voPage.setRecords(vos);
         return Result.ok(voPage);
@@ -75,22 +75,5 @@ public class ProductController {
     public Result<Void> delete(@PathVariable Long id) {
         productService.deleteSpu(id);
         return Result.ok();
-    }
-
-    private SpuVO toSpuVO(Spu spu) {
-        SpuVO vo = new SpuVO();
-        vo.setId(spu.getId());
-        vo.setName(spu.getName());
-        vo.setCategoryId(spu.getCategoryId());
-        vo.setBrandId(spu.getBrandId());
-        vo.setDescription(spu.getDescription());
-        vo.setMainImage(spu.getMainImage());
-        vo.setImages(spu.getImages());
-        vo.setDetail(spu.getDetail());
-        vo.setStatus(spu.getStatus());
-        vo.setAvgRating(spu.getAvgRating());
-        vo.setReviewCount(spu.getReviewCount());
-        vo.setCreatedAt(spu.getCreatedAt());
-        return vo;
     }
 }

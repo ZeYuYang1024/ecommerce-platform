@@ -1,73 +1,101 @@
 <template>
   <div class="product-form">
     <div class="form-header">
-      <el-button text @click="$router.back()"><el-icon><ArrowLeft /></el-icon> 返回</el-button>
+      <el-button text @click="$router.back()" class="back-btn">
+        <el-icon><ArrowLeft /></el-icon> 返回
+      </el-button>
       <h2>{{ isEdit ? '编辑商品' : '新增商品' }}</h2>
     </div>
 
-    <el-card>
-      <el-form label-position="top">
-        <!-- 基本信息 -->
-        <div class="form-grid">
-          <el-form-item label="商品名称">
-            <el-input v-model="form.spu.name" placeholder="请输入商品名称" />
-          </el-form-item>
-          <el-form-item label="分类">
-            <el-select v-model="form.spu.categoryId" placeholder="选择分类" style="width:100%">
-              <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
-            </el-select>
-          </el-form-item>
-        </div>
-
-        <!-- 主图上传 -->
-        <el-form-item label="主图">
-          <div class="upload-area">
-            <div v-if="form.spu.mainImage" class="upload-preview">
-              <img :src="imageUrl(form.spu.mainImage)" />
-              <el-button type="danger" size="small" class="remove-btn" @click="form.spu.mainImage = ''">×</el-button>
-            </div>
-            <el-upload
-              v-else
-              class="upload-trigger"
-              :http-request="customUpload"
-              :show-file-list="false"
-              :on-success="onMainImageUploaded"
-              :before-upload="beforeUpload"
-              accept="image/*"
-            >
-              <el-icon :size="28"><Plus /></el-icon>
-              <span>上传图片</span>
-            </el-upload>
+    <div class="form-body">
+      <!-- Basic Info Card -->
+      <el-card shadow="never" class="form-card">
+        <template #header><span class="card-title">基本信息</span></template>
+        <el-form label-position="top">
+          <div class="form-grid-2">
+            <el-form-item label="商品名称">
+              <el-input v-model="form.spu.name" placeholder="请输入商品名称" size="large" />
+            </el-form-item>
+            <el-form-item label="分类">
+              <el-tree-select
+                v-model="form.spu.categoryId"
+                :data="categories"
+                :props="{ children: 'children', label: 'name', value: 'id' }"
+                placeholder="选择分类"
+                check-strictly
+                style="width:100%"
+              />
+            </el-form-item>
           </div>
-        </el-form-item>
 
-        <el-form-item label="简介">
-          <el-input v-model="form.spu.description" type="textarea" :rows="2" placeholder="商品简介" />
-        </el-form-item>
-        <el-form-item label="详情">
-          <el-input v-model="form.spu.detail" type="textarea" :rows="4" placeholder="商品详情描述" />
-        </el-form-item>
+          <!-- Main Image Upload -->
+          <el-form-item label="主图">
+            <div class="upload-zone">
+              <div v-if="form.spu.mainImage" class="upload-preview">
+                <img :src="imageUrl(form.spu.mainImage)" />
+                <div class="preview-overlay">
+                  <el-button circle size="small" type="danger" @click="form.spu.mainImage = ''">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
+              </div>
+              <el-upload
+                v-else
+                class="upload-box"
+                :http-request="customUpload"
+                :show-file-list="false"
+                :on-success="onMainImageUploaded"
+                :before-upload="beforeUpload"
+                accept="image/*"
+                drag
+              >
+                <el-icon :size="32" class="upload-icon"><Plus /></el-icon>
+                <span class="upload-text">拖拽或点击上传主图</span>
+                <span class="upload-hint">支持 JPG / PNG / WebP，最大 10MB</span>
+              </el-upload>
+            </div>
+          </el-form-item>
 
-        <!-- SKU 规格 -->
-        <div class="section-title">SKU 规格</div>
+          <el-form-item label="简介">
+            <el-input v-model="form.spu.description" type="textarea" :rows="2" placeholder="商品简介" />
+          </el-form-item>
+          <el-form-item label="详情描述">
+            <el-input v-model="form.spu.detail" type="textarea" :rows="4" placeholder="商品详情描述（支持 HTML）" />
+          </el-form-item>
+        </el-form>
+      </el-card>
+
+      <!-- SKU Card -->
+      <el-card shadow="never" class="form-card">
+        <template #header>
+          <div class="sku-card-header">
+            <span class="card-title">SKU 规格</span>
+            <el-button size="small" type="primary" plain @click="addSku">
+              <el-icon><Plus /></el-icon> 添加 SKU
+            </el-button>
+          </div>
+        </template>
+
         <div class="sku-list">
-          <div v-for="(sku, idx) in form.skus" :key="idx" class="sku-card">
-            <div class="sku-header">
-              <span class="sku-index">SKU #{{ idx + 1 }}</span>
-              <el-button v-if="form.skus.length > 1" text type="danger" size="small" @click="form.skus.splice(idx,1)">删除</el-button>
+          <div v-for="(sku, idx) in form.skus" :key="idx" class="sku-block">
+            <div class="sku-block-header">
+              <span class="sku-num">SKU #{{ idx + 1 }}</span>
+              <el-button v-if="form.skus.length > 1" text type="danger" size="small" @click="form.skus.splice(idx,1)">移除</el-button>
             </div>
 
-            <!-- SKU 图片 -->
-            <div class="sku-image-row">
-              <span class="sku-label">图片</span>
-              <div class="upload-area small">
-                <div v-if="sku.image" class="upload-preview small">
+            <div class="sku-fields">
+              <!-- Image -->
+              <div class="sku-upload-area">
+                <span class="sku-field-label">图片</span>
+                <div v-if="sku.image" class="sku-img-preview">
                   <img :src="imageUrl(sku.image)" />
-                  <el-button type="danger" size="small" class="remove-btn" @click="sku.image = ''">×</el-button>
+                  <el-button circle size="small" type="danger" class="img-remove" @click="sku.image = ''">
+                    <el-icon :size="12"><Close /></el-icon>
+                  </el-button>
                 </div>
                 <el-upload
                   v-else
-                  class="upload-trigger small"
+                  class="sku-upload-box"
                   :http-request="customUpload"
                   :show-file-list="false"
                   :on-success="(res) => { if (res.code === 200) sku.image = res.data }"
@@ -77,51 +105,49 @@
                   <el-icon :size="20"><Plus /></el-icon>
                 </el-upload>
               </div>
-            </div>
 
-            <!-- 规格编辑器: 键值对 -->
-            <div class="spec-editor">
-              <span class="sku-label">规格</span>
-              <div class="spec-pairs">
-                <div v-for="(pair, pi) in sku.specPairs" :key="pi" class="spec-pair">
-                  <el-input v-model="pair.key" placeholder="属性名" class="spec-key" @change="syncSpec(idx)" />
-                  <span class="spec-sep">:</span>
-                  <el-input v-model="pair.value" placeholder="属性值" class="spec-val" @change="syncSpec(idx)" />
-                  <el-button text type="danger" size="small" @click="removeSpecPair(idx, pi)" :disabled="sku.specPairs.length <= 1">
-                    <el-icon><Delete /></el-icon>
-                  </el-button>
+              <!-- Specs -->
+              <div class="spec-area">
+                <span class="sku-field-label">规格属性</span>
+                <div class="spec-pairs">
+                  <div v-for="(pair, pi) in sku.specPairs" :key="pi" class="spec-row">
+                    <el-input v-model="pair.key" placeholder="属性名" class="spec-key" size="small" @change="syncSpec(idx)" />
+                    <span class="spec-sep">:</span>
+                    <el-input v-model="pair.value" placeholder="属性值" class="spec-val" size="small" @change="syncSpec(idx)" />
+                    <el-button v-if="sku.specPairs.length > 1" text type="danger" size="small" @click="removeSpecPair(idx, pi)">
+                      <el-icon><Delete /></el-icon>
+                    </el-button>
+                  </div>
                 </div>
-                <el-button size="small" class="add-spec-btn" @click="addSpecPair(idx)">+ 添加属性</el-button>
+                <el-button text type="primary" size="small" @click="addSpecPair(idx)">
+                  <el-icon><Plus /></el-icon> 添加属性
+                </el-button>
               </div>
-            </div>
 
-            <!-- SKU 名称 (自动从规格生成，也可手动改) -->
-            <el-input v-model="sku.name" placeholder="SKU 名称（如：128GB 黑色）" class="sku-name-input" />
+              <!-- Name & Price -->
+              <el-input v-model="sku.name" placeholder="SKU 名称（如：128GB 黑色）" class="sku-name" />
 
-            <!-- 价格 -->
-            <div class="price-row">
-              <el-input v-model="sku.price" placeholder="售价" type="number" class="price-input">
-                <template #prepend>售价</template>
-              </el-input>
-              <el-input v-model="sku.originalPrice" placeholder="原价（选填）" type="number" class="price-input">
-                <template #prepend>原价</template>
-              </el-input>
+              <div class="price-row">
+                <el-input v-model="sku.price" placeholder="售价" type="number" class="price-inp">
+                  <template #prepend>售价</template>
+                </el-input>
+                <el-input v-model="sku.originalPrice" placeholder="原价（选填）" type="number" class="price-inp">
+                  <template #prepend>原价</template>
+                </el-input>
+              </div>
             </div>
           </div>
         </div>
+      </el-card>
 
-        <el-button size="small" class="add-sku-btn" @click="addSku" style="margin-top:12px">
-          <el-icon><Plus /></el-icon> 添加 SKU
+      <!-- Actions -->
+      <div class="submit-bar">
+        <el-button type="primary" size="large" @click="submit" :loading="saving">
+          {{ isEdit ? '保存修改' : '创建商品' }}
         </el-button>
-
-        <div class="form-actions">
-          <el-button type="primary" @click="submit" :loading="saving" size="large">
-            {{ isEdit ? '保存修改' : '创建商品' }}
-          </el-button>
-          <el-button @click="$router.back()" size="large">取消</el-button>
-        </div>
-      </el-form>
-    </el-card>
+        <el-button size="large" @click="$router.back()">取消</el-button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -129,6 +155,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Delete, Close } from '@element-plus/icons-vue'
 import axios from 'axios'
 
 const route = useRoute()
@@ -150,7 +177,6 @@ function addSku() {
   form.skus.push(emptySku())
 }
 
-// specPairs ↔ spec JSON 同步
 function syncSpec(idx) {
   const pairs = form.skus[idx].specPairs
   const obj = {}
@@ -171,7 +197,6 @@ function removeSpecPair(idx, pi) {
   syncSpec(idx)
 }
 
-// 文件上传
 async function customUpload(options) {
   const formData = new FormData()
   formData.append('file', options.file)
@@ -181,7 +206,6 @@ async function customUpload(options) {
     })
     if (uploadRes.code === 200) {
       const objectName = uploadRes.data
-      // 立刻获取真实URL
       const { data: urlRes } = await axios.get(`/api/v1/files/${objectName}/url`)
       if (urlRes.code === 200) {
         options.onSuccess({ code: 200, data: urlRes.data })
@@ -208,7 +232,7 @@ function beforeUpload(file) {
 
 function onMainImageUploaded(res) {
   if (res.code === 200) {
-    form.spu.mainImage = res.data // 存 objectName，显示时拼 URL
+    form.spu.mainImage = res.data
   } else {
     ElMessage.error(res.message || '上传失败')
   }
@@ -297,59 +321,176 @@ async function submit() {
 
 <style scoped>
 .product-form { max-width: 860px; }
-.form-header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
-.form-header h2 { font-size: 20px; font-weight: 600; color: var(--text-primary); }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
-
-/* Upload */
-.upload-area { position: relative; }
-.upload-area.small { display: inline-block; }
-.upload-preview { position: relative; display: inline-block; }
-.upload-preview img { max-width: 200px; max-height: 200px; border: 2px solid var(--border-default); object-fit: cover; }
-.upload-preview.small img { max-width: 80px; max-height: 80px; }
-.remove-btn { position: absolute; top: -8px; right: -8px; padding: 2px 6px !important; min-height: unset !important; }
-.upload-trigger {
-  border: 2px dashed var(--border-default) !important;
-  width: 200px; height: 200px;
-  display: flex !important; flex-direction: column; align-items: center; justify-content: center;
-  cursor: pointer; color: var(--text-muted); gap: 8px; font-size: 13px;
-  transition: border-color var(--transition);
+.form-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
 }
-.upload-trigger:hover { border-color: var(--text-primary) !important; color: var(--text-primary); }
-.upload-trigger.small { width: 80px; height: 80px; gap: 2px; font-size: 11px; }
+.form-header h2 {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+.back-btn {
+  border: none !important;
+  color: var(--text-secondary) !important;
+}
+.back-btn:hover { color: var(--accent) !important; background: transparent !important; }
 
-/* SKU */
-.section-title {
-  font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--text-muted); margin: 28px 0 16px; padding-top: 16px;
-  border-top: 1px solid var(--border-subtle);
+.form-body { display: flex; flex-direction: column; gap: 20px; }
+
+.form-card { border-radius: var(--radius-xl) !important; }
+.card-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 24px;
+}
+
+/* Upload zone */
+.upload-zone { position: relative; }
+.upload-preview {
+  position: relative;
+  display: inline-block;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+.upload-preview img {
+  max-width: 240px;
+  max-height: 240px;
+  object-fit: cover;
+  display: block;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+}
+.preview-overlay {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+.upload-preview:hover .preview-overlay { opacity: 1; }
+
+.upload-box {
+  border: 2px dashed var(--border-default) !important;
+  border-radius: var(--radius-xl) !important;
+  width: 240px;
+  min-height: 160px;
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+.upload-box:hover {
+  border-color: var(--accent) !important;
+  background: var(--accent-glow);
+}
+.upload-box :deep(.el-upload-dragger) {
+  background: transparent !important;
+  border: none !important;
+  width: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.upload-icon { color: var(--text-muted); margin-bottom: 8px; }
+.upload-text { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+.upload-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+/* SKU blocks */
+.sku-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 .sku-list { display: flex; flex-direction: column; gap: 16px; }
-.sku-card {
-  border: 2px solid var(--border-subtle); padding: 20px;
-  transition: border-color var(--transition);
+.sku-block {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  transition: border-color var(--transition-fast);
 }
-.sku-card:hover { border-color: var(--border-default); }
-.sku-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-.sku-index { font-weight: 700; font-size: 13px; color: var(--text-primary); }
+.sku-block:hover { border-color: var(--border-default); }
+.sku-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.sku-num { font-weight: 700; font-size: 13px; color: var(--text-primary); }
 
-.sku-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 6px; display: block; }
+.sku-fields { display: flex; flex-direction: column; gap: 12px; }
+.sku-field-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  display: block;
+}
 
-.sku-image-row { margin-bottom: 12px; }
+.sku-upload-area { margin-bottom: 4px; }
+.sku-img-preview {
+  position: relative;
+  display: inline-block;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.sku-img-preview img {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+.img-remove {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 20px !important;
+  height: 20px !important;
+  padding: 0 !important;
+}
+.sku-upload-box {
+  width: 72px;
+  height: 72px;
+  border: 2px dashed var(--border-default) !important;
+  border-radius: var(--radius) !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+}
+.sku-upload-box:hover {
+  border-color: var(--accent) !important;
+  color: var(--accent);
+}
 
-/* Spec editor */
-.spec-editor { margin-bottom: 12px; }
-.spec-pairs { display: flex; flex-direction: column; gap: 6px; }
-.spec-pair { display: flex; align-items: center; gap: 8px; }
+.spec-area { margin-bottom: 4px; }
+.spec-pairs { display: flex; flex-direction: column; gap: 8px; }
+.spec-row { display: flex; align-items: center; gap: 8px; }
 .spec-key { width: 120px; }
-.spec-sep { color: var(--text-muted); font-weight: 600; }
+.spec-sep { color: var(--text-muted); font-weight: 600; font-size: 16px; }
 .spec-val { width: 160px; }
-.add-spec-btn { margin-top: 4px; }
 
-.sku-name-input { margin-bottom: 10px; }
+.sku-name { margin-bottom: 4px; }
+
 .price-row { display: flex; gap: 10px; }
-.price-input { flex: 1; }
+.price-inp { flex: 1; }
 
-.add-sku-btn { margin-top: 8px; }
-.form-actions { margin-top: 28px; display: flex; gap: 10px; }
+.submit-bar {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
 </style>

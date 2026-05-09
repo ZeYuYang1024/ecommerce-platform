@@ -17,6 +17,7 @@
         <module>ecommerce-user</module>
         <module>ecommerce-product</module>
         <module>ecommerce-inventory</module>
+        <module>ecommerce-merchant</module>
     </modules>
 
     <properties>
@@ -98,6 +99,18 @@
                 <groupId>com.ecommerce</groupId>
                 <artifactId>ecommerce-common</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-test</artifactId>
+                <version>${spring-boot.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.h2database</groupId>
+                <artifactId>h2</artifactId>
+                <version>2.3.232</version>
+                <scope>test</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>

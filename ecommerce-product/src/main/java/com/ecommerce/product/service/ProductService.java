@@ -3,6 +3,7 @@ package com.ecommerce.product.service;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.product.dto.request.CreateProductRequest;
 import com.ecommerce.product.dto.response.ProductDetailVO;
+import com.ecommerce.product.dto.response.SpuVO;
 import com.ecommerce.product.entity.Category;
 import com.ecommerce.product.entity.Sku;
 import com.ecommerce.product.entity.Spu;
@@ -20,6 +21,7 @@ public interface ProductService {
     Page<Spu> spuPage(int page, int size, Long categoryId, Integer status, String keyword);
     Spu getSpuById(Long id);
     ProductDetailVO getProductDetail(Long id);
+    SpuVO toSpuVO(Spu spu);
     Spu createProduct(CreateProductRequest request);
     Spu updateSpu(Spu spu);
     void updateStatus(Long id, Integer status);
