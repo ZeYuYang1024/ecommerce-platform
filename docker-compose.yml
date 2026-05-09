@@ -1,7 +1,29 @@
-# MySQL 8.0 and Redis 7.2 are running natively (not in Docker)
-# To start middleware:  docker-compose up -d
+# Start all middleware:  docker-compose up -d
+# Start specific:  docker-compose up -d mysql redis
 
 services:
+  mysql:
+    image: mysql:8.0
+    container_name: ecommerce-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  redis:
+    image: redis:7.2
+    container_name: ecommerce-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass root
+    volumes:
+      - redis-data:/data
+
   nacos:
     image: nacos/nacos-server:v2.4.0
     container_name: ecommerce-nacos
@@ -55,6 +77,8 @@ services:
       - minio-data:/data
 
 volumes:
+  mysql-data:
+  redis-data:
   nacos-data:
   rocketmq-namesrv-data:
   rocketmq-broker-data:
