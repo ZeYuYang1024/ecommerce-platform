@@ -33,6 +33,7 @@
         <mysql.version>8.0.33</mysql.version>
         <minio.version>8.6.0</minio.version>
         <nacos.version>2025.1.0.0</nacos.version>
+        <lombok.version>1.18.46</lombok.version>
     </properties>
 
     <dependencyManagement>
@@ -108,6 +109,11 @@
                 <artifactId>spring-boot-starter-test</artifactId>
                 <version>${spring-boot.version}</version>
                 <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.h2database</groupId>

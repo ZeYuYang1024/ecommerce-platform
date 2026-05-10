@@ -248,4 +248,86 @@ class PaymentServiceImplTest {
                     .isInstanceOf(BusinessException.class);
         }
     }
+
+    @Nested
+    class MoreBoundaryTests {
+        @Test
+        void shouldRefundWithNullAmountDefaultsToFull() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
+            when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+            when(refundMapper.insert(any(Refund.class))).thenReturn(1);
+            when(paymentMapper.updateById(any(Payment.class))).thenReturn(1);
+
+            RefundRequest req = new RefundRequest();
+            req.setReason("全额退"); req.setAmount(null);
+            PaymentVO vo = service.refund("202605091200000001", req);
+            assertThat(vo.getStatus()).isEqualTo(3); // full refund
+        }
+
+        @Test
+        void shouldPayWithFraccionPennyAmount() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(paymentMapper.insert(any(Payment.class))).thenReturn(1);
+            PayRequest req = new PayRequest();
+            req.setOrderNo("frac"); req.setOrderId(1L); req.setAmount(new BigDecimal("0.01"));
+            PaymentVO vo = service.pay(1L, req);
+            assertThat(vo.getStatus()).isEqualTo(1);
+        }
+
+        @Test
+        void shouldHandleNullPayMethod() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(paymentMapper.insert(any(Payment.class))).thenReturn(1);
+            PayRequest req = new PayRequest();
+            req.setOrderNo("nullpay"); req.setOrderId(1L); req.setAmount(new BigDecimal("1.00"));
+            req.setPayMethod(null);
+            PaymentVO vo = service.pay(1L, req);
+            assertThat(vo.getStatus()).isEqualTo(1);
+        }
+
+        @Test
+        void shouldPayWithDifferentPayMethods() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(paymentMapper.insert(any(Payment.class))).thenReturn(1);
+            PayRequest req = new PayRequest();
+            req.setOrderNo("alipay"); req.setOrderId(1L); req.setAmount(new BigDecimal("100.00"));
+            req.setPayMethod("alipay");
+            PaymentVO vo = service.pay(1L, req);
+            assertThat(vo.getPayMethod()).isEqualTo("alipay");
+        }
+
+        @Test
+        void shouldListAllPaymentsWhenEmpty() {
+            when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(Collections.emptyList());
+            assertThat(service.listAll(null)).isEmpty();
+        }
+
+        @Test
+        void shouldRefundWithVeryLargeAmount() {
+            payment.setAmount(new BigDecimal("99999999.99"));
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
+            when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+            when(refundMapper.insert(any(Refund.class))).thenReturn(1);
+            when(paymentMapper.updateById(any(Payment.class))).thenReturn(1);
+
+            RefundRequest req = new RefundRequest();
+            req.setReason("大额退款"); req.setAmount(new BigDecimal("99999999.99"));
+            PaymentVO vo = service.refund("202605091200000001", req);
+            assertThat(vo.getStatus()).isEqualTo(3);
+        }
+
+        @Test
+        void shouldRefundWithVerySmallAmount() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
+            when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+            when(refundMapper.insert(any(Refund.class))).thenReturn(1);
+            when(paymentMapper.updateById(any(Payment.class))).thenReturn(1);
+
+            RefundRequest req = new RefundRequest();
+            req.setReason("一分退款"); req.setAmount(new BigDecimal("0.01"));
+            PaymentVO vo = service.refund("202605091200000001", req);
+            assertThat(vo.getStatus()).isEqualTo(1); // partial
+        }
+    }
 }

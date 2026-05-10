@@ -1,7 +1,10 @@
 package com.ecommerce.merchant.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.ecommerce.common.dto.CreateMerchantAccountRequest;
 import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.merchant.client.AuthClient;
 import com.ecommerce.merchant.common.MerchantErrorCode;
 import com.ecommerce.merchant.dto.request.MerchantAuditRequest;
 import com.ecommerce.merchant.dto.request.MerchantRegisterRequest;
@@ -29,6 +32,7 @@ class MerchantServiceImplTest {
 
     @Mock private MerchantMapper merchantMapper;
     @Mock private MerchantAuditMapper auditMapper;
+    @Mock private AuthClient authClient;
     @InjectMocks private MerchantServiceImpl service;
 
     private Merchant merchant;
@@ -79,7 +83,7 @@ class MerchantServiceImplTest {
         @Test
         void shouldApprovePendingMerchant() {
             when(merchantMapper.selectById(1L)).thenReturn(merchant);
-            when(merchantMapper.updateById(any(Merchant.class))).thenReturn(1);
+            when(merchantMapper.update(eq(null), any())).thenReturn(1);
             when(auditMapper.insert(any(MerchantAudit.class))).thenReturn(1);
 
             MerchantAuditRequest req = new MerchantAuditRequest();
@@ -91,7 +95,7 @@ class MerchantServiceImplTest {
 
         @Test
         void shouldRejectNonPending() {
-            merchant.setStatus(1); // already approved
+            merchant.setStatus(1);
             when(merchantMapper.selectById(1L)).thenReturn(merchant);
 
             MerchantAuditRequest req = new MerchantAuditRequest();
@@ -174,7 +178,7 @@ class MerchantServiceImplTest {
         @Test
         void shouldAuditWithReject() {
             when(merchantMapper.selectById(1L)).thenReturn(merchant);
-            when(merchantMapper.updateById(any(Merchant.class))).thenReturn(1);
+            when(merchantMapper.update(eq(null), any())).thenReturn(1);
             when(auditMapper.insert(any(MerchantAudit.class))).thenReturn(1);
             MerchantAuditRequest req = new MerchantAuditRequest();
             req.setAction(2); req.setComment("资质不全");
@@ -186,7 +190,7 @@ class MerchantServiceImplTest {
         @Test
         void shouldAuditWithBan() {
             when(merchantMapper.selectById(1L)).thenReturn(merchant);
-            when(merchantMapper.updateById(any(Merchant.class))).thenReturn(1);
+            when(merchantMapper.update(eq(null), any())).thenReturn(1);
             when(auditMapper.insert(any(MerchantAudit.class))).thenReturn(1);
             MerchantAuditRequest req = new MerchantAuditRequest();
             req.setAction(3);
@@ -198,7 +202,7 @@ class MerchantServiceImplTest {
         @Test
         void shouldAuditWithNullComment() {
             when(merchantMapper.selectById(1L)).thenReturn(merchant);
-            when(merchantMapper.updateById(any(Merchant.class))).thenReturn(1);
+            when(merchantMapper.update(eq(null), any())).thenReturn(1);
             when(auditMapper.insert(any(MerchantAudit.class))).thenReturn(1);
             MerchantAuditRequest req = new MerchantAuditRequest();
             req.setAction(1); req.setComment(null);

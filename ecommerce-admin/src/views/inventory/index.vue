@@ -94,7 +94,7 @@ async function updateStock() {
   if (!stock.value) return
   saving.value = true
   try {
-    await axios.post(`/api/v1/admin/inventory/${stock.value.skuId}`, { totalStock: newStock.value })
+    await axios.post(`/api/v1/inventory/admin/${stock.value.skuId}`, { totalStock: newStock.value })
     ElMessage.success('库存更新成功')
     search()
   } catch {

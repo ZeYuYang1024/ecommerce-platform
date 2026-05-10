@@ -1,11 +1,13 @@
 package com.ecommerce.cart.dto;
 
+import java.math.BigDecimal;
+
 public class CartItem {
     private Long skuId;
     private Long spuId;
     private String name;
     private String image;
-    private String price;
+    private BigDecimal price;
     private Integer quantity;
     private Boolean checked;
 
@@ -17,8 +19,8 @@ public class CartItem {
     public void setName(String name) { this.name = name; }
     public String getImage() { return image; }
     public void setImage(String image) { this.image = image; }
-    public String getPrice() { return price; }
-    public void setPrice(String price) { this.price = price; }
+    public BigDecimal getPrice() { return price; }
+    public void setPrice(BigDecimal price) { this.price = price; }
     public Integer getQuantity() { return quantity; }
     public void setQuantity(Integer quantity) { this.quantity = quantity; }
     public Boolean getChecked() { return checked; }

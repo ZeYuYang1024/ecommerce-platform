@@ -100,6 +100,7 @@
         <button @click="submitOrder" :disabled="submitting || !hasAddress" class="mt-6 w-full h-12 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-200 disabled:text-gray-400 text-white font-medium rounded-xl transition-colors">
           {{ submitting ? '提交中...' : !hasAddress ? '请选择收货地址' : '提交订单' }}
         </button>
+        <p v-if="orderError" class="mt-2 text-sm text-red-500 text-center">{{ orderError }}</p>
       </div>
     </div>
   </div>
@@ -112,6 +113,7 @@ const router = useRouter()
 const api = useApi()
 
 const submitting = ref(false)
+const orderError = ref('')
 const savingAddr = ref(false)
 const showAddrList = ref(false)
 const showAddressForm = ref(false)
@@ -166,8 +168,12 @@ async function submitOrder() {
     })
     if (res.code === 200) {
       await cart.clearCart()
-      router.push('/user/orders')
+      router.push(`/payment/${res.data.orderNo}`)
+    } else {
+      orderError.value = res.message || '下单失败，请重试'
     }
+  } catch {
+    orderError.value = '网络错误，请稍后重试'
   } finally { submitting.value = false }
 }
 </script>

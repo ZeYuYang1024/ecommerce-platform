@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import java.util.List;
 import java.util.Map;
 
-@FeignClient(name = "ecommerce-cart")
+@FeignClient(name = "ecommerce-cart", fallbackFactory = CartClientFallback.class)
 public interface CartClient {
 
     @GetMapping("/api/v1/cart")

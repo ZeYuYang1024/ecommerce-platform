@@ -15,6 +15,8 @@ public class SpuVO {
     private Integer status;
     private BigDecimal avgRating;
     private Integer reviewCount;
+    private BigDecimal minPrice;
+    private BigDecimal maxPrice;
     private LocalDateTime createdAt;
 
     public Long getId() { return id; }
@@ -39,6 +41,10 @@ public class SpuVO {
     public void setAvgRating(BigDecimal avgRating) { this.avgRating = avgRating; }
     public Integer getReviewCount() { return reviewCount; }
     public void setReviewCount(Integer reviewCount) { this.reviewCount = reviewCount; }
+    public BigDecimal getMinPrice() { return minPrice; }
+    public void setMinPrice(BigDecimal minPrice) { this.minPrice = minPrice; }
+    public BigDecimal getMaxPrice() { return maxPrice; }
+    public void setMaxPrice(BigDecimal maxPrice) { this.maxPrice = maxPrice; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }

@@ -351,9 +351,206 @@ class AuthServiceImplTest {
 
             ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
             verify(userMapper).insert(captor.capture());
-            // MD5 should be 32 hex chars, not plaintext
             assertThat(captor.getValue().getPassword()).hasSize(32);
             assertThat(captor.getValue().getPassword()).isNotEqualTo("123456");
+        }
+    }
+
+    @Nested
+    class ProfileTests {
+        @Test
+        void shouldGetProfile() {
+            when(userMapper.selectById(1L)).thenReturn(user);
+
+            var vo = authService.getProfile(1L);
+            assertThat(vo.getUsername()).isEqualTo(TEST_USERNAME);
+            assertThat(vo.getId()).isEqualTo(1L);
+        }
+
+        @Test
+        void shouldGetProfileWithNullPhone() {
+            user.setPhone(null);
+            when(userMapper.selectById(1L)).thenReturn(user);
+            var vo = authService.getProfile(1L);
+            assertThat(vo.getPhone()).isNull();
+        }
+
+        @Test
+        void shouldGetProfileWithNullAvatar() {
+            user.setAvatar(null);
+            when(userMapper.selectById(1L)).thenReturn(user);
+            var vo = authService.getProfile(1L);
+            assertThat(vo.getAvatar()).isNull();
+        }
+
+        @Test
+        void shouldThrowWhenProfileNotFound() {
+            when(userMapper.selectById(999L)).thenReturn(null);
+            assertThatThrownBy(() -> authService.getProfile(999L))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(AuthErrorCode.USER_NOT_FOUND.getCode());
+        }
+
+        @Test
+        void shouldUpdatePhone() {
+            when(userMapper.selectById(1L)).thenReturn(user);
+            when(userMapper.updateById(any(User.class))).thenReturn(1);
+            when(userMapper.selectById(1L)).thenReturn(user);
+
+            var vo = authService.updateProfile(1L, "13900001111", null);
+            assertThat(vo.getPhone()).isEqualTo("13900001111");
+            assertThat(user.getPhone()).isEqualTo("13900001111");
+        }
+
+        @Test
+        void shouldUpdateAvatar() {
+            when(userMapper.selectById(1L)).thenReturn(user);
+            when(userMapper.updateById(any(User.class))).thenReturn(1);
+            when(userMapper.selectById(1L)).thenReturn(user);
+
+            var vo = authService.updateProfile(1L, null, "https://example.com/avatar.png");
+            assertThat(vo.getAvatar()).isEqualTo("https://example.com/avatar.png");
+        }
+
+        @Test
+        void shouldUpdateBothPhoneAndAvatar() {
+            when(userMapper.selectById(1L)).thenReturn(user);
+            when(userMapper.updateById(any(User.class))).thenReturn(1);
+            when(userMapper.selectById(1L)).thenReturn(user);
+
+            var vo = authService.updateProfile(1L, "13800000000", "https://img.url");
+            assertThat(vo.getPhone()).isEqualTo("13800000000");
+            assertThat(vo.getAvatar()).isEqualTo("https://img.url");
+        }
+
+        @Test
+        void shouldNotChangePhoneWhenNull() {
+            user.setPhone("original");
+            when(userMapper.selectById(1L)).thenReturn(user);
+            when(userMapper.updateById(any(User.class))).thenReturn(1);
+            when(userMapper.selectById(1L)).thenReturn(user);
+
+            var vo = authService.updateProfile(1L, null, "new_avatar");
+            assertThat(vo.getPhone()).isEqualTo("original");
+        }
+
+        @Test
+        void shouldNotChangeAvatarWhenNull() {
+            user.setAvatar("original_avatar");
+            when(userMapper.selectById(1L)).thenReturn(user);
+            when(userMapper.updateById(any(User.class))).thenReturn(1);
+            when(userMapper.selectById(1L)).thenReturn(user);
+
+            var vo = authService.updateProfile(1L, "new_phone", null);
+            assertThat(vo.getAvatar()).isEqualTo("original_avatar");
+        }
+
+        @Test
+        void shouldThrowWhenUpdateProfileNotFound() {
+            when(userMapper.selectById(999L)).thenReturn(null);
+            assertThatThrownBy(() -> authService.updateProfile(999L, "138", null))
+                    .isInstanceOf(BusinessException.class);
+        }
+    }
+
+    @Nested
+    class AdminTypeAndMerchantIdTests {
+        @Test
+        void adminLogin_shouldReturnSuperAdminTypeByDefault() {
+            LoginRequest req = new LoginRequest();
+            req.setUsername("admin"); req.setPassword(TEST_PASSWORD);
+            admin.setType(null); // default
+            when(adminUserMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(admin);
+
+            LoginResponse resp = authService.adminLogin(req);
+            assertThat(resp.getType()).isEqualTo("super_admin");
+        }
+
+        @Test
+        void adminLogin_shouldReturnMerchantType() {
+            LoginRequest req = new LoginRequest();
+            req.setUsername("m_100"); req.setPassword(TEST_PASSWORD);
+            admin.setType("merchant"); admin.setMerchantId(100L);
+            when(adminUserMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(admin);
+
+            LoginResponse resp = authService.adminLogin(req);
+            assertThat(resp.getType()).isEqualTo("merchant");
+        }
+
+        @Test
+        void adminLogin_shouldReturnOpsType() {
+            LoginRequest req = new LoginRequest();
+            req.setUsername("ops_user"); req.setPassword(TEST_PASSWORD);
+            admin.setType("ops"); admin.setMerchantId(null);
+            when(adminUserMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(admin);
+
+            LoginResponse resp = authService.adminLogin(req);
+            assertThat(resp.getType()).isEqualTo("ops");
+        }
+
+        @Test
+        void adminLogin_shouldGenerateTokenWithType() {
+            LoginRequest req = new LoginRequest();
+            req.setUsername("admin"); req.setPassword(TEST_PASSWORD);
+            admin.setType("super_admin");
+            when(adminUserMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(admin);
+
+            LoginResponse resp = authService.adminLogin(req);
+            String tokenType = com.ecommerce.common.util.JwtUtils.getType(resp.getToken());
+            assertThat(tokenType).isEqualTo("super_admin");
+        }
+
+        @Test
+        void adminLogin_shouldGenerateTokenWithMerchantId() {
+            LoginRequest req = new LoginRequest();
+            req.setUsername("m_100"); req.setPassword(TEST_PASSWORD);
+            admin.setType("merchant"); admin.setMerchantId(100L);
+            when(adminUserMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(admin);
+
+            LoginResponse resp = authService.adminLogin(req);
+            Long mid = com.ecommerce.common.util.JwtUtils.getMerchantId(resp.getToken());
+            assertThat(mid).isEqualTo(100L);
+        }
+
+        @Test
+        void adminLogin_shouldNotHaveMerchantIdWhenNull() {
+            LoginRequest req = new LoginRequest();
+            req.setUsername("ops_user"); req.setPassword(TEST_PASSWORD);
+            admin.setType("ops"); admin.setMerchantId(null);
+            when(adminUserMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(admin);
+
+            LoginResponse resp = authService.adminLogin(req);
+            Long mid = com.ecommerce.common.util.JwtUtils.getMerchantId(resp.getToken());
+            assertThat(mid).isNull();
+        }
+
+        @Test
+        void adminLogin_tokenShouldContainUsernameAndRole() {
+            LoginRequest req = new LoginRequest();
+            req.setUsername("admin"); req.setPassword(TEST_PASSWORD);
+            admin.setType("super_admin");
+            when(adminUserMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(admin);
+
+            LoginResponse resp = authService.adminLogin(req);
+            var claims = com.ecommerce.common.util.JwtUtils.parse(resp.getToken());
+            assertThat(claims.get("username", String.class)).isEqualTo("admin");
+            assertThat(claims.get("role", String.class)).isEqualTo("admin");
+        }
+
+        @Test
+        void adminLogin_shouldHandleAllRoleTypes() {
+            String[] types = {"super_admin", "ops", "merchant"};
+            for (String type : types) {
+                admin.setType(type);
+                admin.setMerchantId(type.equals("merchant") ? 1L : null);
+                LoginRequest req = new LoginRequest();
+                req.setUsername(type); req.setPassword(TEST_PASSWORD);
+                when(adminUserMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(admin);
+
+                LoginResponse resp = authService.adminLogin(req);
+                assertThat(resp.getType()).isEqualTo(type);
+            }
         }
     }
 }

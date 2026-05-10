@@ -5,13 +5,16 @@ import com.ecommerce.common.result.Result;
 import com.ecommerce.product.dto.request.CreateProductRequest;
 import com.ecommerce.product.dto.request.UpdateStatusRequest;
 import com.ecommerce.product.dto.response.ProductDetailVO;
+import com.ecommerce.common.dto.ProductStatsVO;
 import com.ecommerce.product.dto.response.SpuVO;
 import com.ecommerce.product.entity.Spu;
 import com.ecommerce.product.service.ProductService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
+
 import java.util.List;
+
 import java.util.stream.Collectors;
 
 @RestController
@@ -41,8 +44,15 @@ public class ProductController {
                                           @RequestParam(name = "size", defaultValue = "10") int size,
                                           @RequestParam(name = "categoryId", required = false) Long categoryId,
                                           @RequestParam(name = "status", required = false) Integer status,
-                                          @RequestParam(name = "keyword", required = false) String keyword) {
-        Page<Spu> result = productService.spuPage(page, size, categoryId, status, keyword);
+                                          @RequestParam(name = "keyword", required = false) String keyword,
+                                          @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                                          @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+        Page<Spu> result;
+        if ("merchant".equals(userType) && merchantId != null) {
+            result = productService.spuPageByMerchant(page, size, categoryId, status, keyword, merchantId);
+        } else {
+            result = productService.spuPage(page, size, categoryId, status, keyword);
+        }
         List<SpuVO> vos = result.getRecords().stream().map(productService::toSpuVO).collect(Collectors.toList());
         Page<SpuVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         voPage.setRecords(vos);
@@ -55,8 +65,13 @@ public class ProductController {
     }
 
     @PostMapping("/admin/products")
-    public Result<Spu> create(@Valid @RequestBody CreateProductRequest request) {
-        return Result.ok(productService.createProduct(request));
+    public Result<Spu> create(@Valid @RequestBody CreateProductRequest request,
+                               @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+        Spu spu = productService.createProduct(request);
+        if (merchantId != null) {
+            spu.setMerchantId(merchantId);
+        }
+        return Result.ok(spu);
     }
 
     @PutMapping("/admin/products/{id}")
@@ -75,5 +90,17 @@ public class ProductController {
     public Result<Void> delete(@PathVariable Long id) {
         productService.deleteSpu(id);
         return Result.ok();
+    }
+
+    @GetMapping("/internal/spu-ids")
+    public Result<List<Long>> getSpuIdsByMerchant(@RequestParam("merchantId") Long merchantId) {
+        return Result.ok(productService.getSpuIdsByMerchant(merchantId));
+    }
+
+    @GetMapping("/admin/products/stats")
+    public Result<ProductStatsVO> stats() {
+        ProductStatsVO stats = new ProductStatsVO();
+        stats.setProductCount(productService.countAll());
+        return Result.ok(stats);
     }
 }

@@ -46,22 +46,31 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BusinessException(PaymentErrorCode.PAYMENT_ALREADY_PAID);
         }
 
+        // Use orderNo to get real orderId (avoids JS Long precision loss)
+        Long realOrderId = request.getOrderId();
+        try {
+            var orderRes = orderClient.getOrderByOrderNo(request.getOrderNo(), userId);
+            if (orderRes.getData() != null) {
+                realOrderId = orderRes.getData().get("id") != null
+                    ? Long.valueOf(orderRes.getData().get("id").toString()) : request.getOrderId();
+            }
+        } catch (Exception ignored) {}
+
         Payment payment = new Payment();
         payment.setId(SnowflakeUtils.nextId());
         payment.setPaymentNo(generatePaymentNo());
         payment.setOrderNo(request.getOrderNo());
-        payment.setOrderId(request.getOrderId());
+        payment.setOrderId(realOrderId);
         payment.setUserId(userId);
         payment.setAmount(request.getAmount());
         payment.setPayMethod(request.getPayMethod());
-        // Mock: auto-complete payment as paid
         payment.setStatus(1);
         payment.setPaidAt(LocalDateTime.now());
         paymentMapper.insert(payment);
 
         // 通知订单服务更新状态为已支付
         StatusRequest sr = new StatusRequest(); sr.setStatus(1);
-        try { orderClient.updateStatus(payment.getOrderId(), sr); } catch (Exception ignored) {}
+        try { orderClient.updateStatus(realOrderId, sr); } catch (Exception ignored) {}
 
         return toVO(payment);
     }

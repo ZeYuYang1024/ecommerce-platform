@@ -12,6 +12,7 @@ import com.ecommerce.merchant.entity.Merchant;
 import com.ecommerce.merchant.entity.MerchantAudit;
 import com.ecommerce.merchant.mapper.MerchantAuditMapper;
 import com.ecommerce.merchant.mapper.MerchantMapper;
+import com.ecommerce.merchant.client.AuthClient;
 import com.ecommerce.merchant.service.MerchantService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,10 +25,13 @@ public class MerchantServiceImpl implements MerchantService {
 
     private final MerchantMapper merchantMapper;
     private final MerchantAuditMapper auditMapper;
+    private final AuthClient authClient;
 
-    public MerchantServiceImpl(MerchantMapper merchantMapper, MerchantAuditMapper auditMapper) {
+    public MerchantServiceImpl(MerchantMapper merchantMapper, MerchantAuditMapper auditMapper,
+                                AuthClient authClient) {
         this.merchantMapper = merchantMapper;
         this.auditMapper = auditMapper;
+        this.authClient = authClient;
     }
 
     @Override
@@ -89,12 +93,14 @@ public class MerchantServiceImpl implements MerchantService {
             throw new BusinessException(MerchantErrorCode.MERCHANT_NOT_PENDING);
         }
 
-        // 更新商家状态（null entity + wrapper 方式执行局部更新）
+        // 更新商家状态
+        merchant.setStatus(request.getAction());
+        merchant.setReason(request.getComment());
         merchantMapper.update(null,
-                new LambdaUpdateWrapper<Merchant>()
-                        .eq(Merchant::getId, id)
-                        .set(Merchant::getStatus, request.getAction())
-                        .set(Merchant::getReason, request.getComment()));
+                new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<Merchant>()
+                        .eq("id", id)
+                        .set("status", request.getAction())
+                        .set("reason", request.getComment()));
 
         // 记录审核日志
         MerchantAudit audit = new MerchantAudit();
@@ -104,6 +110,16 @@ public class MerchantServiceImpl implements MerchantService {
         audit.setAction(request.getAction());
         audit.setComment(request.getComment());
         auditMapper.insert(audit);
+
+        // 审核通过时自动创建商家管理员账号
+        if (request.getAction() == 1) {
+            try {
+                com.ecommerce.common.dto.CreateMerchantAccountRequest req = new com.ecommerce.common.dto.CreateMerchantAccountRequest();
+                req.setMerchantId(id);
+                req.setMerchantName(merchant.getName());
+                authClient.createMerchantAccount(req);
+            } catch (Exception ignored) {}
+        }
 
         return toVO(merchant);
     }

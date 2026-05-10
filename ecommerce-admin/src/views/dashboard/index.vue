@@ -11,7 +11,7 @@
           <el-icon :size="24"><Shop /></el-icon>
         </div>
         <div class="stat-body">
-          <div class="stat-value font-mono">--</div>
+          <div class="stat-value font-mono">{{ merchantCount }}</div>
           <div class="stat-label">入驻商家</div>
         </div>
         <div class="stat-spark"></div>
@@ -21,7 +21,7 @@
           <el-icon :size="24"><Clock /></el-icon>
         </div>
         <div class="stat-body">
-          <div class="stat-value font-mono" style="color: var(--orange);">--</div>
+          <div class="stat-value font-mono" style="color: var(--orange);">{{ pendingAuditCount }}</div>
           <div class="stat-label">待审核</div>
         </div>
         <div class="stat-spark orange"></div>
@@ -31,7 +31,7 @@
           <el-icon :size="24"><Goods /></el-icon>
         </div>
         <div class="stat-body">
-          <div class="stat-value font-mono">--</div>
+          <div class="stat-value font-mono">{{ productCount }}</div>
           <div class="stat-label">平台商品</div>
         </div>
         <div class="stat-spark green"></div>
@@ -41,7 +41,7 @@
           <el-icon :size="24"><User /></el-icon>
         </div>
         <div class="stat-body">
-          <div class="stat-value font-mono">--</div>
+          <div class="stat-value font-mono">{{ userCount }}</div>
           <div class="stat-label">注册用户</div>
         </div>
         <div class="stat-spark blue"></div>
@@ -83,15 +83,32 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import axios from 'axios'
 
 const username = ref(localStorage.getItem('username') || '管理员')
+const merchantCount = ref('--')
+const pendingAuditCount = ref('--')
+const productCount = ref('--')
+const userCount = ref('--')
 
 const greeting = computed(() => {
   const hour = new Date().getHours()
   if (hour < 12) return '早上好'
   if (hour < 18) return '下午好'
   return '晚上好'
+})
+
+onMounted(async () => {
+  try {
+    const { data } = await axios.get('/api/v1/admin/dashboard/stats')
+    if (data.code === 200 && data.data) {
+      merchantCount.value = data.data.merchantCount ?? 0
+      pendingAuditCount.value = data.data.pendingAuditCount ?? 0
+      productCount.value = data.data.productCount ?? 0
+      userCount.value = data.data.userCount ?? 0
+    }
+  } catch {}
 })
 </script>
 

@@ -11,7 +11,7 @@
       <h3 class="font-medium text-gray-900 truncate">{{ product.name }}</h3>
       <p class="text-sm text-gray-400 mt-1 truncate">{{ product.description || '暂无描述' }}</p>
       <div class="flex items-center justify-between mt-3">
-        <span class="text-lg font-bold text-amber-600">--</span>
+        <span class="text-lg font-bold text-amber-600">¥{{ priceText }}</span>
         <span class="text-xs text-gray-400">{{ product.reviewCount || 0 }} 评价</span>
       </div>
     </div>
@@ -19,5 +19,15 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{ product: any }>()
+import { computed } from 'vue'
+
+const props = defineProps<{ product: any }>()
+
+const priceText = computed(() => {
+  const min = props.product.minPrice
+  const max = props.product.maxPrice
+  if (min == null) return '--'
+  if (max == null || min === max) return Number(min).toFixed(2)
+  return `${Number(min).toFixed(2)}-${Number(max).toFixed(2)}`
+})
 </script>

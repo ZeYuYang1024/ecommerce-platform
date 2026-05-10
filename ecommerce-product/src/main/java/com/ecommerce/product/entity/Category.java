@@ -1,11 +1,14 @@
 package com.ecommerce.product.entity;
 
+import lombok.Data;
+import lombok.EqualsAndHashCode;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.ecommerce.common.entity.BaseEntity;
-
 import java.util.List;
 
+@Data
+@EqualsAndHashCode(callSuper = true)
 @TableName("category")
 public class Category extends BaseEntity {
     private String name;
@@ -14,19 +17,6 @@ public class Category extends BaseEntity {
     private Integer sort;
     private String icon;
 
-    @TableField(exist = false)
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private List<Category> children;
-
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public Long getParentId() { return parentId; }
-    public void setParentId(Long parentId) { this.parentId = parentId; }
-    public Integer getLevel() { return level; }
-    public void setLevel(Integer level) { this.level = level; }
-    public Integer getSort() { return sort; }
-    public void setSort(Integer sort) { this.sort = sort; }
-    public String getIcon() { return icon; }
-    public void setIcon(String icon) { this.icon = icon; }
-    public List<Category> getChildren() { return children; }
-    public void setChildren(List<Category> children) { this.children = children; }
 }

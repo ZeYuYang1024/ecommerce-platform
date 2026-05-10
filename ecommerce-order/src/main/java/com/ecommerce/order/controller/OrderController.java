@@ -1,7 +1,11 @@
 package com.ecommerce.order.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
+import com.ecommerce.order.mapper.OrderMapper;
+import com.ecommerce.order.entity.Order;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ecommerce.order.dto.response.OrderVO;
 import com.ecommerce.order.service.OrderService;
 import jakarta.validation.Valid;
@@ -12,11 +16,14 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1")
 public class OrderController {
+    private final OrderMapper orderMapper;
+
 
     private final OrderService orderService;
 
-    public OrderController(OrderService orderService) {
+    public OrderController(OrderService orderService, OrderMapper orderMapper) {
         this.orderService = orderService;
+        this.orderMapper = orderMapper;
     }
 
     @PostMapping("/orders")
@@ -26,8 +33,25 @@ public class OrderController {
     }
 
     @GetMapping("/orders")
-    public Result<List<OrderVO>> listByUser(@RequestHeader("X-User-Id") Long userId) {
-        return Result.ok(orderService.listByUser(userId));
+    public Result<Page<OrderVO>> listByUser(@RequestHeader("X-User-Id") Long userId,
+                                             @RequestParam(defaultValue = "1") int page,
+                                             @RequestParam(defaultValue = "10") int size) {
+        return Result.ok(orderService.listByUser(userId, page, size));
+    }
+
+    @GetMapping("/internal/orders/no/{orderNo}")
+    public Result<java.util.Map<String, Object>> internalGetByOrderNo(@PathVariable String orderNo, @RequestParam("userId") Long userId) {
+        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>().eq(Order::getOrderNo, orderNo).eq(Order::getUserId, userId));
+        if (order == null) return Result.fail(404, "订单不存在");
+        java.util.Map<String, Object> m = new java.util.HashMap<>();
+        m.put("id", order.getId());
+        m.put("orderNo", order.getOrderNo());
+        return Result.ok(m);
+    }
+
+    @GetMapping("/orders/no/{orderNo}")
+    public Result<OrderVO> detailByOrderNo(@RequestHeader("X-User-Id") Long userId, @PathVariable String orderNo) {
+        return Result.ok(orderService.getOrderByOrderNo(userId, orderNo));
     }
 
     @GetMapping("/orders/{id}")

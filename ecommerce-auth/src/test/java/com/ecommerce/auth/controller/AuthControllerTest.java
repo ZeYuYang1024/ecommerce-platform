@@ -29,7 +29,7 @@ class AuthControllerTest {
         req.setUsername("newuser");
         req.setPassword("123456");
 
-        LoginResponse resp = LoginResponse.of("jwt-token", 1L, "newuser");
+        LoginResponse resp = LoginResponse.of("jwt-token", 1L, "newuser", "user");
         when(authService.register(any(RegisterRequest.class))).thenReturn(resp);
 
         Result<LoginResponse> result = controller.register(req);
@@ -45,7 +45,7 @@ class AuthControllerTest {
         req.setUsername("testuser");
         req.setPassword("123456");
 
-        LoginResponse resp = LoginResponse.of("jwt-token", 1L, "testuser");
+        LoginResponse resp = LoginResponse.of("jwt-token", 1L, "testuser", "user");
         when(authService.login(any(LoginRequest.class))).thenReturn(resp);
 
         Result<LoginResponse> result = controller.login(req);
@@ -60,7 +60,7 @@ class AuthControllerTest {
         req.setUsername("admin");
         req.setPassword("admin123");
 
-        LoginResponse resp = LoginResponse.of("admin-jwt-token", 100L, "admin");
+        LoginResponse resp = LoginResponse.of("admin-jwt-token", 100L, "admin", "super_admin");
         when(authService.adminLogin(any(LoginRequest.class))).thenReturn(resp);
 
         Result<LoginResponse> result = controller.adminLogin(req);

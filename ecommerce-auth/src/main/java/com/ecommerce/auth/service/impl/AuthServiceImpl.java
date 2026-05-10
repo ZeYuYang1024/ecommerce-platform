@@ -4,6 +4,7 @@ import com.ecommerce.auth.common.AuthErrorCode;
 import com.ecommerce.auth.dto.request.LoginRequest;
 import com.ecommerce.auth.dto.request.RegisterRequest;
 import com.ecommerce.auth.dto.response.LoginResponse;
+import com.ecommerce.auth.dto.response.UserVO;
 import com.ecommerce.auth.entity.AdminUser;
 import com.ecommerce.auth.entity.User;
 import com.ecommerce.auth.mapper.AdminUserMapper;
@@ -44,8 +45,8 @@ public class AuthServiceImpl implements AuthService {
         user.setPhone(request.getPhone());
         userMapper.insert(user);
 
-        String token = JwtUtils.generate(user.getId(), user.getUsername(), "user");
-        return LoginResponse.of(token, user.getId(), user.getUsername());
+        String token = JwtUtils.generate(user.getId(), user.getUsername(), "user", "user");
+        return LoginResponse.of(token, user.getId(), user.getUsername(), "user");
     }
 
     @Override
@@ -63,8 +64,8 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(AuthErrorCode.USER_FORBIDDEN);
         }
 
-        String token = JwtUtils.generate(user.getId(), user.getUsername(), "user");
-        return LoginResponse.of(token, user.getId(), user.getUsername());
+        String token = JwtUtils.generate(user.getId(), user.getUsername(), "user", "user");
+        return LoginResponse.of(token, user.getId(), user.getUsername(), "user");
     }
 
     @Override
@@ -82,8 +83,9 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(AuthErrorCode.ADMIN_FORBIDDEN);
         }
 
-        String token = JwtUtils.generate(admin.getId(), admin.getUsername(), "admin");
-        return LoginResponse.of(token, admin.getId(), admin.getUsername());
+        String adminType = admin.getType() != null ? admin.getType() : "super_admin";
+        String token = JwtUtils.generate(admin.getId(), admin.getUsername(), "admin", adminType, admin.getMerchantId());
+        return LoginResponse.of(token, admin.getId(), admin.getUsername(), adminType);
     }
 
     @Override
@@ -96,5 +98,32 @@ public class AuthServiceImpl implements AuthService {
         } catch (Exception e) {
             throw new BusinessException(AuthErrorCode.TOKEN_INVALID);
         }
+    }
+
+    @Override
+    public UserVO getProfile(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(AuthErrorCode.USER_NOT_FOUND);
+        }
+        UserVO vo = new UserVO();
+        vo.setId(user.getId());
+        vo.setUsername(user.getUsername());
+        vo.setPhone(user.getPhone());
+        vo.setAvatar(user.getAvatar());
+        vo.setCreatedAt(user.getCreatedAt());
+        return vo;
+    }
+
+    @Override
+    public UserVO updateProfile(Long userId, String phone, String avatar) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(AuthErrorCode.USER_NOT_FOUND);
+        }
+        if (phone != null) user.setPhone(phone);
+        if (avatar != null) user.setAvatar(avatar);
+        userMapper.updateById(user);
+        return getProfile(userId);
     }
 }

@@ -1,6 +1,8 @@
 package com.ecommerce.order.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.order.common.OrderErrorCode;
@@ -12,6 +14,7 @@ import com.ecommerce.order.mapper.OrderItemMapper;
 import com.ecommerce.order.mapper.OrderMapper;
 import com.ecommerce.order.client.CartClient;
 import com.ecommerce.order.client.InventoryClient;
+import com.ecommerce.order.client.ProductSpuClient;
 import com.ecommerce.order.client.StockOperateRequest;
 import com.ecommerce.order.service.OrderService;
 import org.springframework.stereotype.Service;
@@ -21,6 +24,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -31,13 +38,15 @@ public class OrderServiceImpl implements OrderService {
     private final OrderItemMapper itemMapper;
     private final CartClient cartClient;
     private final InventoryClient inventoryClient;
+    private final ProductSpuClient productSpuClient;
 
-    public OrderServiceImpl(OrderMapper orderMapper, OrderItemMapper itemMapper,
+    public OrderServiceImpl(OrderMapper orderMapper, OrderItemMapper itemMapper, ProductSpuClient productSpuClient,
                             CartClient cartClient, InventoryClient inventoryClient) {
         this.orderMapper = orderMapper;
         this.itemMapper = itemMapper;
         this.cartClient = cartClient;
         this.inventoryClient = inventoryClient;
+        this.productSpuClient = productSpuClient;
     }
 
     @Override
@@ -90,7 +99,17 @@ public class OrderServiceImpl implements OrderService {
         // 清空购物车已购商品（best-effort）
         try { cartClient.getCart(userId); } catch (Exception ignored) {}
 
-        return toVO(order);
+        return toVO(order, java.util.Collections.emptyMap());
+    }
+
+    @Override
+    public OrderVO getOrderByOrderNo(Long userId, String orderNo) {
+        Order order = orderMapper.selectOne(
+                new LambdaQueryWrapper<Order>()
+                        .eq(Order::getOrderNo, orderNo)
+                        .eq(Order::getUserId, userId));
+        if (order == null) throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
+        return getOrder(order.getId());
     }
 
     @Override
@@ -99,16 +118,22 @@ public class OrderServiceImpl implements OrderService {
         if (order == null) {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
         }
-        return toVO(order);
+        Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(Collections.singletonList(order));
+        return toVO(order, itemsMap);
     }
 
     @Override
-    public List<OrderVO> listByUser(Long userId) {
-        List<Order> orders = orderMapper.selectList(
+    public Page<OrderVO> listByUser(Long userId, int page, int size) {
+        Page<Order> pageReq = new Page<>(page, size);
+        Page<Order> result = orderMapper.selectPage(pageReq,
                 new LambdaQueryWrapper<Order>()
                         .eq(Order::getUserId, userId)
                         .orderByDesc(Order::getCreatedAt));
-        return orders.stream().map(this::toVO).collect(Collectors.toList());
+        Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(result.getRecords());
+        List<OrderVO> vos = result.getRecords().stream().map(o -> toVO(o, itemsMap)).collect(Collectors.toList());
+        Page<OrderVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
+        voPage.setRecords(vos);
+        return voPage;
     }
 
     @Override
@@ -134,14 +159,47 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public List<OrderVO> listAll(Integer status) {
+    public Page<OrderVO> listByMerchant(Long merchantId, int page, int size, Integer status) {
+        List<Long> spuIds;
+        try { var r = productSpuClient.getSpuIdsByMerchant(merchantId); spuIds = r.getData() != null ? r.getData() : Collections.emptyList(); }
+        catch (Exception e) { spuIds = Collections.emptyList(); }
+        if (spuIds.isEmpty()) return new Page<>(page, size, 0);
+        List<OrderItem> items = itemMapper.selectList(new LambdaQueryWrapper<OrderItem>().in(OrderItem::getSpuId, spuIds));
+        List<Long> orderIds = items.stream().map(OrderItem::getOrderId).distinct().collect(Collectors.toList());
+        if (orderIds.isEmpty()) return new Page<>(page, size, 0);
+        LambdaQueryWrapper<Order> w = new LambdaQueryWrapper<Order>().in(Order::getId, orderIds);
+        if (status != null) w.eq(Order::getStatus, status);
+        w.orderByDesc(Order::getCreatedAt);
+        Page<Order> result = orderMapper.selectPage(new Page<>(page, size), w);
+        Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(result.getRecords());
+        List<OrderVO> vos = result.getRecords().stream().map(o -> toVO(o, itemsMap)).collect(Collectors.toList());
+        Page<OrderVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
+        voPage.setRecords(vos);
+        return voPage;
+    }
+
+    @Override
+    public Page<OrderVO> listAll(int page, int size, Integer status) {
+        Page<Order> pageReq = new Page<>(page, size);
         LambdaQueryWrapper<Order> wrapper = new LambdaQueryWrapper<>();
         if (status != null) {
             wrapper.eq(Order::getStatus, status);
         }
         wrapper.orderByDesc(Order::getCreatedAt);
-        return orderMapper.selectList(wrapper).stream()
-                .map(this::toVO).collect(Collectors.toList());
+        Page<Order> result = orderMapper.selectPage(pageReq, wrapper);
+        Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(result.getRecords());
+        List<OrderVO> vos = result.getRecords().stream().map(o -> toVO(o, itemsMap)).collect(Collectors.toList());
+        Page<OrderVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
+        voPage.setRecords(vos);
+        return voPage;
+    }
+
+    @Override
+    public List<Order> listForRecon(LocalDateTime start, LocalDateTime end) {
+        return orderMapper.selectList(
+                new LambdaQueryWrapper<Order>()
+                        .between(start != null && end != null, Order::getCreatedAt, start, end)
+                        .orderByAsc(Order::getCreatedAt));
     }
 
     @Override
@@ -150,6 +208,11 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderMapper.selectById(id);
         if (order == null) {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
+        }
+        if (order.getStatus() == null || order.getStatus() != 1) {
+            if (order.getStatus() != null && order.getStatus() == 2) throw new BusinessException(OrderErrorCode.ORDER_ALREADY_SHIPPED);
+            if (order.getStatus() != null && order.getStatus() == 4) throw new BusinessException(OrderErrorCode.ORDER_ALREADY_CANCELLED);
+            throw new BusinessException(OrderErrorCode.ORDER_NOT_PAID);
         }
         order.setStatus(2);
         orderMapper.updateById(order);
@@ -166,7 +229,7 @@ public class OrderServiceImpl implements OrderService {
         orderMapper.updateById(order);
     }
 
-    private OrderVO toVO(Order order) {
+    private OrderVO toVO(Order order, Map<Long, List<OrderItem>> itemsMap) {
         OrderVO vo = new OrderVO();
         vo.setId(order.getId());
         vo.setOrderNo(order.getOrderNo());
@@ -179,9 +242,7 @@ public class OrderServiceImpl implements OrderService {
         vo.setReceiverAddress(order.getReceiverAddress());
         vo.setCreatedAt(order.getCreatedAt());
 
-        // Load items
-        List<OrderItem> items = itemMapper.selectList(
-                new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, order.getId()));
+        List<OrderItem> items = itemsMap.getOrDefault(order.getId(), java.util.Collections.emptyList());
         List<OrderVO.OrderItemVO> itemVOs = new ArrayList<>();
         for (OrderItem item : items) {
             OrderVO.OrderItemVO iv = new OrderVO.OrderItemVO();
@@ -197,6 +258,14 @@ public class OrderServiceImpl implements OrderService {
         }
         vo.setItems(itemVOs);
         return vo;
+    }
+
+    private Map<Long, List<OrderItem>> loadItemsForOrders(List<Order> orders) {
+        if (orders.isEmpty()) return java.util.Collections.emptyMap();
+        List<Long> orderIds = orders.stream().map(Order::getId).collect(Collectors.toList());
+        List<OrderItem> items = itemMapper.selectList(
+                new LambdaQueryWrapper<OrderItem>().in(OrderItem::getOrderId, orderIds));
+        return items.stream().collect(Collectors.groupingBy(OrderItem::getOrderId));
     }
 
     private String generateOrderNo() {

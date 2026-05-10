@@ -27,7 +27,8 @@
           <span class="text-sm text-gray-500">共 {{ order.items?.length || 0 }} 件</span>
           <div>
             <span class="text-lg font-bold text-amber-600">¥{{ order.totalAmount }}</span>
-            <button v-if="order.status === 0" @click="cancelOrder(order.id)" class="ml-4 text-sm text-red-400 hover:text-red-500">取消订单</button>
+            <NuxtLink v-if="order.status === 0" :to="`/payment/${order.orderNo}`" class="ml-4 text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors">去支付</NuxtLink>
+            <button v-if="order.status === 0" @click="cancelOrder(order.id)" class="ml-2 text-sm text-red-400 hover:text-red-500">取消订单</button>
           </div>
         </div>
       </div>
@@ -43,7 +44,7 @@ onMounted(async () => {
   try {
     const api = useApi()
     const res: any = await api.get('/orders')
-    if (res.code === 200) orders.value = res.data || []
+    if (res.code === 200) orders.value = res.data?.records || []
   } finally { loading.value = false }
 })
 
@@ -56,6 +57,6 @@ async function cancelOrder(id: number) {
   const api = useApi()
   await api.put(`/orders/${id}/cancel`)
   const res: any = await api.get('/orders')
-  if (res.code === 200) orders.value = res.data || []
+  if (res.code === 200) orders.value = res.data?.records || []
 }
 </script>

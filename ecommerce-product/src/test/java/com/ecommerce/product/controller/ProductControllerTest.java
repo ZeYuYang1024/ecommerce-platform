@@ -122,7 +122,7 @@ class ProductControllerTest {
             adminSpuVO.setName("管理端商品");
             when(productService.toSpuVO(any(Spu.class))).thenReturn(adminSpuVO);
 
-            Result<Page<SpuVO>> result = controller.adminList(1, 10, null, null, null);
+            Result<Page<SpuVO>> result = controller.adminList(1, 10, null, null, null, "super_admin", null);
 
             assertThat(result.getCode()).isEqualTo(200);
             assertThat(result.getData().getRecords().get(0).getName()).isEqualTo("管理端商品");
@@ -134,7 +134,7 @@ class ProductControllerTest {
             spuPage.setRecords(Collections.emptyList());
             when(productService.spuPage(eq(1), eq(10), isNull(), eq(0), isNull())).thenReturn(spuPage);
 
-            Result<Page<SpuVO>> result = controller.adminList(1, 10, null, 0, null);
+            Result<Page<SpuVO>> result = controller.adminList(1, 10, null, 0, null, "super_admin", null);
 
             assertThat(result.getCode()).isEqualTo(200);
         }
@@ -151,7 +151,7 @@ class ProductControllerTest {
             created.setName("新品");
             when(productService.createProduct(any(CreateProductRequest.class))).thenReturn(created);
 
-            Result<Spu> result = controller.create(req);
+            Result<Spu> result = controller.create(req, null);
 
             assertThat(result.getCode()).isEqualTo(200);
             assertThat(result.getData().getName()).isEqualTo("新品");

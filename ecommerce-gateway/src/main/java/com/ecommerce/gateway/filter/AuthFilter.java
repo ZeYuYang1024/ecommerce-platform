@@ -32,6 +32,24 @@ public class AuthFilter implements GlobalFilter, Ordered {
             "/api/v1/files"
     );
 
+    // 商家不可访问的路径
+    private static final List<String> MERCHANT_FORBIDDEN = Arrays.asList(
+            "/api/v1/admin/merchants",
+            "/api/v1/admin/users",
+            "/api/v1/admin/dashboard",
+            "/api/v1/admin/reconciliation",
+            "/api/v1/admin/settlements",
+            "/api/v1/admin/brands",
+            "/api/v1/admin/categories",
+            "/api/v1/admin/reviews"
+    );
+
+    // 运营不可访问的路径（可以看 dashboard，但不能审核商家/管用户）
+    private static final List<String> OPS_FORBIDDEN = Arrays.asList(
+            "/api/v1/admin/merchants",
+            "/api/v1/admin/users"
+    );
+
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
@@ -64,15 +82,42 @@ public class AuthFilter implements GlobalFilter, Ordered {
         try {
             String token = authHeader.substring(7);
             Claims claims = JwtUtils.parse(token);
-            // 注入 X-User-Id header 供下游服务使用
+            // 注入 header 供下游服务使用
             Long userId = Long.valueOf(claims.getSubject());
+            String userType = claims.get("type", String.class);
+            final Long merchantId;
+            Object mid = claims.get("merchantId");
+            if (mid instanceof Number n) merchantId = n.longValue();
+            else merchantId = null;
             exchange = exchange.mutate()
-                    .request(r -> r.header("X-User-Id", String.valueOf(userId)))
+                    .request(r -> {
+                        r.header("X-User-Id", String.valueOf(userId));
+                        r.header("X-User-Type", userType != null ? userType : "user");
+                        if (merchantId != null) r.header("X-Merchant-Id", String.valueOf(merchantId));
+                    })
                     .build();
             // admin 接口需要 admin 角色
             if (isAdminPath && !"admin".equals(claims.get("role"))) {
                 exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
                 return exchange.getResponse().setComplete();
+            }
+            // 多角色权限控制
+            if (isAdminPath && userType != null) {
+                if ("merchant".equals(userType)) {
+                    for (String forbidden : MERCHANT_FORBIDDEN) {
+                        if (path.startsWith(forbidden)) {
+                            exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
+                            return exchange.getResponse().setComplete();
+                        }
+                    }
+                } else if ("ops".equals(userType)) {
+                    for (String forbidden : OPS_FORBIDDEN) {
+                        if (path.startsWith(forbidden)) {
+                            exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
+                            return exchange.getResponse().setComplete();
+                        }
+                    }
+                }
             }
         } catch (ExpiredJwtException e) {
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);

@@ -495,5 +495,89 @@ class ProductServiceImplTest {
             assertThat(result.getSpu()).isNotNull();
             assertThat(result.getSkus()).isEmpty();
         }
+
+        @Test
+        void toSpuVO_shouldSetMinMaxPrice() {
+            List<Sku> skus = new java.util.ArrayList<>();
+            Sku s1 = new Sku();
+            s1.setPrice(new java.math.BigDecimal("10.00"));
+            Sku s2 = new Sku();
+            s2.setPrice(new java.math.BigDecimal("50.00"));
+            skus.add(s1); skus.add(s2);
+            when(skuMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(skus);
+
+            SpuVO vo = productService.toSpuVO(spu);
+            assertThat(vo.getMinPrice()).isEqualByComparingTo("10.00");
+            assertThat(vo.getMaxPrice()).isEqualByComparingTo("50.00");
+        }
+
+        @Test
+        void toSpuVO_shouldHandleSingleSku() {
+            List<Sku> skus = new java.util.ArrayList<>();
+            Sku s1 = new Sku();
+            s1.setPrice(new java.math.BigDecimal("99.99"));
+            skus.add(s1);
+            when(skuMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(skus);
+
+            SpuVO vo = productService.toSpuVO(spu);
+            assertThat(vo.getMinPrice()).isEqualByComparingTo("99.99");
+            assertThat(vo.getMaxPrice()).isEqualByComparingTo("99.99");
+        }
+
+        @Test
+        void toSpuVO_shouldHandleEmptySkus() {
+            when(skuMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(java.util.Collections.emptyList());
+            SpuVO vo = productService.toSpuVO(spu);
+            assertThat(vo.getMinPrice()).isNull();
+            assertThat(vo.getMaxPrice()).isNull();
+        }
+
+        @Test
+        void toSpuVO_shouldHandleNullSkuPrice() {
+            List<Sku> skus = new java.util.ArrayList<>();
+            Sku s1 = new Sku();
+            s1.setPrice(null);
+            skus.add(s1);
+            when(skuMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(skus);
+            SpuVO vo = productService.toSpuVO(spu);
+            assertThat(vo.getMinPrice()).isNull();
+        }
+
+        @Test
+        void countAll_shouldReturnCount() {
+            when(spuMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(42L);
+            assertThat(productService.countAll()).isEqualTo(42L);
+        }
+
+        @Test
+        void countAll_shouldReturnZero() {
+            when(spuMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+            assertThat(productService.countAll()).isEqualTo(0L);
+        }
+
+        @Test
+        void spuPageByMerchant_shouldFilterByMerchantId() {
+            when(spuMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                    .thenReturn(new Page<>(1, 10));
+            var result = productService.spuPageByMerchant(1, 10, null, null, null, 100L);
+            assertThat(result).isNotNull();
+        }
+
+        @Test
+        void spuPageByMerchant_shouldIncludeCategoryAndStatusFilter() {
+            when(spuMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                    .thenReturn(new Page<>(1, 10));
+            var result = productService.spuPageByMerchant(1, 10, 1L, 1, "test", 100L);
+            assertThat(result).isNotNull();
+        }
+
+        @Test
+        void spuPageByMerchant_shouldHandleNullCategoryAndKeyword() {
+            when(spuMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                    .thenReturn(new Page<>(1, 10, 0));
+            var result = productService.spuPageByMerchant(1, 10, null, null, null, 100L);
+            assertThat(result.getTotal()).isEqualTo(0);
+        }
     }
 }

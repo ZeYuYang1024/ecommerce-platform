@@ -19,6 +19,8 @@ import com.ecommerce.product.client.InventoryClient;
 import com.ecommerce.product.client.StockSetRequest;
 import com.ecommerce.product.service.ProductService;
 import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
@@ -43,9 +45,13 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public List<Category> categoryTree() {
-        List<Category> all = categoryMapper.selectList(
+    public List<Category> categoryList() {
+        return categoryMapper.selectList(
                 new LambdaQueryWrapper<Category>().orderByAsc(Category::getSort));
+    }
+
+    public List<Category> categoryTree() {
+        List<Category> all = categoryList();
         Map<Long, List<Category>> childrenMap = all.stream()
                 .filter(c -> c.getParentId() != null && c.getParentId() > 0)
                 .collect(Collectors.groupingBy(Category::getParentId));
@@ -84,11 +90,45 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public Page<Spu> spuPage(int page, int size, Long categoryId, Integer status, String keyword) {
         LambdaQueryWrapper<Spu> wrapper = new LambdaQueryWrapper<>();
-        if (categoryId != null) wrapper.eq(Spu::getCategoryId, categoryId);
+        if (categoryId != null) {
+            List<Long> catIds = collectCategoryIds(categoryId);
+            wrapper.in(Spu::getCategoryId, catIds);
+        }
         if (status != null) wrapper.eq(Spu::getStatus, status);
         if (keyword != null && !keyword.isEmpty()) wrapper.like(Spu::getName, keyword);
         wrapper.orderByDesc(Spu::getCreatedAt);
         return spuMapper.selectPage(new Page<>(page, size), wrapper);
+    }
+
+    public Page<Spu> spuPageByMerchant(int page, int size, Long categoryId, Integer status, String keyword, Long merchantId) {
+        LambdaQueryWrapper<Spu> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Spu::getMerchantId, merchantId);
+        if (categoryId != null) {
+            List<Long> catIds = collectCategoryIds(categoryId);
+            wrapper.in(Spu::getCategoryId, catIds);
+        }
+        if (status != null) wrapper.eq(Spu::getStatus, status);
+        if (keyword != null && !keyword.isEmpty()) wrapper.like(Spu::getName, keyword);
+        wrapper.orderByDesc(Spu::getCreatedAt);
+        return spuMapper.selectPage(new Page<>(page, size), wrapper);
+    }
+
+    private List<Long> collectCategoryIds(Long parentId) {
+        List<Long> ids = new java.util.ArrayList<>();
+        ids.add(parentId);
+        List<Category> all = categoryList();
+        collectChildIds(parentId, all, ids, new java.util.HashSet<>());
+        return ids;
+    }
+
+    private void collectChildIds(Long parentId, List<Category> all, List<Long> result, java.util.Set<Long> visited) {
+        if (!visited.add(parentId)) return; // prevent infinite recursion on circular refs
+        for (Category c : all) {
+            if (parentId.equals(c.getParentId())) {
+                result.add(c.getId());
+                collectChildIds(c.getId(), all, result, visited);
+            }
+        }
     }
 
     @Override
@@ -172,6 +212,19 @@ public class ProductServiceImpl implements ProductService {
         vo.setAvgRating(spu.getAvgRating());
         vo.setReviewCount(spu.getReviewCount());
         vo.setCreatedAt(spu.getCreatedAt());
+
+        List<Sku> skus = getSkusBySpuId(spu.getId());
+        if (skus != null && !skus.isEmpty()) {
+            BigDecimal min = null, max = null;
+            for (Sku sku : skus) {
+                BigDecimal price = sku.getPrice();
+                if (price == null) continue;
+                if (min == null || price.compareTo(min) < 0) min = price;
+                if (max == null || price.compareTo(max) > 0) max = price;
+            }
+            vo.setMinPrice(min);
+            vo.setMaxPrice(max);
+        }
         return vo;
     }
 
@@ -221,5 +274,16 @@ public class ProductServiceImpl implements ProductService {
     public List<Sku> getSkusBySpuId(Long spuId) {
         return skuMapper.selectList(
                 new LambdaQueryWrapper<Sku>().eq(Sku::getSpuId, spuId));
+    }
+
+    @Override
+    public List<Long> getSpuIdsByMerchant(Long merchantId) {
+        List<Spu> spus = spuMapper.selectList(
+                new LambdaQueryWrapper<Spu>().eq(Spu::getMerchantId, merchantId));
+        return spus.stream().map(Spu::getId).collect(java.util.stream.Collectors.toList());
+    }
+
+    public long countAll() {
+        return spuMapper.selectCount(new LambdaQueryWrapper<>());
     }
 }

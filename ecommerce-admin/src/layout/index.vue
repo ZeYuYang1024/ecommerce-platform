@@ -24,6 +24,7 @@
           <span>数据概览</span>
         </router-link>
 
+        <template v-if="!isMerchant">
         <div class="nav-section">商家管理</div>
 
         <router-link to="/merchants" class="nav-item" :class="{ active: $route.path.startsWith('/merchants') }">
@@ -31,6 +32,7 @@
           <span>商家列表</span>
           <span v-if="$route.path.startsWith('/merchants')" class="active-dot"></span>
         </router-link>
+        </template>
 
         <div class="nav-section">商品运营</div>
 
@@ -44,12 +46,49 @@
           <span>类目管理</span>
           <span v-if="$route.path === '/categories'" class="active-dot"></span>
         </router-link>
+        <router-link to="/brands" class="nav-item" :class="{ active: $route.path === '/brands' }">
+          <el-icon><Collection /></el-icon>
+          <span>品牌管理</span>
+          <span v-if="$route.path === '/brands'" class="active-dot"></span>
+        </router-link>
+        <router-link to="/reviews" class="nav-item" :class="{ active: $route.path === '/reviews' }">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>评论管理</span>
+          <span v-if="$route.path === '/reviews'" class="active-dot"></span>
+        </router-link>
         <router-link to="/inventory" class="nav-item" :class="{ active: $route.path === '/inventory' }">
           <el-icon><Box /></el-icon>
           <span>库存管理</span>
           <span v-if="$route.path === '/inventory'" class="active-dot"></span>
         </router-link>
 
+        <div class="nav-section">交易管理</div>
+
+        <router-link to="/orders" class="nav-item" :class="{ active: $route.path === '/orders' }">
+          <el-icon><Document /></el-icon>
+          <span>订单管理</span>
+          <span v-if="$route.path === '/orders'" class="active-dot"></span>
+        </router-link>
+        <router-link to="/payments" class="nav-item" :class="{ active: $route.path === '/payments' }">
+          <el-icon><Money /></el-icon>
+          <span>支付管理</span>
+          <span v-if="$route.path === '/payments'" class="active-dot"></span>
+        </router-link>
+
+        <div class="nav-section">财务管理</div>
+
+        <router-link to="/reconciliation" class="nav-item" :class="{ active: $route.path.startsWith('/reconciliation') }">
+          <el-icon><RefreshRight /></el-icon>
+          <span>对账管理</span>
+          <span v-if="$route.path.startsWith('/reconciliation')" class="active-dot"></span>
+        </router-link>
+        <router-link to="/settlement" class="nav-item" :class="{ active: $route.path === '/settlement' }">
+          <el-icon><TrendCharts /></el-icon>
+          <span>日终结算</span>
+          <span v-if="$route.path === '/settlement'" class="active-dot"></span>
+        </router-link>
+
+        <template v-if="!isOps && !isMerchant">
         <div class="nav-section">用户</div>
 
         <router-link to="/users" class="nav-item" :class="{ active: $route.path === '/users' }">
@@ -57,6 +96,17 @@
           <span>用户管理</span>
           <span v-if="$route.path === '/users'" class="active-dot"></span>
         </router-link>
+        <router-link to="/roles" class="nav-item" :class="{ active: $route.path === '/roles' }">
+          <el-icon><Key /></el-icon>
+          <span>角色管理</span>
+          <span v-if="$route.path === '/roles'" class="active-dot"></span>
+        </router-link>
+        <router-link to="/permissions" class="nav-item" :class="{ active: $route.path === '/permissions' }">
+          <el-icon><Lock /></el-icon>
+          <span>权限管理</span>
+          <span v-if="$route.path === '/permissions'" class="active-dot"></span>
+        </router-link>
+        </template>
       </nav>
 
       <div class="sidebar-footer">
@@ -92,6 +142,10 @@ import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const username = ref(localStorage.getItem('username') || '管理员')
+const userType = ref(localStorage.getItem('type') || 'super_admin')
+const isSuperAdmin = computed(() => userType.value === 'super_admin')
+const isOps = computed(() => userType.value === 'ops')
+const isMerchant = computed(() => userType.value === 'merchant')
 const time = ref('')
 
 const avatarUrl = computed(() => {

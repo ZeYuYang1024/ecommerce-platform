@@ -19,14 +19,34 @@ public class JwtUtils {
     }
 
     public static String generate(Long userId, String username, String role) {
-        return Jwts.builder()
+        return generate(userId, username, role, null);
+    }
+
+    public static String generate(Long userId, String username, String role, String type) {
+        return generate(userId, username, role, type, null);
+    }
+
+    public static String generate(Long userId, String username, String role, String type, Long merchantId) {
+        var builder = Jwts.builder()
                 .subject(String.valueOf(userId))
                 .claim("username", username)
                 .claim("role", role)
-                .issuedAt(new Date())
+                .claim("type", type != null ? type : role);
+        if (merchantId != null) builder.claim("merchantId", merchantId);
+        return builder.issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + EXPIRE_MS))
                 .signWith(getKey())
                 .compact();
+    }
+
+    public static String getType(String token) {
+        return parse(token).get("type", String.class);
+    }
+
+    public static Long getMerchantId(String token) {
+        Object val = parse(token).get("merchantId");
+        if (val instanceof Number n) return n.longValue();
+        return null;
     }
 
     public static Claims parse(String token) {

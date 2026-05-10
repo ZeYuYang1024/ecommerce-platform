@@ -42,6 +42,17 @@
           登 录
         </el-button>
       </el-form>
+      <div class="divider"><span>或</span></div>
+      <router-link to="/merchant/register" class="merchant-entry">
+        <div class="merchant-entry-icon">
+          <el-icon :size="22"><Shop /></el-icon>
+        </div>
+        <div class="merchant-entry-text">
+          <span class="merchant-entry-title">商家入驻</span>
+          <span class="merchant-entry-desc">开通店铺，开始销售</span>
+        </div>
+        <el-icon :size="16" class="merchant-entry-arrow"><ArrowRight /></el-icon>
+      </router-link>
     </div>
   </div>
 </template>
@@ -76,6 +87,7 @@ async function login() {
     if (data.code === 200) {
       localStorage.setItem('token', data.data.token)
       localStorage.setItem('username', data.data.username)
+      localStorage.setItem('type', data.data.type || 'super_admin')
       router.push('/dashboard')
     } else {
       ElMessage.error(data.message)
@@ -219,5 +231,80 @@ async function login() {
 }
 .pwd-toggle:hover {
   color: rgba(226, 232, 240, 0.8);
+}
+
+/* Divider */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 16px;
+}
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(148, 163, 184, 0.15);
+}
+.divider span {
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Merchant entry card */
+.merchant-entry {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  background: rgba(200, 150, 62, 0.06);
+  border: 1px solid rgba(200, 150, 62, 0.15);
+  border-radius: 14px;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.merchant-entry:hover {
+  background: rgba(200, 150, 62, 0.12);
+  border-color: rgba(200, 150, 62, 0.3);
+  transform: translateY(-1px);
+}
+.merchant-entry-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(200, 150, 62, 0.2), rgba(232, 200, 118, 0.2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #C8963E;
+  flex-shrink: 0;
+}
+.merchant-entry-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.merchant-entry-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.9);
+}
+.merchant-entry-desc {
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.5);
+}
+.merchant-entry-arrow {
+  color: rgba(148, 163, 184, 0.3);
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+.merchant-entry:hover .merchant-entry-arrow {
+  transform: translateX(3px);
+  color: #C8963E;
 }
 </style>

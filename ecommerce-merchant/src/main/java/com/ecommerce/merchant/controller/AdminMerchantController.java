@@ -2,6 +2,7 @@ package com.ecommerce.merchant.controller;
 
 import com.ecommerce.common.result.Result;
 import com.ecommerce.merchant.dto.request.MerchantAuditRequest;
+import com.ecommerce.common.dto.MerchantStatsVO;
 import com.ecommerce.merchant.dto.response.MerchantVO;
 import com.ecommerce.merchant.service.MerchantService;
 import jakarta.validation.Valid;
@@ -34,5 +35,16 @@ public class AdminMerchantController {
                                      @Valid @RequestBody MerchantAuditRequest request,
                                      @RequestHeader(value = "X-User-Id", required = false) Long userId) {
         return Result.ok(merchantService.audit(id, request, userId));
+    }
+
+    @GetMapping("/merchants/stats")
+    public Result<MerchantStatsVO> stats() {
+        List<MerchantVO> all = merchantService.list(null);
+        long approved = all.stream().filter(m -> m.getStatus() != null && m.getStatus() == 1).count();
+        long pending = all.stream().filter(m -> m.getStatus() != null && m.getStatus() == 0).count();
+        MerchantStatsVO stats = new MerchantStatsVO();
+        stats.setMerchantCount(approved);
+        stats.setPendingAuditCount(pending);
+        return Result.ok(stats);
     }
 }

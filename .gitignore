@@ -21,3 +21,8 @@ Thumbs.db
 # Env
 .env
 .env.local
+task_plan.md
+findings.md
+progress.md
+test-results/
+playwright-real.config.ts

@@ -7,7 +7,6 @@ import java.math.BigDecimal;
 public class PayRequest {
     @NotBlank
     private String orderNo;
-    @NotNull
     private Long orderId;
     @NotNull
     private BigDecimal amount;

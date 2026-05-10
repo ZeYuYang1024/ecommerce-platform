@@ -13,12 +13,14 @@ import java.util.List;
 public interface ProductService {
     // Category
     List<Category> categoryTree();
+    List<Category> categoryList();
     Category createCategory(Category category);
     Category updateCategory(Category category);
     void deleteCategory(Long id);
 
     // SPU
     Page<Spu> spuPage(int page, int size, Long categoryId, Integer status, String keyword);
+    Page<Spu> spuPageByMerchant(int page, int size, Long categoryId, Integer status, String keyword, Long merchantId);
     Spu getSpuById(Long id);
     ProductDetailVO getProductDetail(Long id);
     SpuVO toSpuVO(Spu spu);
@@ -29,4 +31,6 @@ public interface ProductService {
 
     // SKU
     List<Sku> getSkusBySpuId(Long spuId);
+    long countAll();
+    List<Long> getSpuIdsByMerchant(Long merchantId);
 }

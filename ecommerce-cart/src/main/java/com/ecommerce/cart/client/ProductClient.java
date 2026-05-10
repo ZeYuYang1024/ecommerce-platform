@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.Map;
 
-@FeignClient(name = "ecommerce-product")
+@FeignClient(name = "ecommerce-product", fallbackFactory = ProductClientFallback.class)
 public interface ProductClient {
 
     @GetMapping("/api/v1/products/{id}")

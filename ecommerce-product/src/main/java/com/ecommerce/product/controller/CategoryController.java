@@ -21,7 +21,7 @@ public class CategoryController {
 
     @GetMapping("/categories")
     public Result<List<CategoryVO>> tree() {
-        List<Category> all = productService.categoryTree();
+        List<Category> all = productService.categoryList();
         List<CategoryVO> vos = all.stream().map(this::toVO).collect(Collectors.toList());
         return Result.ok(buildTree(vos));
     }

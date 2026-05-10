@@ -29,7 +29,7 @@
 <script setup lang="ts">
 const route = useRoute()
 const keyword = ref((route.query.keyword as string) || '')
-const categoryId = ref('')
+const categoryId = ref((route.query.categoryId as string) || '')
 const categories = ref<any[]>([])
 const products = ref<any[]>([])
 const loading = ref(true)
