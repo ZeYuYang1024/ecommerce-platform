@@ -23,12 +23,8 @@ public class InventoryReleaseListener implements RocketMQListener<OrderInventory
     public void onMessage(OrderInventoryMessage msg) {
         log.info("MQ release: orderNo={} items={}", msg.getOrderNo(), msg.getItems().size());
         for (OrderItemMessage item : msg.getItems()) {
-            try {
-                stockService.release(item.getSkuId(), item.getQuantity());
-                log.info("Released: skuId={} qty={}", item.getSkuId(), item.getQuantity());
-            } catch (Exception e) {
-                log.error("Release failed: skuId={}", item.getSkuId(), e);
-            }
+            stockService.release(item.getSkuId(), item.getQuantity());
+            log.info("Released: skuId={} qty={}", item.getSkuId(), item.getQuantity());
         }
     }
 }

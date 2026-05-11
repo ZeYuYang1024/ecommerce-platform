@@ -42,28 +42,31 @@ public class StockServiceImpl implements StockService {
                 new LambdaQueryWrapper<Stock>().in(Stock::getSkuId, skuIds));
     }
 
+    private static final int MAX_RETRIES = 3;
+
     @Transactional
     @Override
     public void deduct(Long skuId, int quantity) {
         if (quantity <= 0) {
             throw new BusinessException(InventoryErrorCode.INVALID_QUANTITY);
         }
-        Stock stock = getBySkuId(skuId);
-        if (stock.getAvailableStock() < quantity) {
-            throw new BusinessException(InventoryErrorCode.STOCK_INSUFFICIENT);
+        for (int i = 0; i < MAX_RETRIES; i++) {
+            Stock stock = getBySkuId(skuId);
+            if (stock.getAvailableStock() < quantity) {
+                throw new BusinessException(InventoryErrorCode.STOCK_INSUFFICIENT);
+            }
+            int updated = stockMapper.update(null,
+                    new LambdaUpdateWrapper<Stock>()
+                            .eq(Stock::getSkuId, skuId)
+                            .eq(Stock::getVersion, stock.getVersion())
+                            .apply("locked_stock = locked_stock + {0}", quantity)
+                            .apply("available_stock = available_stock - {0}", quantity)
+                            .setSql("version = version + 1"));
+            if (updated > 0) {
+                return;
+            }
         }
-
-        int updated = stockMapper.update(null,
-                new LambdaUpdateWrapper<Stock>()
-                        .eq(Stock::getSkuId, skuId)
-                        .eq(Stock::getVersion, stock.getVersion())
-                        .apply("locked_stock = locked_stock + {0}", quantity)
-                        .apply("available_stock = available_stock - {0}", quantity)
-                        .setSql("version = version + 1"));
-
-        if (updated == 0) {
-            throw new BusinessException(InventoryErrorCode.STOCK_UPDATE_FAILED);
-        }
+        throw new BusinessException(InventoryErrorCode.STOCK_UPDATE_FAILED);
     }
 
     @Transactional
@@ -72,21 +75,23 @@ public class StockServiceImpl implements StockService {
         if (quantity <= 0) {
             throw new BusinessException(InventoryErrorCode.INVALID_QUANTITY);
         }
-        Stock stock = getBySkuId(skuId);
-        if (stock.getLockedStock() < quantity) {
-            throw new BusinessException(InventoryErrorCode.LOCKED_STOCK_INSUFFICIENT);
+        for (int i = 0; i < MAX_RETRIES; i++) {
+            Stock stock = getBySkuId(skuId);
+            if (stock.getLockedStock() < quantity) {
+                throw new BusinessException(InventoryErrorCode.LOCKED_STOCK_INSUFFICIENT);
+            }
+            int updated = stockMapper.update(null,
+                    new LambdaUpdateWrapper<Stock>()
+                            .eq(Stock::getSkuId, skuId)
+                            .eq(Stock::getVersion, stock.getVersion())
+                            .apply("locked_stock = locked_stock - {0}", quantity)
+                            .apply("available_stock = available_stock + {0}", quantity)
+                            .setSql("version = version + 1"));
+            if (updated > 0) {
+                return;
+            }
         }
-        int updated = stockMapper.update(null,
-                new LambdaUpdateWrapper<Stock>()
-                        .eq(Stock::getSkuId, skuId)
-                        .eq(Stock::getVersion, stock.getVersion())
-                        .apply("locked_stock = locked_stock - {0}", quantity)
-                        .apply("available_stock = available_stock + {0}", quantity)
-                        .setSql("version = version + 1"));
-
-        if (updated == 0) {
-            throw new BusinessException(InventoryErrorCode.STOCK_UPDATE_FAILED);
-        }
+        throw new BusinessException(InventoryErrorCode.STOCK_UPDATE_FAILED);
     }
 
     @Transactional
@@ -95,21 +100,23 @@ public class StockServiceImpl implements StockService {
         if (totalStock < 0) {
             throw new BusinessException(InventoryErrorCode.INVALID_QUANTITY);
         }
-        Stock existing = stockMapper.selectOne(
-                new LambdaQueryWrapper<Stock>().eq(Stock::getSkuId, skuId));
-        if (existing != null) {
-            int diff = totalStock - existing.getTotalStock();
-            int updated = stockMapper.update(null,
-                    new LambdaUpdateWrapper<Stock>()
-                            .eq(Stock::getSkuId, skuId)
-                            .eq(Stock::getVersion, existing.getVersion())
-                            .apply("total_stock = {0}", totalStock)
-                            .apply("available_stock = available_stock + {0}", diff)
-                            .setSql("version = version + 1"));
-            if (updated == 0) {
-                throw new BusinessException(InventoryErrorCode.STOCK_UPDATE_FAILED);
+        for (int i = 0; i < MAX_RETRIES; i++) {
+            Stock existing = stockMapper.selectOne(
+                    new LambdaQueryWrapper<Stock>().eq(Stock::getSkuId, skuId));
+            if (existing != null) {
+                int diff = totalStock - existing.getTotalStock();
+                int updated = stockMapper.update(null,
+                        new LambdaUpdateWrapper<Stock>()
+                                .eq(Stock::getSkuId, skuId)
+                                .eq(Stock::getVersion, existing.getVersion())
+                                .apply("total_stock = {0}", totalStock)
+                                .apply("available_stock = available_stock + {0}", diff)
+                                .setSql("version = version + 1"));
+                if (updated > 0) {
+                    return;
+                }
+                continue;
             }
-        } else {
             Stock stock = new Stock();
             stock.setId(SnowflakeUtils.nextId());
             stock.setSkuId(skuId);
@@ -118,7 +125,9 @@ public class StockServiceImpl implements StockService {
             stock.setAvailableStock(totalStock);
             stock.setVersion(0);
             stockMapper.insert(stock);
+            return;
         }
+        throw new BusinessException(InventoryErrorCode.STOCK_UPDATE_FAILED);
     }
 
     @Override

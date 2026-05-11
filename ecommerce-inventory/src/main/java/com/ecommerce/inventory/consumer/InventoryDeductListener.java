@@ -23,12 +23,8 @@ public class InventoryDeductListener implements RocketMQListener<OrderInventoryM
     public void onMessage(OrderInventoryMessage msg) {
         log.info("MQ deduct: orderNo={} items={}", msg.getOrderNo(), msg.getItems().size());
         for (OrderItemMessage item : msg.getItems()) {
-            try {
-                stockService.deduct(item.getSkuId(), item.getQuantity());
-                log.info("Deducted: skuId={} qty={}", item.getSkuId(), item.getQuantity());
-            } catch (Exception e) {
-                log.error("Deduct failed: skuId={}", item.getSkuId(), e);
-            }
+            stockService.deduct(item.getSkuId(), item.getQuantity());
+            log.info("Deducted: skuId={} qty={}", item.getSkuId(), item.getQuantity());
         }
     }
 }
