@@ -8,7 +8,7 @@
     </div>
 
     <div v-else class="mt-8 space-y-4">
-      <div v-for="order in orders" :key="order.id" class="bg-white rounded-2xl border border-gray-100 p-6">
+      <div v-for="order in orders" :key="order.id" class="bg-white rounded-2xl border border-gray-100 p-6 cursor-pointer hover:shadow-md transition-shadow" @click="navigateTo(`/user/orders/${order.orderNo}`)">
         <div class="flex justify-between items-center mb-4">
           <span class="text-sm text-gray-400 font-mono">订单号: {{ order.orderNo }}</span>
           <span :class="statusClass(order.status)" class="text-sm font-medium">{{ order.statusText }}</span>
@@ -27,8 +27,8 @@
           <span class="text-sm text-gray-500">共 {{ order.items?.length || 0 }} 件</span>
           <div>
             <span class="text-lg font-bold text-amber-600">¥{{ order.totalAmount }}</span>
-            <NuxtLink v-if="order.status === 0" :to="`/payment/${order.orderNo}`" class="ml-4 text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors">去支付</NuxtLink>
-            <button v-if="order.status === 0" @click="cancelOrder(order.id)" class="ml-2 text-sm text-red-400 hover:text-red-500">取消订单</button>
+            <NuxtLink v-if="order.status === 0" :to="`/payment/${order.orderNo}`" @click.stop class="ml-4 text-sm px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors">去支付</NuxtLink>
+            <button v-if="order.status === 0" @click.stop="cancelOrder(order.id)" class="ml-2 text-sm text-red-400 hover:text-red-500">取消订单</button>
           </div>
         </div>
       </div>
