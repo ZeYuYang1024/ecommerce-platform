@@ -3,7 +3,9 @@
     <NuxtLink to="/user/orders" class="text-sm text-gray-400 hover:text-amber-600 mb-6 inline-block">← 返回订单列表</NuxtLink>
     <h1 class="text-2xl font-bold text-gray-900">订单详情</h1>
 
-    <div v-if="order" class="mt-8 space-y-6">
+    <div v-if="loading" class="mt-8 text-center py-16 text-gray-400">加载中...</div>
+    <div v-else-if="error" class="mt-8 text-center py-16 text-red-400">{{ error }}</div>
+    <div v-else-if="order" class="mt-8 space-y-6">
       <div class="bg-white rounded-2xl border border-gray-100 p-6">
         <div class="flex justify-between items-center mb-4">
           <span class="text-sm text-gray-400 font-mono">订单号: {{ order.orderNo }}</span>
@@ -45,13 +47,28 @@
 const route = useRoute()
 const api = useApi()
 const order = ref<any>(null)
+const loading = ref(true)
+const error = ref('')
 
-onMounted(async () => {
+async function fetchDetail() {
+  loading.value = true
+  error.value = ''
   try {
     const res: any = await api.get(`/orders/no/${route.params.id}`)
-    if (res.code === 200) order.value = res.data
-  } catch {}
-})
+    if (res.code === 200) {
+      order.value = res.data
+    } else {
+      error.value = res.message || '订单不存在'
+    }
+  } catch (e: any) {
+    error.value = e.message || '网络错误'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(fetchDetail)
+watch(() => route.params.id, fetchDetail)
 
 function statusClass(status: number) {
   const map: Record<number, string> = { 0: 'text-amber-600', 1: 'text-green-600', 2: 'text-blue-600', 3: 'text-gray-400', 4: 'text-red-400' }
