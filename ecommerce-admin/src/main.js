@@ -8,6 +8,22 @@ import axios from 'axios'
 import App from './App.vue'
 import router from './router'
 
+const MAX_SAFE = 9007199254740991
+
+// 响应转换：Snowflake Long ID → String，防止 JS 精度丢失
+axios.defaults.transformResponse = [(data) => {
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data, (key, value) => {
+        if (typeof value === 'number' && Number.isInteger(value) && (value > MAX_SAFE || value < -MAX_SAFE))
+          return String(value)
+        return value
+      })
+    } catch { return data }
+  }
+  return data
+}]
+
 // 请求拦截：自动带 Token
 axios.interceptors.request.use(config => {
   const token = localStorage.getItem('token')

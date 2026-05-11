@@ -56,11 +56,12 @@ services:
       - "10909:10909"
     environment:
       NAMESRV_ADDR: rocketmq-namesrv:9876
-    command: sh mqbroker -n rocketmq-namesrv:9876
+    command: sh mqbroker -n rocketmq-namesrv:9876 -c /home/rocketmq/conf/broker.conf
     depends_on:
       - rocketmq-namesrv
     volumes:
       - rocketmq-broker-data:/home/rocketmq/logs
+      - ./docker/rocketmq/broker.conf:/home/rocketmq/conf/broker.conf
 
   minio:
     image: minio/minio:latest

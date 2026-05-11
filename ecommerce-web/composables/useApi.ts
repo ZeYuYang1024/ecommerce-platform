@@ -1,3 +1,15 @@
+const MAX_SAFE = 9007199254740991
+
+// JSON reviver: convert large integers to strings (Snowflake IDs)
+function parseBigInt(text: string): any {
+  return JSON.parse(text, (key: string, value: any) => {
+    if (typeof value === 'number' && Number.isInteger(value) && (value > MAX_SAFE || value < -MAX_SAFE)) {
+      return String(value)
+    }
+    return value
+  })
+}
+
 export const useApi = () => {
   const config = useRuntimeConfig()
   const base = config.public.apiBase as string
@@ -11,8 +23,9 @@ export const useApi = () => {
     if (token.value) {
       headers['Authorization'] = `Bearer ${token.value}`
     }
-    const res = await $fetch<T>(`${base}${path}`, { ...options, headers })
-    return res
+    const res = await fetch(`${base}${path}`, { ...options, headers })
+    const text = await res.text()
+    return parseBigInt(text)
   }
 
   return {

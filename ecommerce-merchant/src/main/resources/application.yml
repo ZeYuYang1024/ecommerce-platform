@@ -18,3 +18,8 @@ mybatis-plus:
       logic-delete-field: deleted
       logic-delete-value: 1
       logic-not-delete-value: 0
+
+rocketmq:
+  name-server: localhost:9876
+  producer:
+    group: ${spring.application.name}-producer

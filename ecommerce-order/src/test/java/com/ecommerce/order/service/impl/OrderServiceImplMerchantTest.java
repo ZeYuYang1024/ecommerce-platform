@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
@@ -29,6 +30,7 @@ import static org.mockito.Mockito.*;
 class OrderServiceImplMerchantTest {
 
     @Mock private OrderMapper orderMapper;
+    @Mock private RocketMQTemplate rocketMQTemplate;
     @Mock private OrderItemMapper itemMapper;
     @Mock private ProductSpuClient productSpuClient;
     @InjectMocks private OrderServiceImpl service;

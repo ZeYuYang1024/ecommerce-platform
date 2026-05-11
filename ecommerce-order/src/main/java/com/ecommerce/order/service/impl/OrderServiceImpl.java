@@ -13,9 +13,11 @@ import com.ecommerce.order.entity.OrderItem;
 import com.ecommerce.order.mapper.OrderItemMapper;
 import com.ecommerce.order.mapper.OrderMapper;
 import com.ecommerce.order.client.CartClient;
-import com.ecommerce.order.client.InventoryClient;
+import com.ecommerce.common.dto.OrderInventoryMessage;
+import com.ecommerce.common.dto.OrderItemMessage;
 import com.ecommerce.order.client.ProductSpuClient;
-import com.ecommerce.order.client.StockOperateRequest;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import com.ecommerce.order.service.OrderService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,22 +33,23 @@ import java.util.stream.Collectors;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class OrderServiceImpl implements OrderService {
 
     private final OrderMapper orderMapper;
     private final OrderItemMapper itemMapper;
     private final CartClient cartClient;
-    private final InventoryClient inventoryClient;
     private final ProductSpuClient productSpuClient;
+    private final RocketMQTemplate rocketMQTemplate;
 
     public OrderServiceImpl(OrderMapper orderMapper, OrderItemMapper itemMapper, ProductSpuClient productSpuClient,
-                            CartClient cartClient, InventoryClient inventoryClient) {
+                            CartClient cartClient, RocketMQTemplate rocketMQTemplate) {
         this.orderMapper = orderMapper;
         this.itemMapper = itemMapper;
         this.cartClient = cartClient;
-        this.inventoryClient = inventoryClient;
         this.productSpuClient = productSpuClient;
+        this.rocketMQTemplate = rocketMQTemplate;
     }
 
     @Override
@@ -91,9 +94,10 @@ public class OrderServiceImpl implements OrderService {
             item.setTotalPrice(price.multiply(BigDecimal.valueOf(i.getQuantity())));
             itemMapper.insert(item);
 
-            // 扣减库存（best-effort，服务不可用不影响下单）
-            StockOperateRequest sr = new StockOperateRequest(); sr.setSkuId(i.getSkuId()); sr.setQuantity(i.getQuantity());
-            try { inventoryClient.deduct(sr); } catch (Exception ignored) {}
+            // 发送MQ异步扣减库存
+            OrderItemMessage oim = new OrderItemMessage(i.getSkuId(), i.getQuantity());
+            try { rocketMQTemplate.syncSend("order-created",
+                new OrderInventoryMessage(order.getOrderNo(), java.util.Collections.singletonList(oim))); } catch (Exception e) { log.error("MQ deduct failed", e); }
         }
 
         // 清空购物车已购商品（best-effort）
@@ -149,13 +153,13 @@ public class OrderServiceImpl implements OrderService {
         order.setStatus(4);
         orderMapper.updateById(order);
 
-        // 释放库存（best-effort）
         List<OrderItem> items = itemMapper.selectList(
                 new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, id));
-        for (OrderItem item : items) {
-            StockOperateRequest sr = new StockOperateRequest(); sr.setSkuId(item.getSkuId()); sr.setQuantity(item.getQuantity());
-            try { inventoryClient.release(sr); } catch (Exception ignored) {}
-        }
+        List<OrderItemMessage> releaseItems = items.stream()
+            .map(i -> new OrderItemMessage(i.getSkuId(), i.getQuantity()))
+            .collect(Collectors.toList());
+        try { rocketMQTemplate.syncSend("order-cancelled",
+            new OrderInventoryMessage(order.getOrderNo(), releaseItems)); } catch (Exception e) { log.error("MQ release failed", e); }
     }
 
     @Override

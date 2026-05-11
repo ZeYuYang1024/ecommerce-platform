@@ -26,3 +26,5 @@ findings.md
 progress.md
 test-results/
 playwright-real.config.ts
+.nuxt/
+.output/

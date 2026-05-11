@@ -12,7 +12,9 @@ import com.ecommerce.payment.entity.Refund;
 import com.ecommerce.payment.mapper.PaymentMapper;
 import com.ecommerce.payment.mapper.RefundMapper;
 import com.ecommerce.payment.client.OrderClient;
-import com.ecommerce.payment.dto.request.StatusRequest;
+import com.ecommerce.common.dto.OrderPaidMessage;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import com.ecommerce.payment.service.PaymentService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,17 +25,20 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class PaymentServiceImpl implements PaymentService {
 
     private final PaymentMapper paymentMapper;
     private final RefundMapper refundMapper;
     private final OrderClient orderClient;
+    private final RocketMQTemplate rocketMQTemplate;
 
-    public PaymentServiceImpl(PaymentMapper paymentMapper, RefundMapper refundMapper, OrderClient orderClient) {
+    public PaymentServiceImpl(PaymentMapper paymentMapper, RefundMapper refundMapper, OrderClient orderClient, RocketMQTemplate rocketMQTemplate) {
         this.paymentMapper = paymentMapper;
         this.refundMapper = refundMapper;
         this.orderClient = orderClient;
+        this.rocketMQTemplate = rocketMQTemplate;
     }
 
     @Override
@@ -68,9 +73,14 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setPaidAt(LocalDateTime.now());
         paymentMapper.insert(payment);
 
-        // 通知订单服务更新状态为已支付
-        StatusRequest sr = new StatusRequest(); sr.setStatus(1);
-        try { orderClient.updateStatus(realOrderId, sr); } catch (Exception ignored) {}
+        // 发送MQ消息通知订单服务
+        OrderPaidMessage msg = new OrderPaidMessage(payment.getOrderNo(), 1, payment.getPaidAt());
+        try {
+            rocketMQTemplate.syncSend("order-paid", msg);
+            log.info("MQ sent: order-paid, orderNo={}", payment.getOrderNo());
+        } catch (Exception e) {
+            log.error("MQ send failed: orderNo={}", payment.getOrderNo(), e);
+        }
 
         return toVO(payment);
     }
@@ -122,10 +132,8 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setStatus(isPartial ? 1 : 3);
         paymentMapper.updateById(payment);
 
-        // 通知订单服务更新状态
-        int orderStatus = isPartial ? 1 : 4; // 全额退款=取消, 部分退款=保持已支付
-        StatusRequest sr2 = new StatusRequest(); sr2.setStatus(orderStatus);
-        try { orderClient.updateStatus(payment.getOrderId(), sr2); } catch (Exception ignored) {}
+        OrderPaidMessage msg2 = new OrderPaidMessage(payment.getOrderNo(), payment.getStatus(), LocalDateTime.now());
+        try { rocketMQTemplate.syncSend("order-paid", msg2); } catch (Exception e) { log.error("MQ send failed", e); }
 
         return toVO(payment);
     }

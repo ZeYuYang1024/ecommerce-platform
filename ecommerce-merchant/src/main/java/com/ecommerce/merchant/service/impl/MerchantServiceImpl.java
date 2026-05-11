@@ -12,26 +12,29 @@ import com.ecommerce.merchant.entity.Merchant;
 import com.ecommerce.merchant.entity.MerchantAudit;
 import com.ecommerce.merchant.mapper.MerchantAuditMapper;
 import com.ecommerce.merchant.mapper.MerchantMapper;
-import com.ecommerce.merchant.client.AuthClient;
 import com.ecommerce.merchant.service.MerchantService;
+import com.ecommerce.common.dto.MerchantApprovedMessage;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class MerchantServiceImpl implements MerchantService {
 
     private final MerchantMapper merchantMapper;
     private final MerchantAuditMapper auditMapper;
-    private final AuthClient authClient;
+    private final RocketMQTemplate rocketMQTemplate;
 
     public MerchantServiceImpl(MerchantMapper merchantMapper, MerchantAuditMapper auditMapper,
-                                AuthClient authClient) {
+                                RocketMQTemplate rocketMQTemplate) {
         this.merchantMapper = merchantMapper;
         this.auditMapper = auditMapper;
-        this.authClient = authClient;
+        this.rocketMQTemplate = rocketMQTemplate;
     }
 
     @Override
@@ -111,14 +114,12 @@ public class MerchantServiceImpl implements MerchantService {
         audit.setComment(request.getComment());
         auditMapper.insert(audit);
 
-        // 审核通过时自动创建商家管理员账号
+        // 审核通过时发送MQ创建商家管理员账号
         if (request.getAction() == 1) {
             try {
-                com.ecommerce.common.dto.CreateMerchantAccountRequest req = new com.ecommerce.common.dto.CreateMerchantAccountRequest();
-                req.setMerchantId(id);
-                req.setMerchantName(merchant.getName());
-                authClient.createMerchantAccount(req);
-            } catch (Exception ignored) {}
+                rocketMQTemplate.syncSend("merchant-approved",
+                    new MerchantApprovedMessage(id, merchant.getName()));
+            } catch (Exception e) { log.error("MQ merchant-approved failed", e); }
         }
 
         return toVO(merchant);

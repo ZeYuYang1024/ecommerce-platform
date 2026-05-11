@@ -15,9 +15,10 @@ import com.ecommerce.product.dto.request.CreateProductRequest;
 import com.ecommerce.product.dto.response.ProductDetailVO;
 import com.ecommerce.product.dto.response.SkuVO;
 import com.ecommerce.product.dto.response.SpuVO;
-import com.ecommerce.product.client.InventoryClient;
-import com.ecommerce.product.client.StockSetRequest;
 import com.ecommerce.product.service.ProductService;
+import com.ecommerce.common.dto.ProductCreatedMessage;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -28,20 +29,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class ProductServiceImpl implements ProductService {
 
     private final CategoryMapper categoryMapper;
     private final SpuMapper spuMapper;
     private final SkuMapper skuMapper;
-    private final InventoryClient inventoryClient;
+    private final RocketMQTemplate rocketMQTemplate;
 
     public ProductServiceImpl(CategoryMapper categoryMapper, SpuMapper spuMapper, SkuMapper skuMapper,
-                              InventoryClient inventoryClient) {
+                              RocketMQTemplate rocketMQTemplate) {
         this.categoryMapper = categoryMapper;
         this.spuMapper = spuMapper;
         this.skuMapper = skuMapper;
-        this.inventoryClient = inventoryClient;
+        this.rocketMQTemplate = rocketMQTemplate;
     }
 
     @Override
@@ -185,7 +187,7 @@ public class ProductServiceImpl implements ProductService {
                 skuMapper.insert(sku);
 
                 // 初始化库存为 0（best-effort）
-                try { inventoryClient.initStock(sku.getId(), new StockSetRequest() {{ setTotalStock(0); }}); } catch (Exception ignored) {}
+                try { rocketMQTemplate.syncSend("product-created", new ProductCreatedMessage(spu.getId(), sku.getId())); } catch (Exception e) { log.error("MQ product-created failed", e); }
             }
         }
         return spu;
@@ -264,7 +266,7 @@ public class ProductServiceImpl implements ProductService {
         // 尝试清理库存记录（best-effort）
         List<Sku> skus = skuMapper.selectList(new LambdaQueryWrapper<Sku>().eq(Sku::getSpuId, id));
         for (Sku sku : skus) {
-            try { inventoryClient.initStock(sku.getId(), new StockSetRequest() {{ setTotalStock(0); }}); } catch (Exception ignored) {}
+            try { rocketMQTemplate.syncSend("product-created", new ProductCreatedMessage(id, sku.getId())); } catch (Exception e) { log.error("MQ product-created failed", e); }
         }
         skuMapper.delete(new LambdaQueryWrapper<Sku>().eq(Sku::getSpuId, id));
         spuMapper.deleteById(id);

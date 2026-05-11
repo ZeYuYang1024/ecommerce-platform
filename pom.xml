@@ -33,6 +33,7 @@
         <mysql.version>8.0.33</mysql.version>
         <minio.version>8.6.0</minio.version>
         <nacos.version>2025.1.0.0</nacos.version>
+        <rocketmq.version>2.3.0</rocketmq.version>
         <lombok.version>1.18.46</lombok.version>
     </properties>
 
@@ -98,6 +99,12 @@
                 <groupId>com.alibaba.cloud</groupId>
                 <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
                 <version>${nacos.version}</version>
+            </dependency>
+            <!-- RocketMQ -->
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-spring-boot-starter</artifactId>
+                <version>${rocketmq.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.ecommerce</groupId>
