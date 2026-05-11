@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-@RocketMQMessageListener(topic = "order-created", consumerGroup = "${spring.application.name}-v2")
+@RocketMQMessageListener(topic = "order-created", consumerGroup = "${spring.application.name}-deduct")
 public class InventoryDeductListener implements RocketMQListener<OrderInventoryMessage> {
 
     private final StockService stockService;

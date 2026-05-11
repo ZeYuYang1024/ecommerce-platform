@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-@RocketMQMessageListener(topic = "order-cancelled", consumerGroup = "${spring.application.name}-v2")
+@RocketMQMessageListener(topic = "order-cancelled", consumerGroup = "${spring.application.name}-release")
 public class InventoryReleaseListener implements RocketMQListener<OrderInventoryMessage> {
 
     private final StockService stockService;

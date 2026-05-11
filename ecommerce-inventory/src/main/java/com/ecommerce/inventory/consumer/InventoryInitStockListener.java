@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-@RocketMQMessageListener(topic = "product-created", consumerGroup = "${spring.application.name}-v2")
+@RocketMQMessageListener(topic = "product-created", consumerGroup = "${spring.application.name}-init")
 public class InventoryInitStockListener implements RocketMQListener<ProductCreatedMessage> {
 
     private final StockService stockService;
