@@ -8,7 +8,7 @@
     </div>
 
     <div v-else class="mt-8 space-y-4">
-      <div v-for="order in orders" :key="order.id" class="bg-white rounded-2xl border border-gray-100 p-6 cursor-pointer hover:shadow-md transition-shadow" @click="navigateTo(`/user/orders/${order.orderNo}`)">
+      <div v-for="order in orders" :key="order.id" class="bg-white rounded-2xl border border-gray-100 p-6 cursor-pointer hover:shadow-md transition-shadow" @click="viewOrder(order.orderNo)">
         <div class="flex justify-between items-center mb-4">
           <span class="text-sm text-gray-400 font-mono">订单号: {{ order.orderNo }}</span>
           <span :class="statusClass(order.status)" class="text-sm font-medium">{{ order.statusText }}</span>
@@ -47,6 +47,9 @@ onMounted(async () => {
     if (res.code === 200) orders.value = res.data?.records || []
   } finally { loading.value = false }
 })
+
+const router = useRouter()
+const viewOrder = (orderNo: string) => router.push(`/user/orders/${orderNo}`)
 
 function statusClass(status: number) {
   const map: Record<number, string> = { 0: 'text-amber-600', 1: 'text-green-600', 2: 'text-blue-600', 3: 'text-gray-400', 4: 'text-red-400' }
