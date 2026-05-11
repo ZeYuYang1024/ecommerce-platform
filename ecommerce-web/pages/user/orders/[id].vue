@@ -4,7 +4,7 @@
     <h1 class="text-2xl font-bold text-gray-900">订单详情</h1>
 
     <div v-if="loading" class="mt-8 text-center py-16 text-gray-400">加载中...</div>
-    <div v-else-if="error" class="mt-8 text-center py-16 text-red-400">{{ error }}</div>
+    <div v-else-if="errorMsg" class="mt-8 text-center py-16 text-red-400">{{ errorMsg }}</div>
     <div v-else-if="order" class="mt-8 space-y-6">
       <div class="bg-white rounded-2xl border border-gray-100 p-6">
         <div class="flex justify-between items-center mb-4">
@@ -46,29 +46,21 @@
 <script setup lang="ts">
 const route = useRoute()
 const api = useApi()
-const order = ref<any>(null)
-const loading = ref(true)
-const error = ref('')
 
-async function fetchDetail() {
-  loading.value = true
-  error.value = ''
-  try {
+const { data: order, pending: loading, error: fetchError } = useAsyncData(
+  () => `order-detail-${route.params.id}`,
+  async () => {
     const res: any = await api.get(`/orders/no/${route.params.id}`)
-    if (res.code === 200) {
-      order.value = res.data
-    } else {
-      error.value = res.message || '订单不存在'
-    }
-  } catch (e: any) {
-    error.value = e.message || '网络错误'
-  } finally {
-    loading.value = false
-  }
-}
+    if (res.code !== 200) throw createError({ statusCode: 404, message: res.message || '订单不存在' })
+    return res.data
+  },
+  { watch: [() => route.params.id] }
+)
 
-onMounted(fetchDetail)
-watch(() => route.params.id, fetchDetail)
+const errorMsg = computed(() => {
+  if (!fetchError.value) return ''
+  return (fetchError.value as any).message || '加载失败'
+})
 
 function statusClass(status: number) {
   const map: Record<number, string> = { 0: 'text-amber-600', 1: 'text-green-600', 2: 'text-blue-600', 3: 'text-gray-400', 4: 'text-red-400' }
