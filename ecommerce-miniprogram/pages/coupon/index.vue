@@ -13,7 +13,7 @@
         </view>
         <view class="card-right">
           <text class="name">{{ t.name }}</text>
-          <text class="valid">有效期至 {{ t.endTime?.substring(0, 10) }}</text>
+          <text class="valid">有效期至 {{ t.endTime ? t.endTime.substring(0, 10) : '' }}</text>
           <button class="btn-claim" @click="claim(t.id)">立即领取</button>
         </view>
       </view>

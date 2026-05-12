@@ -15,7 +15,7 @@
     <!-- Category icons -->
     <view class="cats">
       <view v-for="c in categories" :key="c.id" class="cat-item" @click="goCategory(c.id)">
-        <view class="cat-icon">{{ c.name?.charAt(0) }}</view>
+        <view class="cat-icon">{{ c.name ? c.name.charAt(0) : '?' }}</view>
         <text class="cat-text">{{ c.name }}</text>
       </view>
     </view>

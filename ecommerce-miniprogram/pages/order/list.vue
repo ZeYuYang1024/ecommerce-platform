@@ -17,7 +17,7 @@
         </view>
       </view>
       <view class="order-footer">
-        <text>共 {{ o.items?.length || 0 }} 件</text>
+        <text>共 {{ o.items ? o.items.length : 0 }} 件</text>
         <text class="amount">合计 ¥{{ o.totalAmount }}</text>
       </view>
     </view>

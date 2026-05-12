@@ -94,7 +94,7 @@ async function submitOrder() {
     if (selectedCoupon.value) {
       await request({ url: '/api/v1/internal/coupons/use', method: 'POST', data: { userCouponId: selectedCoupon.value.userCouponId, orderNo: res.data?.orderNo } })
     }
-    cartStore.items = cartStore.items.filter(i => !i.checked)
+    cartStore.removeCheckedItems()
     uni.redirectTo({ url: `/pages/order-detail/index?orderNo=${res.data?.orderNo}` })
   }
 }

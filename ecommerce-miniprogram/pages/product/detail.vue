@@ -1,13 +1,10 @@
 <template>
   <view class="page" v-if="product">
-    <!-- Image swiper -->
     <swiper class="swiper" indicator-dots>
       <swiper-item v-for="img in images" :key="img">
         <image :src="img" mode="aspectFill" class="swiper-img" />
       </swiper-item>
     </swiper>
-
-    <!-- Info -->
     <view class="card">
       <text class="price">¥{{ product.minPrice || product.price }}</text>
       <text class="price-original" v-if="product.maxPrice && product.maxPrice > product.minPrice">¥{{ product.maxPrice }}</text>
@@ -18,12 +15,8 @@
         <text>{{ product.reviewCount || 0 }} 评价</text>
       </view>
     </view>
-
-    <!-- Bottom bar -->
     <view class="bottom-bar">
-      <view class="cart-btn" @click="goCart">
-        <text>购物车</text>
-      </view>
+      <view class="cart-btn" @click="goCart"><text>购物车</text></view>
       <button class="btn-primary" @click="addCart">加入购物车</button>
       <button class="btn-buy" @click="buyNow">立即购买</button>
     </view>
@@ -31,21 +24,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import { request } from '@/utils/api'
 import { useCartStore } from '@/stores/cart'
 
 const cartStore = useCartStore()
 const product = ref(null)
 const images = ref([])
+const skus = ref([])
 
-onMounted(async () => {
-  const { id } = __uniGetLaunchOptionsSync ? {} : {} || {}
-  // For uni-app, use onLoad query
-})
-
-// In uni-app, we use onLoad
-import { onLoad } from '@dcloudio/uni-app'
 onLoad(async (options) => {
   const id = options?.id
   if (!id) return
@@ -56,17 +44,23 @@ onLoad(async (options) => {
     if (res.data.spu.images) imgs.push(...res.data.spu.images.split(','))
     if (!imgs.length) imgs.push('/static/product_01.png')
     images.value = imgs
+    skus.value = res.data.skus || []
   }
 })
 
 async function addCart() {
-  if (product.value?.skus?.[0]) {
-    await cartStore.addToCart(product.value.skus[0].id)
-    uni.showToast({ title: '已加入购物车', icon: 'success' })
+  const sku = skus.value[0]
+  if (!sku) {
+    uni.showToast({ title: '暂无可购买规格', icon: 'none' })
+    return
   }
+  await cartStore.addToCart(sku.id, 1)
+  uni.showToast({ title: '已加入购物车', icon: 'success' })
 }
-
-function buyNow() { uni.navigateTo({ url: '/pages/checkout/index' }) }
+async function buyNow() {
+  await addCart()
+  uni.navigateTo({ url: '/pages/checkout/index' })
+}
 function goCart() { uni.switchTab({ url: '/pages/cart/index' }) }
 </script>
 

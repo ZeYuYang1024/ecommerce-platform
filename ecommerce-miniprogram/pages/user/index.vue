@@ -2,7 +2,7 @@
   <view class="page">
     <view class="header">
       <view class="avatar">U</view>
-      <text class="nickname">{{ auth.isLogin ? auth.userInfo?.username || '用户' : '未登录' }}</text>
+      <text class="nickname">{{ auth.isLogin ? (auth.userInfo && auth.userInfo.username) || '用户' : '未登录' }}</text>
       <button v-if="!auth.isLogin" class="btn-login" @click="login">登录</button>
     </view>
 
@@ -45,7 +45,7 @@ const orderLinks = [
 
 const menus = [
   { label: '优惠券', action: () => uni.navigateTo({ url: '/pages/coupon/index' }) },
-  { label: '收货地址', action: () => uni.showToast({ title: '功能开发中', icon: 'none' }) },
+  { label: '收货地址', action: () => uni.navigateTo({ url: '/pages/address/index' }) },
   { label: '关于我们', action: () => uni.showToast({ title: '品质商城 v1.0', icon: 'none' }) },
 ]
 

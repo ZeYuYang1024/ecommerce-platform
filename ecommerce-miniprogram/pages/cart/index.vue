@@ -1,16 +1,16 @@
 <template>
   <view class="page">
     <view v-if="cartStore.items.length" class="cart-list">
-      <view v-for="item in cartStore.items" :key="item.id" class="cart-item">
-        <view :class="['checkbox', item.checked ? 'checked' : '']" @click="cartStore.toggleCheck(item.id)">✓</view>
+      <view v-for="item in cartStore.items" :key="item.skuId" class="cart-item">
+        <view :class="['checkbox', item.checked ? 'checked' : '']" @click="cartStore.toggleCheck(item.skuId)">✓</view>
         <image :src="item.image || '/static/product_01.png'" mode="aspectFill" class="item-img" />
         <view class="item-info">
           <text class="item-name">{{ item.name }}</text>
           <text class="text-price">¥{{ item.price }}</text>
           <view class="qty-row">
-            <view class="qty-btn" @click="cartStore.updateQuantity(item.id, item.quantity - 1)">-</view>
+            <view class="qty-btn" @click="cartStore.updateQuantity(item.skuId, item.quantity - 1)">-</view>
             <text>{{ item.quantity }}</text>
-            <view class="qty-btn" @click="cartStore.updateQuantity(item.id, item.quantity + 1)">+</view>
+            <view class="qty-btn" @click="cartStore.updateQuantity(item.skuId, item.quantity + 1)">+</view>
           </view>
         </view>
       </view>
