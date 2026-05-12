@@ -1,0 +1,33 @@
+{
+  "pages": [
+    { "path": "pages/index/index", "style": { "navigationBarTitleText": "品质商城" } },
+    { "path": "pages/search/index", "style": { "navigationBarTitleText": "搜索" } },
+    { "path": "pages/product/detail", "style": { "navigationBarTitleText": "商品详情" } },
+    { "path": "pages/category/index", "style": { "navigationBarTitleText": "分类" } },
+    { "path": "pages/cart/index", "style": { "navigationBarTitleText": "购物车" } },
+    { "path": "pages/checkout/index", "style": { "navigationBarTitleText": "确认订单" } },
+    { "path": "pages/order/list", "style": { "navigationBarTitleText": "我的订单" } },
+    { "path": "pages/order-detail/index", "style": { "navigationBarTitleText": "订单详情" } },
+    { "path": "pages/coupon/index", "style": { "navigationBarTitleText": "优惠券中心" } },
+    { "path": "pages/seckill/index", "style": { "navigationBarTitleText": "限时秒杀" } },
+    { "path": "pages/user/index", "style": { "navigationBarTitleText": "我的" } }
+  ],
+  "globalStyle": {
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "navigationBarTitleText": "品质商城",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F8F8F8"
+  },
+  "tabBar": {
+    "color": "#9CA3AF",
+    "selectedColor": "#F59E0B",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "list": [
+      { "pagePath": "pages/index/index", "text": "首页", "iconPath": "static/tab_home.png", "selectedIconPath": "static/tab_home_active.png" },
+      { "pagePath": "pages/category/index", "text": "分类", "iconPath": "static/tab_grid.png", "selectedIconPath": "static/tab_grid_active.png" },
+      { "pagePath": "pages/cart/index", "text": "购物车", "iconPath": "static/tab_cart.png", "selectedIconPath": "static/tab_cart_active.png" },
+      { "pagePath": "pages/user/index", "text": "我的", "iconPath": "static/tab_user.png", "selectedIconPath": "static/tab_user_active.png" }
+    ]
+  }
+}

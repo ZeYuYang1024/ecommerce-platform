@@ -1,0 +1,28 @@
+/* 全局样式变量 */
+$primary: #F59E0B;
+$primary-dark: #D97706;
+$primary-light: #FDE68A;
+$accent: #F97316;
+$bg: #F8F8F8;
+$card: #FFFFFF;
+$text-primary: #1F2937;
+$text-secondary: #6B7280;
+$text-muted: #9CA3AF;
+$red: #EF4444;
+$green: #10B981;
+$border: #E5E7EB;
+$radius-sm: 8rpx;
+$radius: 16rpx;
+$radius-lg: 20rpx;
+$radius-xl: 24rpx;
+$spacing-xs: 8rpx;
+$spacing-sm: 16rpx;
+$spacing-md: 24rpx;
+$spacing-lg: 32rpx;
+
+page { background: $bg; font-size: 28rpx; color: $text-primary; }
+.text-muted { color: $text-muted; font-size: 24rpx; }
+.text-price { color: $red; font-weight: bold; font-size: 36rpx; }
+.text-price-original { color: $text-muted; text-decoration: line-through; font-size: 24rpx; }
+.btn-primary { background: linear-gradient(135deg, $primary, $accent); color: #fff; border-radius: $radius-sm; padding: 16rpx 48rpx; font-size: 28rpx; font-weight: 500; border: none; }
+.card { background: $card; border-radius: $radius; padding: $spacing-md; margin-bottom: $spacing-sm; }
