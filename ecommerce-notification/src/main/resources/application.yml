@@ -1,0 +1,24 @@
+server:
+  port: 8089
+spring:
+  application:
+    name: ecommerce-notification
+  datasource:
+    url: jdbc:mysql://localhost:3306/ecommerce_notification?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+mybatis-plus:
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+rocketmq:
+  name-server: localhost:9876
+  consumer:
+    group: ${spring.application.name}-consumer
