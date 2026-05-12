@@ -33,6 +33,7 @@ const routes = [
       { path: 'brands', name: 'Brands', component: () => import('@/views/brand/index.vue'), meta: { title: '品牌管理' } },
       { path: 'reviews', name: 'Reviews', component: () => import('@/views/review/index.vue'), meta: { title: '评论管理' } },
       { path: 'inventory', name: 'Inventory', component: () => import('@/views/inventory/index.vue'), meta: { title: '库存管理' } },
+      { path: 'coupons', name: 'Coupons', component: () => import('@/views/coupon/list.vue'), meta: { title: '优惠券管理' } },
       { path: 'orders', name: 'Orders', component: () => import('@/views/order/list.vue'), meta: { title: '订单管理' } },
       { path: 'payments', name: 'Payments', component: () => import('@/views/payment/list.vue'), meta: { title: '支付管理' } },
       { path: 'reconciliation', name: 'Reconciliation', component: () => import('@/views/reconciliation/index.vue'), meta: { title: '对账管理' } },

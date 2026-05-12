@@ -22,6 +22,7 @@
         <module>ecommerce-order</module>
         <module>ecommerce-payment</module>
         <module>ecommerce-search</module>
+        <module>ecommerce-coupon</module>
     </modules>
 
     <properties>

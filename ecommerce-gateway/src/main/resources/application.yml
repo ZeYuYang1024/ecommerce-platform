@@ -52,6 +52,10 @@ spring:
               uri: lb://ecommerce-search
               predicates:
                 - Path=/api/v1/search/**,/api/v1/admin/search/**
+            - id: coupon
+              uri: lb://ecommerce-coupon
+              predicates:
+                - Path=/api/v1/coupons/**,/api/v1/admin/coupons/**
       globalcors:
         cors-configurations:
           '[/**]':

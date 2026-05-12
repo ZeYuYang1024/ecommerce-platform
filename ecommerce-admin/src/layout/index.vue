@@ -62,6 +62,14 @@
           <span v-if="$route.path === '/inventory'" class="active-dot"></span>
         </router-link>
 
+        <div class="nav-section">营销工具</div>
+
+        <router-link to="/coupons" class="nav-item" :class="{ active: $route.path === '/coupons' }">
+          <el-icon><Present /></el-icon>
+          <span>优惠券管理</span>
+          <span v-if="$route.path === '/coupons'" class="active-dot"></span>
+        </router-link>
+
         <div class="nav-section">交易管理</div>
 
         <router-link to="/orders" class="nav-item" :class="{ active: $route.path === '/orders' }">
