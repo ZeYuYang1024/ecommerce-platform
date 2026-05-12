@@ -15,6 +15,9 @@ public interface CouponService {
     // 用户领券
     void claim(Long userId, Long templateId);
 
+    // 可领取优惠券列表（公开）
+    List<CouponVO> listAvailableCoupons();
+
     // 用户券列表
     List<CouponVO> listUserCoupons(Long userId, Integer status);
 

@@ -82,6 +82,26 @@ public class CouponServiceImpl implements CouponService {
     }
 
     @Override
+    public List<CouponVO> listAvailableCoupons() {
+        List<CouponTemplate> templates = listTemplates(1);
+        List<CouponVO> vos = new ArrayList<>();
+        for (CouponTemplate t : templates) {
+            CouponVO vo = new CouponVO();
+            vo.setId(t.getId());
+            vo.setName(t.getName());
+            vo.setType(t.getType());
+            vo.setMinAmount(t.getMinAmount());
+            vo.setDiscountAmount(t.getDiscountAmount());
+            vo.setDiscountRate(t.getDiscountRate());
+            vo.setStatus(0);
+            vo.setStartTime(t.getStartTime());
+            vo.setEndTime(t.getEndTime());
+            vos.add(vo);
+        }
+        return vos;
+    }
+
+    @Override
     public List<CouponVO> listUserCoupons(Long userId, Integer status) {
         LambdaQueryWrapper<UserCoupon> q = new LambdaQueryWrapper<UserCoupon>()
                 .eq(UserCoupon::getUserId, userId);

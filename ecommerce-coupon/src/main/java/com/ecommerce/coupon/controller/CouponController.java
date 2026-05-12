@@ -17,14 +17,18 @@ public class CouponController {
 
     @PostMapping("/coupons/claim")
     public Result<String> claim(@RequestParam Long templateId,
-                                 @RequestHeader("X-User-Id") Long userId) {
+                                 @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) return Result.fail(401, "请先登录");
         couponService.claim(userId, templateId);
         return Result.ok("领取成功");
     }
 
     @GetMapping("/coupons")
     public Result<List<CouponVO>> myCoupons(@RequestParam(required = false) Integer status,
-                                             @RequestHeader("X-User-Id") Long userId) {
-        return Result.ok(couponService.listUserCoupons(userId, status));
+                                             @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId != null) {
+            return Result.ok(couponService.listUserCoupons(userId, status));
+        }
+        return Result.ok(couponService.listAvailableCoupons());
     }
 }
