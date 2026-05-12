@@ -21,6 +21,7 @@
         <module>ecommerce-cart</module>
         <module>ecommerce-order</module>
         <module>ecommerce-payment</module>
+        <module>ecommerce-search</module>
     </modules>
 
     <properties>
@@ -35,6 +36,7 @@
         <nacos.version>2025.1.0.0</nacos.version>
         <rocketmq.version>2.3.0</rocketmq.version>
         <lombok.version>1.18.46</lombok.version>
+        <elasticsearch.version>8.16.0</elasticsearch.version>
     </properties>
 
     <dependencyManagement>
@@ -127,6 +129,11 @@
                 <artifactId>h2</artifactId>
                 <version>2.3.232</version>
                 <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>co.elastic.clients</groupId>
+                <artifactId>elasticsearch-java</artifactId>
+                <version>${elasticsearch.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

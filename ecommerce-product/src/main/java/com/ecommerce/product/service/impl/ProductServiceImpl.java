@@ -206,6 +206,7 @@ public class ProductServiceImpl implements ProductService {
         vo.setName(spu.getName());
         vo.setCategoryId(spu.getCategoryId());
         vo.setBrandId(spu.getBrandId());
+        vo.setMerchantId(spu.getMerchantId());
         vo.setDescription(spu.getDescription());
         vo.setMainImage(spu.getMainImage());
         vo.setImages(spu.getImages());

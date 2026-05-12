@@ -1,0 +1,16 @@
+server:
+  port: 8092
+spring:
+  application:
+    name: ecommerce-search
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+elasticsearch:
+  host: localhost
+  port: 9200
+rocketmq:
+  name-server: localhost:9876
+  consumer:
+    group: ${spring.application.name}-sync

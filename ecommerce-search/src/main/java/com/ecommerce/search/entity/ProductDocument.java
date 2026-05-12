@@ -1,25 +1,25 @@
-package com.ecommerce.product.dto.response;
+package com.ecommerce.search.entity;
 
 import lombok.Data;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
-public class SpuVO {
-    private Long id;
+public class ProductDocument {
+    private String id;
     private String name;
     private Long categoryId;
+    private String categoryName;
     private Long brandId;
+    private String brandName;
     private Long merchantId;
     private String description;
     private String mainImage;
-    private String images;
-    private String detail;
+    private BigDecimal minPrice;
+    private BigDecimal maxPrice;
     private Integer status;
     private BigDecimal avgRating;
     private Integer reviewCount;
-    private BigDecimal minPrice;
-    private BigDecimal maxPrice;
+    private Integer salesCount;
     private LocalDateTime createdAt;
 }

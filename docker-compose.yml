@@ -77,6 +77,19 @@ services:
     volumes:
       - minio-data:/data
 
+  elasticsearch:
+    image: elasticsearch:7.17.28
+    container_name: ecommerce-es
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+    environment:
+      discovery.type: single-node
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      xpack.security.enabled: "false"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+
 volumes:
   mysql-data:
   redis-data:
@@ -84,3 +97,4 @@ volumes:
   rocketmq-namesrv-data:
   rocketmq-broker-data:
   minio-data:
+  es-data:

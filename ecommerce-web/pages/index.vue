@@ -44,7 +44,7 @@ onMounted(async () => {
 
 function search() {
   if (keyword.value.trim()) {
-    router.push(`/products?keyword=${encodeURIComponent(keyword.value.trim())}`)
+    router.push(`/search?keyword=${encodeURIComponent(keyword.value.trim())}`)
   }
 }
 </script>
