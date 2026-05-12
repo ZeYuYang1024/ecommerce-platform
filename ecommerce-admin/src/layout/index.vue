@@ -69,6 +69,11 @@
           <span>优惠券管理</span>
           <span v-if="$route.path === '/coupons'" class="active-dot"></span>
         </router-link>
+        <router-link to="/seckill" class="nav-item" :class="{ active: $route.path === '/seckill' }">
+          <el-icon><Lightning /></el-icon>
+          <span>秒杀管理</span>
+          <span v-if="$route.path === '/seckill'" class="active-dot"></span>
+        </router-link>
 
         <div class="nav-section">交易管理</div>
 

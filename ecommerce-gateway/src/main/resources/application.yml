@@ -60,6 +60,10 @@ spring:
               uri: lb://ecommerce-notification
               predicates:
                 - Path=/api/v1/notifications/**,/api/v1/admin/notification/**
+            - id: seckill
+              uri: lb://ecommerce-seckill
+              predicates:
+                - Path=/api/v1/seckill/**,/api/v1/admin/seckill/**
       globalcors:
         cors-configurations:
           '[/**]':

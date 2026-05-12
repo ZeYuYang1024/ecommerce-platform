@@ -24,6 +24,7 @@
         <module>ecommerce-search</module>
         <module>ecommerce-coupon</module>
         <module>ecommerce-notification</module>
+        <module>ecommerce-seckill</module>
     </modules>
 
     <properties>
