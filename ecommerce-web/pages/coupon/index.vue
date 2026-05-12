@@ -36,7 +36,7 @@
 </template>
 
 <script setup lang="ts">
-const auth = useAuth()
+const auth = useAuthStore()
 const available = ref<any[]>([])
 const myCoupons = ref<any[]>([])
 const loading = ref(true)
