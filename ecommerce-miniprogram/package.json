@@ -5,6 +5,10 @@
   "dependencies": {
     "vue": "^3.4.0"
   },
+  "scripts": {
+    "setup-env": "node scripts/setup-env.js",
+    "restore-env": "node scripts/restore-env.js"
+  },
   "devDependencies": {
     "sass": "^1.70.0"
   }

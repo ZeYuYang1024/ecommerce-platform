@@ -8,7 +8,7 @@
     <scroll-view scroll-y class="right">
       <view class="product-grid">
         <view v-for="p in products" :key="p.id" class="product-card" @click="goDetail(p.id)">
-          <image :src="p.mainImage || '/static/product_01.png'" mode="aspectFill" class="product-img" />
+          <image :src="getImageUrl(p.mainImage)" mode="aspectFill" class="product-img" />
           <text class="product-name">{{ p.name }}</text>
           <text class="text-price">¥{{ p.minPrice || p.price }}</text>
         </view>
@@ -21,6 +21,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { request } from '@/utils/api'
+import { getImageUrl } from '@/utils/image'
 
 const categories = ref([])
 const products = ref([])

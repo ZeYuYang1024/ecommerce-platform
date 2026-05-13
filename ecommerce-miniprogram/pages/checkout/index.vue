@@ -10,7 +10,7 @@
     <view class="card">
       <text class="label">商品清单</text>
       <view v-for="item in items" :key="item.id" class="item-row">
-        <image :src="item.image || '/static/product_01.png'" mode="aspectFill" class="item-img" />
+        <image :src="getImageUrl(item.image)" mode="aspectFill" class="item-img" />
         <view class="item-info">
           <text class="item-name">{{ item.name }}</text>
           <text class="text-price">¥{{ item.price }} × {{ item.quantity }}</text>
@@ -60,6 +60,7 @@
 import { ref, onMounted } from 'vue'
 import { request } from '@/utils/api'
 import { useCartStore } from '@/stores/cart'
+import { getImageUrl } from '@/utils/image'
 
 const cartStore = useCartStore()
 const items = ref([])

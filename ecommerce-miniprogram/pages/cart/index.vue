@@ -3,7 +3,7 @@
     <view v-if="cartStore.items.length" class="cart-list">
       <view v-for="item in cartStore.items" :key="item.skuId" class="cart-item">
         <view :class="['checkbox', item.checked ? 'checked' : '']" @click="cartStore.toggleCheck(item.skuId)">✓</view>
-        <image :src="item.image || '/static/product_01.png'" mode="aspectFill" class="item-img" />
+        <image :src="getImageUrl(item.image)" mode="aspectFill" class="item-img" />
         <view class="item-info">
           <text class="item-name">{{ item.name }}</text>
           <text class="text-price">¥{{ item.price }}</text>
@@ -31,6 +31,7 @@
 <script setup>
 import { onMounted } from 'vue'
 import { useCartStore } from '@/stores/cart'
+import { getImageUrl } from '@/utils/image'
 
 const cartStore = useCartStore()
 onMounted(() => cartStore.fetchCart())

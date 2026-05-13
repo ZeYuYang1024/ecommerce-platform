@@ -7,7 +7,7 @@
     <scroll-view scroll-y v-if="total >= 0" class="result-list">
       <view class="product-grid" v-if="products.length">
         <view v-for="p in products" :key="p.id" class="product-card" @click="goDetail(p.id)">
-          <image :src="p.mainImage || '/static/product_01.png'" mode="aspectFill" class="product-img" />
+          <image :src="getImageUrl(p.mainImage)" mode="aspectFill" class="product-img" />
           <view class="product-info">
             <text class="product-name">{{ p.name }}</text>
             <text class="text-price">¥{{ p.minPrice }}</text>
@@ -22,6 +22,7 @@
 <script setup>
 import { ref } from 'vue'
 import { request } from '@/utils/api'
+import { getImageUrl } from '@/utils/image'
 
 const keyword = ref('')
 const products = ref([])

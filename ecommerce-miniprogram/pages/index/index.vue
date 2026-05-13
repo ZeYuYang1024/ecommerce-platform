@@ -41,7 +41,7 @@
       </view>
       <view class="product-grid">
         <view v-for="p in products" :key="p.id" class="product-card" @click="goDetail(p.id)">
-          <image :src="p.mainImage || '/static/product_01.png'" mode="aspectFill" class="product-img" />
+          <image :src="getImageUrl(p.mainImage)" mode="aspectFill" class="product-img" />
           <view class="product-info">
             <text class="product-name">{{ p.name }}</text>
             <view class="product-price-row">
@@ -58,6 +58,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { request } from '@/utils/api'
+import { getImageUrl } from '@/utils/image'
 
 const banners = ref(['/static/banner_hero.png', '/static/banner_new.png', '/static/banner_seckill.png'])
 const categories = ref([])

@@ -10,7 +10,7 @@
         <text :class="['status', statusClass(o.status)]">{{ o.statusText }}</text>
       </view>
       <view v-for="item in o.items" :key="item.id" class="order-item">
-        <image :src="item.image || '/static/product_01.png'" mode="aspectFill" class="item-img" />
+        <image :src="getImageUrl(item.image)" mode="aspectFill" class="item-img" />
         <view class="item-info">
           <text class="item-name">{{ item.name }}</text>
           <text>¥{{ item.price }} × {{ item.quantity }}</text>
@@ -31,6 +31,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { request } from '@/utils/api'
+import { getImageUrl } from '@/utils/image'
 
 const tabs = ['全部','待付款','待发货','待收货','已完成']
 const activeTab = ref(0)

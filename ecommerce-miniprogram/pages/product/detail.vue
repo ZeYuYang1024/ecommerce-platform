@@ -28,6 +28,7 @@ import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { request } from '@/utils/api'
 import { useCartStore } from '@/stores/cart'
+import { getImageUrl } from '@/utils/image'
 
 const cartStore = useCartStore()
 const product = ref(null)
@@ -42,8 +43,8 @@ onLoad(async (options) => {
     product.value = res.data.spu
     const imgs = [res.data.spu.mainImage].filter(Boolean)
     if (res.data.spu.images) imgs.push(...res.data.spu.images.split(','))
-    if (!imgs.length) imgs.push('/static/product_01.png')
-    images.value = imgs
+    if (!imgs.length) imgs.push(getImageUrl(''))
+    images.value = imgs.map(img => getImageUrl(img))
     skus.value = res.data.skus || []
   }
 })

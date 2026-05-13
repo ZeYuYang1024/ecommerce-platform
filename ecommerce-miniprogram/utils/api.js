@@ -1,11 +1,11 @@
 // H5 dev mode uses Vite proxy, mini-program uses absolute URL
-const BASE = typeof window !== 'undefined' ? '' : 'http://192.168.5.6:8080'
+export const API_BASE = typeof window !== 'undefined' ? '' : 'http://192.168.5.6:8080'
 
 export function request(options) {
   const token = uni.getStorageSync('token')
   return new Promise((resolve) => {
     uni.request({
-      url: BASE + options.url,
+      url: API_BASE + options.url,
       method: options.method || 'GET',
       data: options.data,
       header: {
