@@ -2,6 +2,7 @@ package com.ecommerce.merchant.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.merchant.common.MerchantErrorCode;
@@ -70,7 +71,7 @@ public class MerchantServiceImpl implements MerchantService {
     }
 
     @Override
-    public List<MerchantVO> list(Integer status) {
+    public List<MerchantVO> listAll(Integer status) {
         LambdaQueryWrapper<Merchant> wrapper = new LambdaQueryWrapper<>();
         if (status != null) {
             wrapper.eq(Merchant::getStatus, status);
@@ -79,6 +80,21 @@ public class MerchantServiceImpl implements MerchantService {
         return merchantMapper.selectList(wrapper).stream()
                 .map(this::toVO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public Page<MerchantVO> list(Integer status, int page, int size) {
+        LambdaQueryWrapper<Merchant> wrapper = new LambdaQueryWrapper<>();
+        if (status != null) {
+            wrapper.eq(Merchant::getStatus, status);
+        }
+        wrapper.orderByDesc(Merchant::getCreatedAt);
+        Page<Merchant> pageReq = new Page<>(page, size);
+        merchantMapper.selectPage(pageReq, wrapper);
+        return new Page<MerchantVO>(pageReq.getCurrent(), pageReq.getSize(), pageReq.getTotal())
+                .setRecords(pageReq.getRecords().stream()
+                        .map(this::toVO)
+                        .collect(Collectors.toList()));
     }
 
     @Override

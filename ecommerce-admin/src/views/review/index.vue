@@ -42,6 +42,16 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="size"
+          :total="total"
+          layout="total, prev, pager, next"
+          @current-change="fetchData"
+        />
+      </div>
     </el-card>
   </div>
 </template>
@@ -52,12 +62,20 @@ import axios from 'axios'
 
 const loading = ref(false)
 const tableData = ref([])
+const page = ref(1)
+const size = ref(10)
+const total = ref(0)
 
 async function fetchData() {
   loading.value = true
   try {
-    const { data } = await axios.get('/api/v1/admin/reviews')
-    if (data.code === 200) tableData.value = data.data || []
+    const { data } = await axios.get('/api/v1/admin/reviews', {
+      params: { page: page.value, size: size.value }
+    })
+    if (data.code === 200) {
+      tableData.value = data.data?.records || []
+      total.value = data.data?.total || 0
+    }
   } finally { loading.value = false }
 }
 
@@ -80,4 +98,5 @@ onMounted(fetchData)
 .table-card { border-radius: var(--radius-lg); }
 .id-text { font-size: 12px; color: var(--text-muted); }
 .time-text { font-size: 12px; color: var(--text-secondary); }
+.pagination-wrap { margin-top: 20px; display: flex; justify-content: flex-end; }
 </style>

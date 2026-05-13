@@ -6,7 +6,7 @@
         <p class="page-desc">查看平台支付记录，处理退款</p>
       </div>
       <div class="toolbar-right">
-        <el-select v-model="statusFilter" placeholder="支付状态" style="width:140px" clearable @change="fetchData">
+        <el-select v-model="statusFilter" placeholder="支付状态" style="width:140px" clearable @change="statusFilterChange">
           <el-option label="已支付" :value="1" />
           <el-option label="已退款" :value="3" />
           <el-option label="退款中" :value="2" />
@@ -59,6 +59,16 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="size"
+          :total="total"
+          layout="total, prev, pager, next"
+          @current-change="fetchData"
+        />
+      </div>
     </el-card>
 
     <el-dialog v-model="refundVisible" title="退款确认" width="440px">
@@ -86,6 +96,9 @@ import axios from 'axios'
 
 const loading = ref(false)
 const tableData = ref([])
+const page = ref(1)
+const size = ref(10)
+const total = ref(0)
 const statusFilter = ref(null)
 
 const refundVisible = ref(false)
@@ -101,10 +114,18 @@ async function fetchData() {
   loading.value = true
   try {
     const { data } = await axios.get('/api/v1/admin/payment', {
-      params: { status: statusFilter.value ?? undefined }
+      params: { status: statusFilter.value ?? undefined, page: page.value, size: size.value }
     })
-    if (data.code === 200) tableData.value = data.data || []
+    if (data.code === 200) {
+      tableData.value = data.data?.records || []
+      total.value = data.data?.total || 0
+    }
   } finally { loading.value = false }
+}
+
+function statusFilterChange() {
+  page.value = 1
+  fetchData()
 }
 
 function openRefund(row) {
@@ -143,4 +164,5 @@ onMounted(fetchData)
 .refund-info { background: var(--bg-surface); border-radius: var(--radius); padding: 16px 20px; }
 .refund-row { display: flex; padding: 6px 0; justify-content: space-between; align-items: center; }
 .refund-label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.pagination-wrap { margin-top: 20px; display: flex; justify-content: flex-end; }
 </style>

@@ -32,6 +32,14 @@
           </div>
         </div>
       </NuxtLink>
+
+      <div v-if="total > size" class="flex justify-center items-center gap-2 pt-4">
+        <button :disabled="page <= 1" @click="goPage(page - 1)" class="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-30 hover:bg-gray-50">上一页</button>
+        <button v-for="p in pages" :key="p" @click="goPage(p)" :class="p === page ? 'bg-amber-500 text-white' : 'hover:bg-gray-50'" class="px-3 py-1.5 text-sm border rounded-lg">
+          {{ p }}
+        </button>
+        <button :disabled="page * size >= total" @click="goPage(page + 1)" class="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-30 hover:bg-gray-50">下一页</button>
+      </div>
     </div>
   </div>
 </template>
@@ -39,13 +47,13 @@
 <script setup lang="ts">
 const orders = ref<any[]>([])
 const loading = ref(true)
+const page = ref(1)
+const size = 10
+const total = ref(0)
 
-onMounted(async () => {
-  try {
-    const api = useApi()
-    const res: any = await api.get('/orders')
-    if (res.code === 200) orders.value = res.data?.records || []
-  } finally { loading.value = false }
+const pages = computed(() => {
+  const count = Math.ceil(total.value / size)
+  return Array.from({ length: count }, (_, i) => i + 1)
 })
 
 function statusClass(status: number) {
@@ -53,10 +61,28 @@ function statusClass(status: number) {
   return map[status] || 'text-gray-400'
 }
 
+async function fetchOrders() {
+  loading.value = true
+  try {
+    const api = useApi()
+    const res: any = await api.get(`/orders?page=${page.value}&size=${size}`)
+    if (res.code === 200) {
+      orders.value = res.data?.records || []
+      total.value = res.data?.total || 0
+    }
+  } finally { loading.value = false }
+}
+
+function goPage(p: number) {
+  page.value = p
+  fetchOrders()
+}
+
 async function cancelOrder(id: number) {
   const api = useApi()
   await api.put(`/orders/${id}/cancel`)
-  const res: any = await api.get('/orders')
-  if (res.code === 200) orders.value = res.data?.records || []
+  fetchOrders()
 }
+
+onMounted(() => fetchOrders())
 </script>

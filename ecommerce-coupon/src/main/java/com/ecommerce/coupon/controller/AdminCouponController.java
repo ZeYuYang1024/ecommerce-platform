@@ -1,12 +1,11 @@
 package com.ecommerce.coupon.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.coupon.entity.CouponTemplate;
 import com.ecommerce.coupon.service.CouponService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -16,8 +15,11 @@ public class AdminCouponController {
     private final CouponService couponService;
 
     @GetMapping("/coupons")
-    public Result<List<CouponTemplate>> list(@RequestParam(required = false) Integer status) {
-        return Result.ok(couponService.listTemplates(status));
+    public Result<Page<CouponTemplate>> list(
+            @RequestParam(required = false) Integer status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return Result.ok(couponService.listTemplates(status, page, size));
     }
 
     @GetMapping("/coupons/{id}")

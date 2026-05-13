@@ -2,6 +2,7 @@ package com.ecommerce.coupon.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.coupon.common.CouponErrorCode;
 import com.ecommerce.coupon.dto.response.CouponVO;
@@ -43,7 +44,15 @@ public class CouponServiceImpl implements CouponService {
     }
 
     @Override
-    public List<CouponTemplate> listTemplates(Integer status) {
+    public Page<CouponTemplate> listTemplates(Integer status, int page, int size) {
+        LambdaQueryWrapper<CouponTemplate> q = new LambdaQueryWrapper<>();
+        if (status != null) q.eq(CouponTemplate::getStatus, status);
+        q.orderByDesc(CouponTemplate::getCreatedAt);
+        Page<CouponTemplate> pageReq = new Page<>(page, size);
+        return templateMapper.selectPage(pageReq, q);
+    }
+
+    private List<CouponTemplate> listAllTemplates(Integer status) {
         LambdaQueryWrapper<CouponTemplate> q = new LambdaQueryWrapper<>();
         if (status != null) q.eq(CouponTemplate::getStatus, status);
         q.orderByDesc(CouponTemplate::getCreatedAt);
@@ -83,7 +92,7 @@ public class CouponServiceImpl implements CouponService {
 
     @Override
     public List<CouponVO> listAvailableCoupons() {
-        List<CouponTemplate> templates = listTemplates(1);
+        List<CouponTemplate> templates = listAllTemplates(1);
         List<CouponVO> vos = new ArrayList<>();
         for (CouponTemplate t : templates) {
             CouponVO vo = new CouponVO();

@@ -1,10 +1,9 @@
 package com.ecommerce.payment.service;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.payment.dto.response.SettlementVO;
-
-import java.util.List;
 
 public interface SettlementService {
     SettlementVO generateSettlement(String date);
-    List<SettlementVO> listSettlements();
+    Page<SettlementVO> listSettlements(int page, int size);
 }

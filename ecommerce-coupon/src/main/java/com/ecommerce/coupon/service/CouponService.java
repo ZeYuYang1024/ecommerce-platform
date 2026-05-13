@@ -1,5 +1,6 @@
 package com.ecommerce.coupon.service;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.coupon.dto.response.CouponVO;
 import com.ecommerce.coupon.entity.CouponTemplate;
 import java.math.BigDecimal;
@@ -10,7 +11,7 @@ public interface CouponService {
     // 模板管理（admin）
     CouponTemplate createTemplate(CouponTemplate template);
     CouponTemplate updateTemplate(CouponTemplate template);
-    List<CouponTemplate> listTemplates(Integer status);
+    Page<CouponTemplate> listTemplates(Integer status, int page, int size);
 
     // 用户领券
     void claim(Long userId, Long templateId);

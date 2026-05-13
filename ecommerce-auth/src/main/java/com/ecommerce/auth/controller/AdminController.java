@@ -1,6 +1,7 @@
 package com.ecommerce.auth.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.auth.client.MerchantStatsClient;
 import com.ecommerce.auth.client.ProductStatsClient;
 import com.ecommerce.common.dto.CreateMerchantAccountRequest;
@@ -17,7 +18,6 @@ import org.springframework.util.DigestUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
@@ -40,10 +40,13 @@ public class AdminController {
     }
 
     @GetMapping("/users")
-    public Result<List<UserVO>> users() {
-        return Result.ok(
-            userMapper.selectList(new LambdaQueryWrapper<>())
-                .stream()
+    public Result<Page<UserVO>> users(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        Page<com.ecommerce.auth.entity.User> pageReq = new Page<>(page, size);
+        userMapper.selectPage(pageReq, new LambdaQueryWrapper<>());
+        return Result.ok(new Page<UserVO>(pageReq.getCurrent(), pageReq.getSize(), pageReq.getTotal()).setRecords(
+            pageReq.getRecords().stream()
                 .map(u -> {
                     UserVO vo = new UserVO();
                     vo.setId(u.getId());
@@ -54,7 +57,7 @@ public class AdminController {
                     return vo;
                 })
                 .collect(Collectors.toList())
-        );
+        ));
     }
 
     @GetMapping("/dashboard/stats")

@@ -1,13 +1,12 @@
 package com.ecommerce.product.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.product.entity.Brand;
 import com.ecommerce.product.mapper.BrandMapper;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -20,8 +19,11 @@ public class BrandController {
     }
 
     @GetMapping("/brands")
-    public Result<List<Brand>> list() {
-        return Result.ok(brandMapper.selectList(
+    public Result<Page<Brand>> list(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        Page<Brand> pageReq = new Page<>(page, size);
+        return Result.ok(brandMapper.selectPage(pageReq,
                 new LambdaQueryWrapper<Brand>().orderByAsc(Brand::getName)));
     }
 

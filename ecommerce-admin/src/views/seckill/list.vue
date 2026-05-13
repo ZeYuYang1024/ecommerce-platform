@@ -24,6 +24,16 @@
             </template>
           </el-table-column>
         </el-table>
+
+        <div class="pagination-wrap">
+          <el-pagination
+            v-model:current-page="sessionPage"
+            v-model:page-size="size"
+            :total="sessionTotal"
+            layout="total, prev, pager, next"
+            @current-change="fetchSessions"
+          />
+        </div>
       </el-tab-pane>
       <el-tab-pane label="秒杀商品" name="item">
         <el-table :data="items" border stripe>
@@ -36,6 +46,16 @@
             <template #default="{row}">{{ row.remainingCount }}/{{ row.stockCount }}</template>
           </el-table-column>
         </el-table>
+
+        <div class="pagination-wrap">
+          <el-pagination
+            v-model:current-page="itemPage"
+            v-model:page-size="size"
+            :total="itemTotal"
+            layout="total, prev, pager, next"
+            @current-change="fetchItems"
+          />
+        </div>
       </el-tab-pane>
     </el-tabs>
 
@@ -72,19 +92,39 @@ import axios from 'axios'
 const api = axios.create({ baseURL: 'http://localhost:5173' })
 const sessions = ref([])
 const items = ref([])
+const sessionPage = ref(1)
+const itemPage = ref(1)
+const size = ref(10)
+const sessionTotal = ref(0)
+const itemTotal = ref(0)
 const activeTab = ref('session')
 const showSessionDialog = ref(false)
 const showItemDialog = ref(false)
 const sessionForm = ref({name:'',startTime:'',endTime:''})
 const itemForm = ref({sessionId:null,name:'',spuId:1,skuId:1,originalPrice:0,seckillPrice:0,stockCount:100,remainingCount:100,status:1})
 
+async function fetchSessions() {
+  const { data } = await api.get('/api/v1/admin/seckill/sessions', {
+    params: { page: sessionPage.value, size: size.value }
+  })
+  if (data.code === 200) {
+    sessions.value = data.data?.records || []
+    sessionTotal.value = data.data?.total || 0
+  }
+}
+
+async function fetchItems() {
+  const { data } = await api.get('/api/v1/admin/seckill/items', {
+    params: { page: itemPage.value, size: size.value }
+  })
+  if (data.code === 200) {
+    items.value = data.data?.records || []
+    itemTotal.value = data.data?.total || 0
+  }
+}
+
 async function fetch() {
-  const [sRes,iRes] = await Promise.all([
-    api.get('/api/v1/admin/seckill/sessions'),
-    api.get('/api/v1/admin/seckill/items')
-  ])
-  if (sRes.data.code===200) sessions.value = sRes.data.data || []
-  if (iRes.data.code===200) items.value = iRes.data.data || []
+  await Promise.all([fetchSessions(), fetchItems()])
 }
 
 async function saveSession() {
@@ -108,4 +148,5 @@ onMounted(fetch)
 .page-header h2 { margin: 0; font-size: 20px; }
 .text-gray-400 { color: #9ca3af; }
 .text-red-500 { color: #ef4444; }
+.pagination-wrap { margin-top: 20px; display: flex; justify-content: flex-end; }
 </style>

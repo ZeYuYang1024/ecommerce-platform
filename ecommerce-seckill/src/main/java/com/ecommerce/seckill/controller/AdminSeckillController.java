@@ -1,13 +1,12 @@
 package com.ecommerce.seckill.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.seckill.entity.SeckillItem;
 import com.ecommerce.seckill.entity.SeckillSession;
 import com.ecommerce.seckill.service.SeckillService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -17,8 +16,10 @@ public class AdminSeckillController {
     private final SeckillService seckillService;
 
     @GetMapping("/seckill/sessions")
-    public Result<List<SeckillSession>> listSessions() {
-        return Result.ok(seckillService.listSessions());
+    public Result<Page<SeckillSession>> listSessions(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return Result.ok(seckillService.listSessions(page, size));
     }
 
     @PostMapping("/seckill/sessions")
@@ -27,8 +28,11 @@ public class AdminSeckillController {
     }
 
     @GetMapping("/seckill/items")
-    public Result<List<SeckillItem>> listItems(@RequestParam(required = false) Long sessionId) {
-        return Result.ok(seckillService.listItems(sessionId));
+    public Result<Page<SeckillItem>> listItems(
+            @RequestParam(required = false) Long sessionId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return Result.ok(seckillService.listItems(sessionId, page, size));
     }
 
     @PostMapping("/seckill/items")

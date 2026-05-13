@@ -2,6 +2,7 @@ package com.ecommerce.seckill.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.seckill.common.SeckillErrorCode;
 import com.ecommerce.seckill.dto.SeckillOrderMessage;
@@ -55,6 +56,13 @@ public class SeckillServiceImpl implements SeckillService {
     }
 
     @Override
+    public Page<SeckillSession> listSessions(int page, int size) {
+        Page<SeckillSession> pageReq = new Page<>(page, size);
+        return sessionMapper.selectPage(pageReq, new LambdaQueryWrapper<SeckillSession>()
+                .orderByDesc(SeckillSession::getStartTime));
+    }
+
+    @Override
     public List<SeckillSession> activeSessions() {
         LocalDateTime now = LocalDateTime.now();
         return sessionMapper.selectList(new LambdaQueryWrapper<SeckillSession>()
@@ -74,6 +82,15 @@ public class SeckillServiceImpl implements SeckillService {
     @Override
     public List<SeckillItem> listItems(Long sessionId) {
         return itemMapper.selectList(new LambdaQueryWrapper<SeckillItem>()
+                .eq(sessionId != null, SeckillItem::getSessionId, sessionId)
+                .eq(SeckillItem::getStatus, 1)
+                .orderByDesc(SeckillItem::getCreatedAt));
+    }
+
+    @Override
+    public Page<SeckillItem> listItems(Long sessionId, int page, int size) {
+        Page<SeckillItem> pageReq = new Page<>(page, size);
+        return itemMapper.selectPage(pageReq, new LambdaQueryWrapper<SeckillItem>()
                 .eq(sessionId != null, SeckillItem::getSessionId, sessionId)
                 .eq(SeckillItem::getStatus, 1)
                 .orderByDesc(SeckillItem::getCreatedAt));

@@ -35,6 +35,16 @@
       </el-table-column>
     </el-table>
 
+    <div class="pagination-wrap">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="size"
+        :total="total"
+        layout="total, prev, pager, next"
+        @current-change="fetchData"
+      />
+    </div>
+
     <el-dialog v-model="showDialog" :title="editing?'编辑优惠券':'新建优惠券'" width="520px">
       <el-form :model="form" label-width="100px">
         <el-form-item label="券名称"><el-input v-model="form.name" /></el-form-item>
@@ -67,16 +77,26 @@ import axios from 'axios'
 
 const templates = ref([])
 const loading = ref(false)
+const page = ref(1)
+const size = ref(10)
+const total = ref(0)
 const showDialog = ref(false)
 const editing = ref(false)
 const form = ref({})
 
 const api = axios.create({ baseURL: 'http://localhost:5173' })
 
-async function fetch() {
+async function fetchData() {
   loading.value = true
-  try { const {data} = await api.get('/api/v1/admin/coupons'); if (data.code===200) templates.value = data.data || [] }
-  finally { loading.value = false }
+  try {
+    const { data } = await api.get('/api/v1/admin/coupons', {
+      params: { page: page.value, size: size.value }
+    })
+    if (data.code === 200) {
+      templates.value = data.data?.records || []
+      total.value = data.data?.total || 0
+    }
+  } finally { loading.value = false }
 }
 
 function typeLabel(t) { return {FULL_REDUCTION:'满减',DISCOUNT:'折扣',FLAT:'立减'}[t]||t }
@@ -88,19 +108,20 @@ async function save() {
   const payload = {...form.value}
   if (editing.value) await api.put(`/api/v1/admin/coupons/${payload.id}`, payload)
   else await api.post('/api/v1/admin/coupons', payload)
-  showDialog.value = false; resetForm(); fetch()
+  showDialog.value = false; resetForm(); fetchData()
 }
 
 async function toggleStatus(row) {
   await api.put(`/api/v1/admin/coupons/${row.id}`, {...row, status: row.status===1?0:1})
-  fetch()
+  fetchData()
 }
 
-onMounted(() => { resetForm(); fetch() })
+onMounted(() => { resetForm(); fetchData() })
 </script>
 
 <style scoped>
 .page-container { padding: 24px; }
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .page-header h2 { margin: 0; font-size: 20px; }
+.pagination-wrap { margin-top: 20px; display: flex; justify-content: flex-end; }
 </style>

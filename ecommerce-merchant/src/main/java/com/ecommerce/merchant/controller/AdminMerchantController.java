@@ -1,5 +1,6 @@
 package com.ecommerce.merchant.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.merchant.dto.request.MerchantAuditRequest;
 import com.ecommerce.common.dto.MerchantStatsVO;
@@ -21,8 +22,11 @@ public class AdminMerchantController {
     }
 
     @GetMapping("/merchants")
-    public Result<List<MerchantVO>> list(@RequestParam(required = false) Integer status) {
-        return Result.ok(merchantService.list(status));
+    public Result<Page<MerchantVO>> list(
+            @RequestParam(required = false) Integer status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return Result.ok(merchantService.list(status, page, size));
     }
 
     @GetMapping("/merchants/{id}")
@@ -39,7 +43,7 @@ public class AdminMerchantController {
 
     @GetMapping("/merchants/stats")
     public Result<MerchantStatsVO> stats() {
-        List<MerchantVO> all = merchantService.list(null);
+        List<MerchantVO> all = merchantService.listAll(null);
         long approved = all.stream().filter(m -> m.getStatus() != null && m.getStatus() == 1).count();
         long pending = all.stream().filter(m -> m.getStatus() != null && m.getStatus() == 0).count();
         MerchantStatsVO stats = new MerchantStatsVO();

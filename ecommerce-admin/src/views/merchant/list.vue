@@ -2,7 +2,7 @@
   <div>
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-select v-model="statusFilter" placeholder="审核状态" style="width:160px" clearable @change="fetchData">
+        <el-select v-model="statusFilter" placeholder="审核状态" style="width:160px" clearable @change="statusFilterChange">
           <el-option label="待审核" :value="0" />
           <el-option label="已通过" :value="1" />
           <el-option label="已驳回" :value="2" />
@@ -52,6 +52,16 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="size"
+          :total="total"
+          layout="total, prev, pager, next"
+          @current-change="fetchData"
+        />
+      </div>
     </el-card>
 
     <!-- 审核弹窗 -->
@@ -94,6 +104,9 @@ import axios from 'axios'
 
 const loading = ref(false)
 const tableData = ref([])
+const page = ref(1)
+const size = ref(10)
+const total = ref(0)
 const statusFilter = ref(null)
 
 const auditVisible = ref(false)
@@ -113,9 +126,12 @@ async function fetchData() {
   loading.value = true
   try {
     const { data } = await axios.get('/api/v1/admin/merchants', {
-      params: { status: statusFilter.value ?? undefined }
+      params: { status: statusFilter.value ?? undefined, page: page.value, size: size.value }
     })
-    if (data.code === 200) tableData.value = data.data
+    if (data.code === 200) {
+      tableData.value = data.data?.records || []
+      total.value = data.data?.total || 0
+    }
   } finally { loading.value = false }
 }
 
@@ -146,6 +162,11 @@ async function doBan() {
     comment: banReason.value
   })
   banVisible.value = false
+  fetchData()
+}
+
+function statusFilterChange() {
+  page.value = 1
   fetchData()
 }
 
@@ -228,4 +249,5 @@ onMounted(fetchData)
   text-decoration: none;
 }
 .license-link:hover { text-decoration: underline; }
+.pagination-wrap { margin-top: 20px; display: flex; justify-content: flex-end; }
 </style>

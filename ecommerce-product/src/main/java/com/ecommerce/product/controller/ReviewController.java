@@ -1,13 +1,12 @@
 package com.ecommerce.product.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.product.entity.Review;
 import com.ecommerce.product.mapper.ReviewMapper;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -39,8 +38,11 @@ public class ReviewController {
     }
 
     @GetMapping("/admin/reviews")
-    public Result<List<Review>> listAll() {
-        return Result.ok(reviewMapper.selectList(
+    public Result<Page<Review>> listAll(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        Page<Review> pageReq = new Page<>(page, size);
+        return Result.ok(reviewMapper.selectPage(pageReq,
                 new LambdaQueryWrapper<Review>().orderByDesc(Review::getCreatedAt)));
     }
 

@@ -38,24 +38,44 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="size"
+          :total="total"
+          layout="total, prev, pager, next"
+          @current-change="fetchData"
+        />
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import axios from 'axios'
 
 const users = ref([])
 const loading = ref(false)
+const page = ref(1)
+const size = ref(10)
+const total = ref(0)
 
-onMounted(async () => {
+async function fetchData() {
   loading.value = true
   try {
-    const { data } = await axios.get('/api/v1/admin/users')
-    if (data.code === 200) users.value = data.data
+    const { data } = await axios.get('/api/v1/admin/users', {
+      params: { page: page.value, size: size.value }
+    })
+    if (data.code === 200) {
+      users.value = data.data?.records || []
+      total.value = data.data?.total || 0
+    }
   } finally { loading.value = false }
-})
+}
+
+fetchData()
 </script>
 
 <style scoped>
@@ -112,4 +132,5 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--text-secondary);
 }
+.pagination-wrap { margin-top: 20px; display: flex; justify-content: flex-end; }
 </style>

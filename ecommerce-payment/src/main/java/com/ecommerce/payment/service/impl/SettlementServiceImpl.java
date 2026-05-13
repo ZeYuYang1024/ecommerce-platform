@@ -1,6 +1,7 @@
 package com.ecommerce.payment.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.payment.dto.response.SettlementVO;
 import com.ecommerce.payment.entity.DailySettlement;
@@ -88,13 +89,15 @@ public class SettlementServiceImpl implements SettlementService {
     }
 
     @Override
-    public List<SettlementVO> listSettlements() {
-        return settlementMapper.selectList(
+    public Page<SettlementVO> listSettlements(int page, int size) {
+        Page<DailySettlement> pageReq = new Page<>(page, size);
+        settlementMapper.selectPage(pageReq,
                 new LambdaQueryWrapper<DailySettlement>()
-                        .orderByDesc(DailySettlement::getSettlementDate))
-                .stream()
-                .map(this::toVO)
-                .collect(Collectors.toList());
+                        .orderByDesc(DailySettlement::getSettlementDate));
+        return new Page<SettlementVO>(pageReq.getCurrent(), pageReq.getSize(), pageReq.getTotal())
+                .setRecords(pageReq.getRecords().stream()
+                        .map(this::toVO)
+                        .collect(Collectors.toList()));
     }
 
     private SettlementVO toVO(DailySettlement s) {

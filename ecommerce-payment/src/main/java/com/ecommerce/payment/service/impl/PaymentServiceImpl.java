@@ -1,6 +1,7 @@
 package com.ecommerce.payment.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.payment.common.PaymentErrorCode;
@@ -139,14 +140,17 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    public List<PaymentVO> listAll(Integer status) {
+    public Page<PaymentVO> listAll(Integer status, int page, int size) {
         LambdaQueryWrapper<Payment> wrapper = new LambdaQueryWrapper<>();
         if (status != null) {
             wrapper.eq(Payment::getStatus, status);
         }
         wrapper.orderByDesc(Payment::getCreatedAt);
-        return paymentMapper.selectList(wrapper).stream()
-                .map(this::toVO).collect(Collectors.toList());
+        Page<Payment> pageReq = new Page<>(page, size);
+        paymentMapper.selectPage(pageReq, wrapper);
+        return new Page<PaymentVO>(pageReq.getCurrent(), pageReq.getSize(), pageReq.getTotal())
+                .setRecords(pageReq.getRecords().stream()
+                        .map(this::toVO).collect(Collectors.toList()));
     }
 
     private PaymentVO toVO(Payment p) {

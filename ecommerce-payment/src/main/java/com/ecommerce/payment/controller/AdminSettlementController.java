@@ -1,11 +1,10 @@
 package com.ecommerce.payment.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.payment.dto.response.SettlementVO;
 import com.ecommerce.payment.service.SettlementService;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -23,7 +22,9 @@ public class AdminSettlementController {
     }
 
     @GetMapping("/settlements")
-    public Result<List<SettlementVO>> list() {
-        return Result.ok(settlementService.listSettlements());
+    public Result<Page<SettlementVO>> list(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return Result.ok(settlementService.listSettlements(page, size));
     }
 }
