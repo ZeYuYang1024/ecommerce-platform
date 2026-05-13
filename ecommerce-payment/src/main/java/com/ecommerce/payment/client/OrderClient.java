@@ -1,5 +1,6 @@
 package com.ecommerce.payment.client;
 
+import com.ecommerce.common.dto.OrderInternalVO;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.common.dto.ReconOrderVO;
 import com.ecommerce.payment.dto.request.StatusRequest;
@@ -20,7 +21,7 @@ public interface OrderClient {
     Result<Void> updateStatus(@PathVariable Long id, @RequestBody StatusRequest request);
 
     @GetMapping("/api/v1/internal/orders/no/{orderNo}")
-    Result<java.util.Map<String, Object>> getOrderByOrderNo(@PathVariable String orderNo, @RequestParam("userId") Long userId);
+    Result<OrderInternalVO> getOrderByOrderNo(@PathVariable String orderNo, @RequestParam("userId") Long userId);
 
     @GetMapping("/api/v1/admin/orders/recon")
     Result<List<ReconOrderVO>> getOrdersForRecon(@RequestParam("start") String start,

@@ -10,9 +10,7 @@ import com.ecommerce.order.service.OrderService;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -53,8 +51,8 @@ public class AdminOrderController {
     }
 
     @GetMapping("/orders/recon")
-    public Result<List<Map<String, Object>>> getOrdersForRecon(@RequestParam("start") String start,
-                                                                @RequestParam("end") String end) {
+    public Result<List<ReconOrderVO>> getOrdersForRecon(@RequestParam("start") String start,
+                                                         @RequestParam("end") String end) {
         LocalDateTime startTime = null, endTime = null;
         try {
             if (start != null && !start.isEmpty()) startTime = LocalDateTime.parse(start);
@@ -63,12 +61,12 @@ public class AdminOrderController {
             return Result.fail(400, "日期格式错误");
         }
         List<Order> orders = orderService.listForRecon(startTime, endTime);
-        List<Map<String, Object>> result = orders.stream().map(o -> {
-            Map<String, Object> m = new HashMap<>();
-            m.put("orderNo", o.getOrderNo());
-            m.put("amount", o.getTotalAmount());
-            m.put("status", o.getStatus());
-            return m;
+        List<ReconOrderVO> result = orders.stream().map(o -> {
+            ReconOrderVO vo = new ReconOrderVO();
+            vo.setOrderNo(o.getOrderNo());
+            vo.setAmount(o.getTotalAmount());
+            vo.setStatus(o.getStatus());
+            return vo;
         }).collect(Collectors.toList());
         return Result.ok(result);
     }

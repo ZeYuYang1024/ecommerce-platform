@@ -1,6 +1,7 @@
 package com.ecommerce.notification.consumer;
 
 import com.ecommerce.common.dto.OrderInventoryMessage;
+import com.ecommerce.notification.dto.request.SendNotificationRequest;
 import com.ecommerce.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,8 +24,8 @@ public class OrderCancelledConsumer implements RocketMQListener<OrderInventoryMe
     @Override
     public void onMessage(OrderInventoryMessage msg) {
         log.info("Order cancelled: orderNo={}", msg.getOrderNo());
-        notificationService.send("ORDER_CANCELLED", null, Map.of(
-            "orderNo", msg.getOrderNo()
-        ));
+        SendNotificationRequest req = new SendNotificationRequest();
+        req.setParams(Map.of("orderNo", msg.getOrderNo()));
+        notificationService.send("ORDER_CANCELLED", null, req);
     }
 }

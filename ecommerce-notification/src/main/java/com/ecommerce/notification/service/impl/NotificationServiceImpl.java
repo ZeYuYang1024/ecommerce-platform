@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.notification.channel.NotificationChannel;
 import com.ecommerce.notification.common.NotificationErrorCode;
+import com.ecommerce.notification.dto.request.SendNotificationRequest;
 import com.ecommerce.notification.entity.NotificationLog;
 import com.ecommerce.notification.entity.NotificationTemplate;
 import com.ecommerce.notification.mapper.NotificationLogMapper;
@@ -41,7 +42,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    public NotificationLog send(String templateCode, Long userId, Map<String, String> params) {
+    public NotificationLog send(String templateCode, Long userId, SendNotificationRequest request) {
         NotificationTemplate template = templateMapper.selectOne(
                 new LambdaQueryWrapper<NotificationTemplate>()
                         .eq(NotificationTemplate::getTemplateCode, templateCode)
@@ -51,6 +52,8 @@ public class NotificationServiceImpl implements NotificationService {
             log.warn("Template not found or disabled: {}", templateCode);
             return null;
         }
+
+        Map<String, String> params = request.getParams() != null ? request.getParams() : java.util.Collections.emptyMap();
 
         String content = template.getContent() != null ? template.getContent() : "";
         for (Map.Entry<String, String> e : params.entrySet()) {
@@ -68,7 +71,7 @@ public class NotificationServiceImpl implements NotificationService {
         logEntry.setTitle(title);
         logEntry.setContent(content);
         logEntry.setStatus(0);
-        logEntry.setRecipient(params.get("recipient"));
+        logEntry.setRecipient(request.getRecipient());
         logMapper.insert(logEntry);
 
         // 发送

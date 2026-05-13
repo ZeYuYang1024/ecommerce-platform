@@ -1,6 +1,7 @@
 package com.ecommerce.notification.controller;
 
 import com.ecommerce.common.result.Result;
+import com.ecommerce.notification.dto.request.SendNotificationRequest;
 import com.ecommerce.notification.entity.NotificationLog;
 import com.ecommerce.notification.entity.NotificationTemplate;
 import com.ecommerce.notification.service.NotificationService;
@@ -8,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -29,7 +29,7 @@ public class AdminNotificationController {
 
     @PostMapping("/notification/send")
     public Result<NotificationLog> send(@RequestParam String templateCode,
-                                         @RequestBody Map<String, String> params) {
-        return Result.ok(notificationService.send(templateCode, null, params));
+                                         @RequestBody SendNotificationRequest request) {
+        return Result.ok(notificationService.send(templateCode, null, request));
     }
 }

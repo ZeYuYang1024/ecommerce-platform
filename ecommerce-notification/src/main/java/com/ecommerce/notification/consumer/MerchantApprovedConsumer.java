@@ -1,6 +1,7 @@
 package com.ecommerce.notification.consumer;
 
 import com.ecommerce.common.dto.MerchantApprovedMessage;
+import com.ecommerce.notification.dto.request.SendNotificationRequest;
 import com.ecommerce.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,9 +24,11 @@ public class MerchantApprovedConsumer implements RocketMQListener<MerchantApprov
     @Override
     public void onMessage(MerchantApprovedMessage msg) {
         log.info("Merchant approved: merchantId={}", msg.getMerchantId());
-        notificationService.send("MERCHANT_APPROVED", null, Map.of(
+        SendNotificationRequest req = new SendNotificationRequest();
+        req.setParams(Map.of(
             "merchantId", String.valueOf(msg.getMerchantId()),
             "merchantName", msg.getMerchantName()
         ));
+        notificationService.send("MERCHANT_APPROVED", null, req);
     }
 }

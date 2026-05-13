@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.dto.CouponVerifyVO;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.coupon.common.CouponErrorCode;
 import com.ecommerce.coupon.dto.response.CouponVO;
@@ -177,7 +178,7 @@ public class CouponServiceImpl implements CouponService {
     }
 
     @Override
-    public Map<String, Object> verify(Long userCouponId, Long userId, BigDecimal orderAmount) {
+    public CouponVerifyVO verify(Long userCouponId, Long userId, BigDecimal orderAmount) {
         UserCoupon uc = userCouponMapper.selectById(userCouponId);
         if (uc == null || !uc.getUserId().equals(userId)) throw new BusinessException(CouponErrorCode.COUPON_NOT_AVAILABLE);
         if (uc.getStatus() != 0) throw new BusinessException(CouponErrorCode.COUPON_ALREADY_USED);
@@ -191,12 +192,12 @@ public class CouponServiceImpl implements CouponService {
 
         BigDecimal discount = calculateDiscount(t, orderAmount);
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("valid", true);
-        result.put("discount", discount);
-        result.put("couponName", t.getName());
-        result.put("templateId", t.getId());
-        return result;
+        CouponVerifyVO vo = new CouponVerifyVO();
+        vo.setValid(true);
+        vo.setDiscount(discount);
+        vo.setCouponName(t.getName());
+        vo.setTemplateId(t.getId());
+        return vo;
     }
 
     @Override

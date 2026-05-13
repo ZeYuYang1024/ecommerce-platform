@@ -40,6 +40,7 @@
         <rocketmq.version>2.3.0</rocketmq.version>
         <lombok.version>1.18.46</lombok.version>
         <elasticsearch.version>8.16.0</elasticsearch.version>
+        <druid.version>1.2.28</druid.version>
     </properties>
 
     <dependencyManagement>
@@ -94,6 +95,11 @@
                 <groupId>com.mysql</groupId>
                 <artifactId>mysql-connector-j</artifactId>
                 <version>${mysql.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>druid-spring-boot-4-starter</artifactId>
+                <version>${druid.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.minio</groupId>

@@ -3,6 +3,9 @@ package com.ecommerce.auth.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.auth.dto.request.AssignRolesRequest;
+import com.ecommerce.auth.dto.response.AdminUserVO;
+import com.ecommerce.auth.dto.response.PermissionVO;
 import com.ecommerce.auth.entity.*;
 import com.ecommerce.auth.mapper.*;
 import com.ecommerce.common.result.Result;
@@ -104,18 +107,18 @@ public class RbacController {
             IPage<Permission> ipage = permissionMapper.selectPage(
                     new Page<>(page, size),
                     new LambdaQueryWrapper<Permission>().orderByAsc(Permission::getSort));
-            Page<Map<String, Object>> result = new Page<>(page, size);
+            Page<PermissionVO> result = new Page<>(page, size);
             result.setTotal(ipage.getTotal());
             result.setRecords(ipage.getRecords().stream().map(p -> {
-                Map<String, Object> m = new HashMap<>();
-                m.put("id", p.getId());
-                m.put("name", p.getName());
-                m.put("code", p.getCode());
-                m.put("type", p.getType());
-                m.put("path", p.getPath());
-                m.put("parentId", p.getParentId());
-                m.put("sort", p.getSort());
-                return m;
+                PermissionVO vo = new PermissionVO();
+                vo.setId(p.getId());
+                vo.setName(p.getName());
+                vo.setCode(p.getCode());
+                vo.setType(p.getType());
+                vo.setPath(p.getPath());
+                vo.setParentId(p.getParentId());
+                vo.setSort(p.getSort());
+                return vo;
             }).collect(Collectors.toList()));
             return Result.ok(result);
         }
@@ -171,8 +174,8 @@ public class RbacController {
     }
 
     @PutMapping("/users/{adminUserId}/roles")
-    public Result<Void> assignRoles(@PathVariable Long adminUserId, @RequestBody Map<String, List<Long>> body) {
-        List<Long> roleIds = body.get("roleIds");
+    public Result<Void> assignRoles(@PathVariable Long adminUserId, @RequestBody AssignRolesRequest body) {
+        List<Long> roleIds = body.getRoleIds();
         // 删除旧关联
         adminUserRoleMapper.delete(
                 new LambdaQueryWrapper<AdminUserRole>().eq(AdminUserRole::getAdminUserId, adminUserId));
@@ -192,19 +195,19 @@ public class RbacController {
     // ==================== 管理员列表（含角色） ====================
 
     @GetMapping("/admin-users")
-    public Result<List<Map<String, Object>>> listAdminUsers() {
+    public Result<List<AdminUserVO>> listAdminUsers() {
         List<AdminUser> admins = adminUserMapper.selectList(new LambdaQueryWrapper<>());
-        List<Map<String, Object>> result = new ArrayList<>();
+        List<AdminUserVO> result = new ArrayList<>();
         for (AdminUser admin : admins) {
-            Map<String, Object> m = new HashMap<>();
-            m.put("id", admin.getId());
-            m.put("username", admin.getUsername());
-            m.put("type", admin.getType());
-            m.put("status", admin.getStatus());
+            AdminUserVO vo = new AdminUserVO();
+            vo.setId(admin.getId());
+            vo.setUsername(admin.getUsername());
+            vo.setType(admin.getType());
+            vo.setStatus(admin.getStatus());
             List<AdminUserRole> roles = adminUserRoleMapper.selectList(
                     new LambdaQueryWrapper<AdminUserRole>().eq(AdminUserRole::getAdminUserId, admin.getId()));
-            m.put("roleIds", roles.stream().map(AdminUserRole::getRoleId).collect(Collectors.toList()));
-            result.add(m);
+            vo.setRoleIds(roles.stream().map(AdminUserRole::getRoleId).collect(Collectors.toList()));
+            result.add(vo);
         }
         return Result.ok(result);
     }

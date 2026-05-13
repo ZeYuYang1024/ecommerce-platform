@@ -30,6 +30,10 @@
             <artifactId>mysql-connector-j</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>druid-spring-boot-4-starter</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.ecommerce</groupId>
             <artifactId>ecommerce-common</artifactId>
         </dependency>

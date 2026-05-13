@@ -1,6 +1,7 @@
 package com.ecommerce.notification.consumer;
 
 import com.ecommerce.common.dto.OrderPaidMessage;
+import com.ecommerce.notification.dto.request.SendNotificationRequest;
 import com.ecommerce.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,9 +24,11 @@ public class OrderPaidConsumer implements RocketMQListener<OrderPaidMessage> {
     @Override
     public void onMessage(OrderPaidMessage msg) {
         log.info("Order paid: orderNo={}", msg.getOrderNo());
-        notificationService.send("ORDER_PAID", null, Map.of(
+        SendNotificationRequest req = new SendNotificationRequest();
+        req.setParams(Map.of(
             "orderNo", msg.getOrderNo(),
             "paidAt", msg.getPaidAt() != null ? msg.getPaidAt().toString() : ""
         ));
+        notificationService.send("ORDER_PAID", null, req);
     }
 }

@@ -1,5 +1,6 @@
 package com.ecommerce.payment.client;
 
+import com.ecommerce.common.dto.OrderInternalVO;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.payment.dto.request.StatusRequest;
 import com.ecommerce.common.dto.ReconOrderVO;
@@ -7,9 +8,7 @@ import org.springframework.cloud.openfeign.FallbackFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Component
 public class OrderClientFallback implements FallbackFactory<OrderClient> {
@@ -21,7 +20,7 @@ public class OrderClientFallback implements FallbackFactory<OrderClient> {
                 return Result.ok();
             }
             @Override
-            public Result<Map<String, Object>> getOrderByOrderNo(String orderNo, Long userId) {
+            public Result<OrderInternalVO> getOrderByOrderNo(String orderNo, Long userId) {
                 return Result.fail(500, "order service unavailable");
             }
             @Override

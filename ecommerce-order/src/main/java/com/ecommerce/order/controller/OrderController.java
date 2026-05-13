@@ -1,6 +1,7 @@
 package com.ecommerce.order.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.dto.OrderInternalVO;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
 import com.ecommerce.order.mapper.OrderMapper;
@@ -40,13 +41,13 @@ public class OrderController {
     }
 
     @GetMapping("/internal/orders/no/{orderNo}")
-    public Result<java.util.Map<String, Object>> internalGetByOrderNo(@PathVariable String orderNo, @RequestParam("userId") Long userId) {
+    public Result<OrderInternalVO> internalGetByOrderNo(@PathVariable String orderNo, @RequestParam("userId") Long userId) {
         Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>().eq(Order::getOrderNo, orderNo).eq(Order::getUserId, userId));
         if (order == null) return Result.fail(404, "订单不存在");
-        java.util.Map<String, Object> m = new java.util.HashMap<>();
-        m.put("id", order.getId());
-        m.put("orderNo", order.getOrderNo());
-        return Result.ok(m);
+        OrderInternalVO vo = new OrderInternalVO();
+        vo.setId(order.getId());
+        vo.setOrderNo(order.getOrderNo());
+        return Result.ok(vo);
     }
 
     @GetMapping("/orders/no/{orderNo}")

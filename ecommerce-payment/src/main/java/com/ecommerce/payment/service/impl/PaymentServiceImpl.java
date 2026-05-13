@@ -56,9 +56,8 @@ public class PaymentServiceImpl implements PaymentService {
         Long realOrderId = request.getOrderId();
         try {
             var orderRes = orderClient.getOrderByOrderNo(request.getOrderNo(), userId);
-            if (orderRes.getData() != null) {
-                realOrderId = orderRes.getData().get("id") != null
-                    ? Long.valueOf(orderRes.getData().get("id").toString()) : request.getOrderId();
+            if (orderRes.getData() != null && orderRes.getData().getId() != null) {
+                realOrderId = orderRes.getData().getId();
             }
         } catch (Exception ignored) {}
 
