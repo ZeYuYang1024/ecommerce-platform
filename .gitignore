@@ -28,3 +28,7 @@ test-results/
 playwright-real.config.ts
 .nuxt/
 .output/
+
+# E2E tests
+ecommerce-admin/tests/e2e/
+ecommerce-web/tests/e2e/
