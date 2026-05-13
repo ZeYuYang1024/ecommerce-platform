@@ -64,9 +64,22 @@ spring:
               uri: lb://ecommerce-seckill
               predicates:
                 - Path=/api/v1/seckill/**,/api/v1/admin/seckill/**
+            - id: monitor
+              uri: lb://ecommerce-monitor
+              predicates:
+                - Path=/admin/**
       globalcors:
         cors-configurations:
           '[/**]':
             allowedOriginPatterns: "*"
             allowedMethods: "*"
             allowedHeaders: "*"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: ALWAYS

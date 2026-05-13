@@ -14,3 +14,12 @@ rocketmq:
   name-server: localhost:9876
   consumer:
     group: ${spring.application.name}-sync
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: ALWAYS

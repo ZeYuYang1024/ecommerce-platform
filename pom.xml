@@ -25,6 +25,7 @@
         <module>ecommerce-coupon</module>
         <module>ecommerce-notification</module>
         <module>ecommerce-seckill</module>
+        <module>ecommerce-monitor</module>
     </modules>
 
     <properties>
@@ -41,6 +42,7 @@
         <lombok.version>1.18.46</lombok.version>
         <elasticsearch.version>8.16.0</elasticsearch.version>
         <druid.version>1.2.28</druid.version>
+        <spring-boot-admin.version>4.0.4</spring-boot-admin.version>
     </properties>
 
     <dependencyManagement>
@@ -100,6 +102,16 @@
                 <groupId>com.alibaba</groupId>
                 <artifactId>druid-spring-boot-4-starter</artifactId>
                 <version>${druid.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.codecentric</groupId>
+                <artifactId>spring-boot-admin-starter-server</artifactId>
+                <version>${spring-boot-admin.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.codecentric</groupId>
+                <artifactId>spring-boot-admin-starter-client</artifactId>
+                <version>${spring-boot-admin.version}</version>
             </dependency>
             <dependency>
                 <groupId>io.minio</groupId>

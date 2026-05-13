@@ -16,3 +16,12 @@ minio:
   access-key: minio
   secret-key: minioadmin
   bucket: ecommerce
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: ALWAYS
