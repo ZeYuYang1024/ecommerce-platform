@@ -58,17 +58,20 @@
             <span v-else style="font-size:12px;color:var(--text-muted)">--</span>
           </template>
         </el-table-column>
+
       </el-table>
 
-      <div class="pagination-wrap">
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="size"
-          :total="total"
-          layout="total, prev, pager, next"
-          @current-change="fetchData"
-        />
-      </div>
+      <div class="pagination-row">
+              <el-pagination
+                v-model:current-page="page"
+                v-model:page-size="size"
+                :page-sizes="[10, 20, 50, 100]"
+                :total="total"
+                layout="total, sizes, prev, pager, next, jumper"
+                @size-change="handleSizeChange"
+                @current-change="fetchData"
+              />
+            </div>
     </el-card>
 
     <el-dialog v-model="refundVisible" title="退款确认" width="440px">
@@ -105,6 +108,11 @@ const refundVisible = ref(false)
 const refundForm = ref({})
 const refundReason = ref('')
 
+function handleSizeChange() {
+  page.value = 1
+  fetchData()
+}
+
 function statusType(status) {
   const map = { 0: 'warning', 1: 'success', 2: '', 3: 'info', 4: 'danger' }
   return map[status] || 'info'
@@ -118,7 +126,7 @@ async function fetchData() {
     })
     if (data.code === 200) {
       tableData.value = data.data?.records || []
-      total.value = data.data?.total || 0
+      total.value = Number(data.data?.total) || tableData.value.length
     }
   } finally { loading.value = false }
 }
@@ -164,5 +172,5 @@ onMounted(fetchData)
 .refund-info { background: var(--bg-surface); border-radius: var(--radius); padding: 16px 20px; }
 .refund-row { display: flex; padding: 6px 0; justify-content: space-between; align-items: center; }
 .refund-label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
-.pagination-wrap { margin-top: 20px; display: flex; justify-content: flex-end; }
+.pagination-row { padding: 18px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
 </style>

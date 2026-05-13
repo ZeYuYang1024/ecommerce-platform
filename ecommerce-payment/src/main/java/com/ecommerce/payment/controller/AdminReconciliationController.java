@@ -1,11 +1,10 @@
 package com.ecommerce.payment.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.payment.dto.response.ReconciliationVO;
 import com.ecommerce.payment.service.ReconciliationService;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -23,8 +22,10 @@ public class AdminReconciliationController {
     }
 
     @GetMapping("/reconciliation")
-    public Result<List<ReconciliationVO>> list() {
-        return Result.ok(reconciliationService.listReconciliations());
+    public Result<Page<ReconciliationVO>> list(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return Result.ok(reconciliationService.listReconciliations(page, size));
     }
 
     @GetMapping("/reconciliation/{id}")

@@ -43,7 +43,20 @@
             </el-popconfirm>
           </template>
         </el-table-column>
+
       </el-table>
+
+      <div class="pagination-row">
+              <el-pagination
+                v-model:current-page="page"
+                v-model:page-size="size"
+                :page-sizes="[10, 20, 50, 100]"
+                :total="total"
+                layout="total, sizes, prev, pager, next, jumper"
+                @size-change="handleSizeChange"
+                @current-change="fetchData"
+              />
+            </div>
     </el-card>
 
     <el-dialog v-model="visible" :title="isEdit ? '编辑权限' : '新增权限'" width="520px">
@@ -90,6 +103,9 @@ import axios from 'axios'
 const loading = ref(false)
 const permTree = ref([])
 const flatPerms = ref([])
+const page = ref(1)
+const size = ref(10)
+const total = ref(0)
 const visible = ref(false)
 
 function flattenTree(nodes, level) {
@@ -108,11 +124,27 @@ const parentName = ref('')
 const form = ref({ name: '', code: '', type: 'menu', parentId: null, path: '', icon: '', sort: 0 })
 let editId = null
 
+function handleSizeChange() {
+  page.value = 1
+  fetchData()
+}
+
 async function fetchData() {
   loading.value = true
   try {
-    const { data } = await axios.get('/api/v1/admin/permissions')
-    if (data.code === 200) { permTree.value = data.data || []; flatPerms.value = flattenTree(data.data || []) }
+    const { data } = await axios.get('/api/v1/admin/permissions', {
+      params: { page: page.value, size: size.value }
+    })
+    if (data.code === 200) {
+      const records = data.data?.records || []
+      total.value = Number(data.data?.total) || flatPerms.value.length
+      const parentIds = new Set(records.map(r => r.id))
+      flatPerms.value = records.map(r => ({
+        ...r,
+        _level: r.parentId && parentIds.has(r.parentId) ? 1 : (r.parentId ? 1 : 0),
+        children: undefined
+      }))
+    }
   } finally { loading.value = false }
 }
 
@@ -156,4 +188,5 @@ onMounted(fetchData)
 .toolbar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .page-desc { font-size: 13.5px; color: var(--text-muted); margin-top: 4px; }
 .table-card { border-radius: var(--radius-lg); }
+.pagination-row { padding: 18px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
 </style>

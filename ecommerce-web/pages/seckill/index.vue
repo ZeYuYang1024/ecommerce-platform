@@ -28,6 +28,8 @@
         </div>
       </div>
     </div>
+
+    <Pagination v-model:page="page" v-model:size="size" :total="total" @change="fetchData" />
   </div>
 </template>
 
@@ -35,26 +37,29 @@
 const sessions = ref<any[]>([])
 const itemsBySession = ref<Record<string,any[]>>({})
 const loading = ref(true)
+const page = ref(1)
+const size = ref(20)
+const total = ref(0)
 
-onMounted(async () => {
+onMounted(fetchData)
+
+async function fetchData() {
+  loading.value = true
   try {
     const api = useApi()
-    const [sRes,iRes] = await Promise.all([
-      api.get('/seckill/sessions'),
-      api.get('/seckill/items?sessionId=')
-    ])
-    if (sRes.code===200) sessions.value = sRes.data || []
-    if (iRes.code===200) {
-      const map: Record<string,any[]> = {}
-      for (const item of iRes.data||[]) {
-        const sid = String(item.sessionId)
-        if (!map[sid]) map[sid] = []
-        map[sid].push(item)
-      }
-      itemsBySession.value = map
+    const sRes: any = await api.get('/seckill/sessions', { page: page.value, size: size.value })
+    if (sRes.code === 200) {
+      sessions.value = sRes.data?.records || []
+      total.value = sRes.data?.total || 0
+      const iMap: Record<string,any[]> = {}
+      await Promise.all(sessions.value.map(async (s: any) => {
+        const iRes: any = await api.get('/seckill/items', { sessionId: s.id, page: 1, size: 20 })
+        iMap[String(s.id)] = iRes.code === 200 ? (iRes.data?.records || []) : []
+      }))
+      itemsBySession.value = iMap
     }
   } finally { loading.value = false }
-})
+}
 
 function countdown(end: string) {
   const diff = new Date(end).getTime() - Date.now()

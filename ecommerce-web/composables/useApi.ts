@@ -29,7 +29,17 @@ export const useApi = () => {
   }
 
   return {
-    get: <T>(path: string) => request<T>(path),
+    get: <T>(path: string, params?: Record<string, any>) => {
+      let url = path
+      if (params) {
+        const qs = Object.entries(params)
+          .filter(([, v]) => v !== undefined && v !== null)
+          .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+          .join('&')
+        if (qs) url += (path.includes('?') ? '&' : '?') + qs
+      }
+      return request<T>(url)
+    },
     post: <T>(path: string, body?: any) => request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
     put: <T>(path: string, body?: any) => request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
     delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),

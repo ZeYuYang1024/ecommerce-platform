@@ -12,7 +12,7 @@
 
     <el-card v-if="categories.length > 0" shadow="never">
       <el-tree
-        :data="categories"
+        :data="paginatedCategories"
         :props="{ children: 'children', label: 'name' }"
         node-key="id"
         default-expand-all
@@ -38,6 +38,17 @@
           </div>
         </template>
       </el-tree>
+
+      <div class="pagination-row">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="size"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="categoryTotal"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+        />
+      </div>
     </el-card>
     <el-empty v-else description="暂无分类" />
 
@@ -75,6 +86,8 @@ import axios from 'axios'
 
 const categories = ref([])
 const allCategories = ref([])
+const page = ref(1)
+const size = ref(10)
 const dialogVisible = ref(false)
 const editingId = ref(null)
 const form = reactive({ name: '', parentId: null, sort: 0 })
@@ -85,12 +98,25 @@ const dialogTitle = computed(() => {
   return '新增分类'
 })
 
+const categoryTotal = computed(() => categories.value.length)
+const paginatedCategories = computed(() => {
+  const start = (page.value - 1) * size.value
+  return categories.value.slice(start, start + size.value)
+})
+
+function handleSizeChange() {
+  page.value = 1
+}
+
 async function fetchData() {
   const { data } = await axios.get('/api/v1/admin/categories')
   if (data.code === 200) allCategories.value = data.data
 
   const { data: treeData } = await axios.get('/api/v1/categories')
-  if (treeData.code === 200) categories.value = treeData.data
+  if (treeData.code === 200) {
+    categories.value = treeData.data
+    if (page.value > 1 && paginatedCategories.value.length === 0) page.value -= 1
+  }
 }
 
 function showDialog(row) {
@@ -166,6 +192,14 @@ onMounted(fetchData)
   display: flex;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.pagination-row {
+  margin-top: 18px;
+  padding-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .btn-danger {

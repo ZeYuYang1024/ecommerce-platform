@@ -1,6 +1,8 @@
 package com.ecommerce.payment.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.common.dto.ReconOrderVO;
 import com.ecommerce.payment.client.OrderClient;
@@ -138,6 +140,17 @@ public class ReconciliationServiceImpl implements ReconciliationService {
         List<Reconciliation> list = reconciliationMapper.selectList(
                 new LambdaQueryWrapper<Reconciliation>().orderByDesc(Reconciliation::getCreatedAt));
         return list.stream().map(this::toVO).collect(Collectors.toList());
+    }
+
+    @Override
+    public Page<ReconciliationVO> listReconciliations(int page, int size) {
+        IPage<Reconciliation> ipage = reconciliationMapper.selectPage(
+                new Page<>(page, size),
+                new LambdaQueryWrapper<Reconciliation>().orderByDesc(Reconciliation::getCreatedAt));
+        Page<ReconciliationVO> result = new Page<>(page, size);
+        result.setTotal(ipage.getTotal());
+        result.setRecords(ipage.getRecords().stream().map(this::toVO).collect(Collectors.toList()));
+        return result;
     }
 
     @Override

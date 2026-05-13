@@ -32,12 +32,12 @@ const sessions = ref([])
 const itemsBySession = ref({})
 
 onMounted(async () => {
-  const res = await request({ url: '/api/v1/seckill/sessions' })
+  const res = await request({ url: '/api/v1/seckill/sessions?page=1&size=10' })
   if (res.code === 200) {
-    sessions.value = res.data || []
+    sessions.value = res.data?.records || res.data || []
     for (const s of sessions.value) {
-      const iRes = await request({ url: `/api/v1/seckill/items?sessionId=${s.id}` })
-      if (iRes.code === 200) itemsBySession.value[s.id] = iRes.data || []
+      const iRes = await request({ url: `/api/v1/seckill/items?sessionId=${s.id}&page=1&size=20` })
+      if (iRes.code === 200) itemsBySession.value[s.id] = iRes.data?.records || iRes.data || []
     }
   }
 })

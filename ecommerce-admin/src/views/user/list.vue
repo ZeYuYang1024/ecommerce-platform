@@ -37,17 +37,20 @@
             <span class="font-mono time-text">{{ row.createdAt }}</span>
           </template>
         </el-table-column>
+
       </el-table>
 
-      <div class="pagination-wrap">
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="size"
-          :total="total"
-          layout="total, prev, pager, next"
-          @current-change="fetchData"
-        />
-      </div>
+      <div class="pagination-row">
+              <el-pagination
+                v-model:current-page="page"
+                v-model:page-size="size"
+                :page-sizes="[10, 20, 50, 100]"
+                :total="total"
+                layout="total, sizes, prev, pager, next, jumper"
+                @size-change="handleSizeChange"
+                @current-change="fetchData"
+              />
+            </div>
     </el-card>
   </div>
 </template>
@@ -62,6 +65,11 @@ const page = ref(1)
 const size = ref(10)
 const total = ref(0)
 
+function handleSizeChange() {
+  page.value = 1
+  fetchData()
+}
+
 async function fetchData() {
   loading.value = true
   try {
@@ -70,7 +78,7 @@ async function fetchData() {
     })
     if (data.code === 200) {
       users.value = data.data?.records || []
-      total.value = data.data?.total || 0
+      total.value = Number(data.data?.total) || users.value.length
     }
   } finally { loading.value = false }
 }
@@ -132,5 +140,5 @@ fetchData()
   font-size: 12px;
   color: var(--text-secondary);
 }
-.pagination-wrap { margin-top: 20px; display: flex; justify-content: flex-end; }
+.pagination-row { padding: 18px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
 </style>

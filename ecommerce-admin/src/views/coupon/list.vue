@@ -33,17 +33,20 @@
           <el-button text type="danger" @click="toggleStatus(row)">{{ row.status===1?'禁用':'启用' }}</el-button>
         </template>
       </el-table-column>
-    </el-table>
 
-    <div class="pagination-wrap">
-      <el-pagination
-        v-model:current-page="page"
-        v-model:page-size="size"
-        :total="total"
-        layout="total, prev, pager, next"
-        @current-change="fetchData"
-      />
-    </div>
+      </el-table>
+
+      <div class="pagination-row">
+            <el-pagination
+              v-model:current-page="page"
+              v-model:page-size="size"
+              :page-sizes="[10, 20, 50, 100]"
+              :total="total"
+              layout="total, sizes, prev, pager, next, jumper"
+              @size-change="handleSizeChange"
+              @current-change="fetchData"
+            />
+          </div>
 
     <el-dialog v-model="showDialog" :title="editing?'编辑优惠券':'新建优惠券'" width="520px">
       <el-form :model="form" label-width="100px">
@@ -86,6 +89,11 @@ const form = ref({})
 
 const api = axios.create({ baseURL: 'http://localhost:5173' })
 
+function handleSizeChange() {
+  page.value = 1
+  fetchData()
+}
+
 async function fetchData() {
   loading.value = true
   try {
@@ -94,7 +102,7 @@ async function fetchData() {
     })
     if (data.code === 200) {
       templates.value = data.data?.records || []
-      total.value = data.data?.total || 0
+      total.value = Number(data.data?.total) || templates.value.length
     }
   } finally { loading.value = false }
 }
@@ -123,5 +131,5 @@ onMounted(() => { resetForm(); fetchData() })
 .page-container { padding: 24px; }
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .page-header h2 { margin: 0; font-size: 20px; }
-.pagination-wrap { margin-top: 20px; display: flex; justify-content: flex-end; }
+.pagination-row { padding: 18px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
 </style>

@@ -52,7 +52,20 @@
             <el-button size="small" @click="$router.push(`/reconciliation/${row.id}`)">查看明细</el-button>
           </template>
         </el-table-column>
+
       </el-table>
+
+      <div class="pagination-row">
+              <el-pagination
+                v-model:current-page="page"
+                v-model:page-size="size"
+                :page-sizes="[10, 20, 50, 100]"
+                :total="total"
+                layout="total, sizes, prev, pager, next, jumper"
+                @size-change="handleSizeChange"
+                @current-change="fetchData"
+              />
+            </div>
     </el-card>
   </div>
 </template>
@@ -65,12 +78,25 @@ import axios from 'axios'
 const loading = ref(false)
 const running = ref(false)
 const tableData = ref([])
+const page = ref(1)
+const size = ref(10)
+const total = ref(0)
+
+function handleSizeChange() {
+  page.value = 1
+  fetchData()
+}
 
 async function fetchData() {
   loading.value = true
   try {
-    const { data } = await axios.get('/api/v1/admin/reconciliation')
-    if (data.code === 200) tableData.value = data.data || []
+    const { data } = await axios.get('/api/v1/admin/reconciliation', {
+      params: { page: page.value, size: size.value }
+    })
+    if (data.code === 200) {
+      tableData.value = data.data?.records || []
+      total.value = Number(data.data?.total) || tableData.value.length
+    }
   } finally { loading.value = false }
 }
 
@@ -102,4 +128,5 @@ onMounted(fetchData)
 .stat-num { font-weight: 700; font-size: 15px; font-family: var(--font-mono); }
 .stat-num.bad { color: var(--red); }
 .time-text { font-size: 12px; color: var(--text-secondary); }
+.pagination-row { padding: 18px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
 </style>

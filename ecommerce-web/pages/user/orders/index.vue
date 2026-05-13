@@ -33,13 +33,7 @@
         </div>
       </NuxtLink>
 
-      <div v-if="total > size" class="flex justify-center items-center gap-2 pt-4">
-        <button :disabled="page <= 1" @click="goPage(page - 1)" class="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-30 hover:bg-gray-50">上一页</button>
-        <button v-for="p in pages" :key="p" @click="goPage(p)" :class="p === page ? 'bg-amber-500 text-white' : 'hover:bg-gray-50'" class="px-3 py-1.5 text-sm border rounded-lg">
-          {{ p }}
-        </button>
-        <button :disabled="page * size >= total" @click="goPage(page + 1)" class="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-30 hover:bg-gray-50">下一页</button>
-      </div>
+      <Pagination v-model:page="page" v-model:size="size" :total="total" @change="fetchOrders" />
     </div>
   </div>
 </template>
@@ -48,13 +42,8 @@
 const orders = ref<any[]>([])
 const loading = ref(true)
 const page = ref(1)
-const size = 10
+const size = ref(10)
 const total = ref(0)
-
-const pages = computed(() => {
-  const count = Math.ceil(total.value / size)
-  return Array.from({ length: count }, (_, i) => i + 1)
-})
 
 function statusClass(status: number) {
   const map: Record<number, string> = { 0: 'text-amber-600', 1: 'text-green-600', 2: 'text-blue-600', 3: 'text-gray-400', 4: 'text-red-400' }
@@ -65,17 +54,12 @@ async function fetchOrders() {
   loading.value = true
   try {
     const api = useApi()
-    const res: any = await api.get(`/orders?page=${page.value}&size=${size}`)
+    const res: any = await api.get('/orders', { page: page.value, size: size.value })
     if (res.code === 200) {
       orders.value = res.data?.records || []
       total.value = res.data?.total || 0
     }
   } finally { loading.value = false }
-}
-
-function goPage(p: number) {
-  page.value = p
-  fetchOrders()
 }
 
 async function cancelOrder(id: number) {

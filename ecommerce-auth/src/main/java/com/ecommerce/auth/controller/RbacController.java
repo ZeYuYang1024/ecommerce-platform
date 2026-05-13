@@ -1,6 +1,8 @@
 package com.ecommerce.auth.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.auth.entity.*;
 import com.ecommerce.auth.mapper.*;
 import com.ecommerce.common.result.Result;
@@ -34,15 +36,21 @@ public class RbacController {
     // ==================== 角色管理 ====================
 
     @GetMapping("/roles")
-    public Result<List<Role>> listRoles() {
-        List<Role> roles = roleMapper.selectList(
+    public Result<Page<Role>> listRoles(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        IPage<Role> ipage = roleMapper.selectPage(
+                new Page<>(page, size),
                 new LambdaQueryWrapper<Role>().orderByAsc(Role::getCreatedAt));
-        for (Role role : roles) {
+        for (Role role : ipage.getRecords()) {
             List<RolePermission> rps = rolePermissionMapper.selectList(
                     new LambdaQueryWrapper<RolePermission>().eq(RolePermission::getRoleId, role.getId()));
             role.setPermissionIds(rps.stream().map(RolePermission::getPermissionId).collect(Collectors.toList()));
         }
-        return Result.ok(roles);
+        Page<Role> result = new Page<>(page, size);
+        result.setTotal(ipage.getTotal());
+        result.setRecords(ipage.getRecords());
+        return Result.ok(result);
     }
 
     @PostMapping("/roles")
@@ -89,7 +97,28 @@ public class RbacController {
     // ==================== 权限管理 ====================
 
     @GetMapping("/permissions")
-    public Result<List<Permission>> listPermissions() {
+    public Result<?> listPermissions(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        if (page != null && size != null) {
+            IPage<Permission> ipage = permissionMapper.selectPage(
+                    new Page<>(page, size),
+                    new LambdaQueryWrapper<Permission>().orderByAsc(Permission::getSort));
+            Page<Map<String, Object>> result = new Page<>(page, size);
+            result.setTotal(ipage.getTotal());
+            result.setRecords(ipage.getRecords().stream().map(p -> {
+                Map<String, Object> m = new HashMap<>();
+                m.put("id", p.getId());
+                m.put("name", p.getName());
+                m.put("code", p.getCode());
+                m.put("type", p.getType());
+                m.put("path", p.getPath());
+                m.put("parentId", p.getParentId());
+                m.put("sort", p.getSort());
+                return m;
+            }).collect(Collectors.toList()));
+            return Result.ok(result);
+        }
         List<Permission> all = permissionMapper.selectList(
                 new LambdaQueryWrapper<Permission>().orderByAsc(Permission::getSort));
         return Result.ok(buildPermTree(all));

@@ -23,17 +23,20 @@
               </el-tag>
             </template>
           </el-table-column>
+  
         </el-table>
 
-        <div class="pagination-wrap">
-          <el-pagination
-            v-model:current-page="sessionPage"
-            v-model:page-size="size"
-            :total="sessionTotal"
-            layout="total, prev, pager, next"
-            @current-change="fetchSessions"
-          />
-        </div>
+      <div class="pagination-row">
+            <el-pagination
+              v-model:current-page="sessionPage"
+              v-model:page-size="size"
+              :page-sizes="[10, 20, 50, 100]"
+              :total="sessionTotal"
+              layout="total, sizes, prev, pager, next, jumper"
+              @size-change="handleSessionSizeChange"
+              @current-change="fetchSessions"
+            />
+          </div>
       </el-tab-pane>
       <el-tab-pane label="秒杀商品" name="item">
         <el-table :data="items" border stripe>
@@ -45,17 +48,20 @@
           <el-table-column label="库存" width="120">
             <template #default="{row}">{{ row.remainingCount }}/{{ row.stockCount }}</template>
           </el-table-column>
+  
         </el-table>
 
-        <div class="pagination-wrap">
-          <el-pagination
-            v-model:current-page="itemPage"
-            v-model:page-size="size"
-            :total="itemTotal"
-            layout="total, prev, pager, next"
-            @current-change="fetchItems"
-          />
-        </div>
+      <div class="pagination-row">
+            <el-pagination
+              v-model:current-page="itemPage"
+              v-model:page-size="size"
+              :page-sizes="[10, 20, 50, 100]"
+              :total="itemTotal"
+              layout="total, sizes, prev, pager, next, jumper"
+              @size-change="handleItemSizeChange"
+              @current-change="fetchItems"
+            />
+          </div>
       </el-tab-pane>
     </el-tabs>
 
@@ -103,6 +109,16 @@ const showItemDialog = ref(false)
 const sessionForm = ref({name:'',startTime:'',endTime:''})
 const itemForm = ref({sessionId:null,name:'',spuId:1,skuId:1,originalPrice:0,seckillPrice:0,stockCount:100,remainingCount:100,status:1})
 
+function handleSessionSizeChange() {
+  sessionPage.value = 1
+  fetchSessions()
+}
+
+function handleItemSizeChange() {
+  itemPage.value = 1
+  fetchItems()
+}
+
 async function fetchSessions() {
   const { data } = await api.get('/api/v1/admin/seckill/sessions', {
     params: { page: sessionPage.value, size: size.value }
@@ -148,5 +164,5 @@ onMounted(fetch)
 .page-header h2 { margin: 0; font-size: 20px; }
 .text-gray-400 { color: #9ca3af; }
 .text-red-500 { color: #ef4444; }
-.pagination-wrap { margin-top: 20px; display: flex; justify-content: flex-end; }
+.pagination-row { padding: 18px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
 </style>

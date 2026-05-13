@@ -57,20 +57,21 @@
             <span v-else style="font-size:12px;color:var(--text-muted)">--</span>
           </template>
         </el-table-column>
-      </el-table>
-    </el-card>
 
-    <div class="pagination-wrap">
-      <el-pagination
-        v-model:current-page="page"
-        v-model:page-size="size"
-        :total="total"
-        :page-sizes="[10, 20, 50]"
-        layout="total, sizes, prev, pager, next"
-        @size-change="fetchData"
-        @current-change="fetchData"
-      />
-    </div>
+      </el-table>
+
+      <div class="pagination-row">
+          <el-pagination
+            v-model:current-page="page"
+            v-model:page-size="size"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="total"
+            layout="total, sizes, prev, pager, next, jumper"
+            @size-change="handleSizeChange"
+            @current-change="fetchData"
+          />
+        </div>
+    </el-card>
   </div>
 </template>
 
@@ -86,6 +87,11 @@ const page = ref(1)
 const size = ref(10)
 const total = ref(0)
 
+function handleSizeChange() {
+  page.value = 1
+  fetchData()
+}
+
 function statusType(status) {
   const map = { 0: 'warning', 1: 'success', 2: '', 3: 'info', 4: 'danger' }
   return map[status] || 'info'
@@ -99,7 +105,7 @@ async function fetchData() {
     })
     if (data.code === 200) {
       tableData.value = data.data.records || []
-      total.value = data.data.total || 0
+      total.value = Number(data.data.total) || tableData.value.length
     }
   } finally { loading.value = false }
 }
@@ -125,7 +131,7 @@ onMounted(fetchData)
 .toolbar-right { display: flex; gap: 12px; }
 .page-desc { font-size: 13.5px; color: var(--text-muted); margin-top: 4px; }
 .table-card { border-radius: var(--radius-lg); }
-.pagination-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
+.pagination-row { padding: 18px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
 .id-text { font-size: 12px; color: var(--text-muted); }
 .amount-text { font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); }
 .time-text { font-size: 12px; color: var(--text-secondary); }

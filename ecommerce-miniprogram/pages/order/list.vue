@@ -5,6 +5,7 @@
     </view>
 
     <scroll-view v-if="filteredOrders.length" scroll-y class="order-scroll" @scrolltolower="loadMore">
+      <view class="total-info">共 {{ total }} 笔订单</view>
       <view v-for="o in filteredOrders" :key="o.id" class="order-card" @click="goDetail(o.orderNo)">
         <view class="order-header">
           <text class="order-no">{{ o.orderNo }}</text>
@@ -117,4 +118,5 @@ function goDetail(orderNo) { uni.navigateTo({ url: `/pages/order-detail/index?or
 .text-muted { font-size: 24rpx; color: #9CA3AF; }
 .empty { text-align: center; padding: 150rpx 0; color: #9CA3AF; }
 .empty-img { width: 300rpx; height: 200rpx; margin-bottom: 24rpx; }
+.total-info { font-size: 24rpx; color: #9CA3AF; padding: 8rpx 0 16rpx; }
 </style>

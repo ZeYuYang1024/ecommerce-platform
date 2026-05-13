@@ -20,9 +20,7 @@
       <ProductCard v-for="p in products" :key="p.id" :product="p" />
     </div>
 
-    <div v-if="total > size" class="mt-8 flex justify-center gap-2">
-      <button v-for="p in Math.ceil(total / size)" :key="p" @click="page = p; fetchData()" :class="['w-10 h-10 rounded-lg font-medium text-sm transition-colors', page === p ? 'bg-amber-500 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50']">{{ p }}</button>
-    </div>
+    <Pagination v-model:page="page" v-model:size="size" :total="total" @change="fetchData" />
   </div>
 </template>
 

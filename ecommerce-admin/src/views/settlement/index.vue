@@ -47,17 +47,20 @@
             <el-tag :type="row.status === 1 ? 'success' : 'warning'" size="small">{{ row.statusText }}</el-tag>
           </template>
         </el-table-column>
+
       </el-table>
 
-      <div class="pagination-wrap">
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="size"
-          :total="total"
-          layout="total, prev, pager, next"
-          @current-change="fetchData"
-        />
-      </div>
+      <div class="pagination-row">
+              <el-pagination
+                v-model:current-page="page"
+                v-model:page-size="size"
+                :page-sizes="[10, 20, 50, 100]"
+                :total="total"
+                layout="total, sizes, prev, pager, next, jumper"
+                @size-change="handleSizeChange"
+                @current-change="fetchData"
+              />
+            </div>
     </el-card>
   </div>
 </template>
@@ -74,6 +77,11 @@ const page = ref(1)
 const size = ref(10)
 const total = ref(0)
 
+function handleSizeChange() {
+  page.value = 1
+  fetchData()
+}
+
 function netClass(val) {
   if (!val || val === '0.00') return ''
   return val.startsWith('-') ? 'negative' : 'positive'
@@ -87,7 +95,7 @@ async function fetchData() {
     })
     if (data.code === 200) {
       tableData.value = data.data?.records || []
-      total.value = data.data?.total || 0
+      total.value = Number(data.data?.total) || tableData.value.length
     }
   } finally { loading.value = false }
 }
@@ -120,5 +128,5 @@ onMounted(fetchData)
 .net-amount { font-weight: 800; font-size: 16px; font-family: var(--font-mono); }
 .net-amount.positive { color: var(--green); }
 .net-amount.negative { color: var(--red); }
-.pagination-wrap { margin-top: 20px; display: flex; justify-content: flex-end; }
+.pagination-row { padding: 18px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
 </style>

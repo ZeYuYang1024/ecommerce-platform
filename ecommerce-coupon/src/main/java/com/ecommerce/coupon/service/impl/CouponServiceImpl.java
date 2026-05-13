@@ -2,6 +2,7 @@ package com.ecommerce.coupon.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.coupon.common.CouponErrorCode;
@@ -20,6 +21,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -95,19 +97,36 @@ public class CouponServiceImpl implements CouponService {
         List<CouponTemplate> templates = listAllTemplates(1);
         List<CouponVO> vos = new ArrayList<>();
         for (CouponTemplate t : templates) {
-            CouponVO vo = new CouponVO();
-            vo.setId(t.getId());
-            vo.setName(t.getName());
-            vo.setType(t.getType());
-            vo.setMinAmount(t.getMinAmount());
-            vo.setDiscountAmount(t.getDiscountAmount());
-            vo.setDiscountRate(t.getDiscountRate());
-            vo.setStatus(0);
-            vo.setStartTime(t.getStartTime());
-            vo.setEndTime(t.getEndTime());
+            CouponVO vo = toVO(t);
             vos.add(vo);
         }
         return vos;
+    }
+
+    @Override
+    public Page<CouponVO> listAvailableCoupons(int page, int size) {
+        LambdaQueryWrapper<CouponTemplate> q = new LambdaQueryWrapper<CouponTemplate>()
+                .eq(CouponTemplate::getStatus, 1)
+                .orderByDesc(CouponTemplate::getCreatedAt);
+        IPage<CouponTemplate> ipage = templateMapper.selectPage(new Page<>(page, size), q);
+        Page<CouponVO> result = new Page<>(page, size);
+        result.setTotal(ipage.getTotal());
+        result.setRecords(ipage.getRecords().stream().map(this::toVO).collect(Collectors.toList()));
+        return result;
+    }
+
+    private CouponVO toVO(CouponTemplate t) {
+        CouponVO vo = new CouponVO();
+        vo.setId(t.getId());
+        vo.setName(t.getName());
+        vo.setType(t.getType());
+        vo.setMinAmount(t.getMinAmount());
+        vo.setDiscountAmount(t.getDiscountAmount());
+        vo.setDiscountRate(t.getDiscountRate());
+        vo.setStatus(0);
+        vo.setStartTime(t.getStartTime());
+        vo.setEndTime(t.getEndTime());
+        return vo;
     }
 
     @Override
@@ -118,7 +137,25 @@ public class CouponServiceImpl implements CouponService {
         q.orderByDesc(UserCoupon::getCreatedAt);
         List<UserCoupon> ucs = userCouponMapper.selectList(q);
         if (ucs.isEmpty()) return Collections.emptyList();
+        return buildUserCouponVOs(ucs);
+    }
 
+    @Override
+    public Page<CouponVO> listUserCoupons(Long userId, Integer status, int page, int size) {
+        LambdaQueryWrapper<UserCoupon> q = new LambdaQueryWrapper<UserCoupon>()
+                .eq(UserCoupon::getUserId, userId);
+        if (status != null) q.eq(UserCoupon::getStatus, status);
+        q.orderByDesc(UserCoupon::getCreatedAt);
+        IPage<UserCoupon> ipage = userCouponMapper.selectPage(new Page<>(page, size), q);
+        Page<CouponVO> result = new Page<>(page, size);
+        result.setTotal(ipage.getTotal());
+        result.setRecords(ipage.getRecords().isEmpty()
+                ? Collections.emptyList()
+                : buildUserCouponVOs(ipage.getRecords()));
+        return result;
+    }
+
+    private List<CouponVO> buildUserCouponVOs(List<UserCoupon> ucs) {
         Map<Long, CouponTemplate> templateMap = new HashMap<>();
         List<CouponVO> vos = new ArrayList<>();
         for (UserCoupon uc : ucs) {

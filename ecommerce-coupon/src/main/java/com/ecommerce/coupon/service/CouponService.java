@@ -18,9 +18,11 @@ public interface CouponService {
 
     // 可领取优惠券列表（公开）
     List<CouponVO> listAvailableCoupons();
+    Page<CouponVO> listAvailableCoupons(int page, int size);
 
     // 用户券列表
     List<CouponVO> listUserCoupons(Long userId, Integer status);
+    Page<CouponVO> listUserCoupons(Long userId, Integer status, int page, int size);
 
     // 下单校验（内部调用）
     Map<String, Object> verify(Long userCouponId, Long userId, BigDecimal orderAmount);
