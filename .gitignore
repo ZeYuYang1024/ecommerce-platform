@@ -32,3 +32,15 @@ playwright-real.config.ts
 # E2E tests
 ecommerce-admin/tests/e2e/
 ecommerce-web/tests/e2e/
+
+# Design & planning docs (not for deployment)
+docs/specs/
+docs/superpowers/
+
+# SQL (only keep init.sql)
+docs/P0-*.sql
+docs/P1-*.sql
+docs/P2-*.sql
+docs/P3-*.sql
+docs/P4-*.sql
+docs/e2e-test-data.sql
