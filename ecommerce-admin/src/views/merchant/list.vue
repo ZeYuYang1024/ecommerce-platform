@@ -103,6 +103,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 
 const loading = ref(false)
@@ -175,10 +176,28 @@ async function doBan() {
 
 function statusFilterChange() {
   page.value = 1
+  updateQuery()
   fetchData()
 }
 
-onMounted(fetchData)
+const route = useRoute()
+const router = useRouter()
+
+function updateQuery() {
+  const query = {}
+  if (page.value !== 1) query.page = page.value
+  if (size.value !== 10) query.size = size.value
+  if (statusFilter.value !== null) query.status = statusFilter.value
+  router.replace({ query })
+}
+
+onMounted(() => {
+  const statusFromQuery = route.query.status
+  if (statusFromQuery !== undefined && statusFromQuery !== '') {
+    statusFilter.value = Number(statusFromQuery)
+  }
+  fetchData()
+})
 </script>
 
 <style scoped>

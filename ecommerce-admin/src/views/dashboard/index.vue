@@ -26,7 +26,7 @@
         </div>
         <div class="stat-spark orange"></div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card" @click="$router.push('/products')">
         <div class="stat-icon-box" style="background: rgba(5, 150, 105, 0.10); color: var(--green);">
           <el-icon :size="24"><Goods /></el-icon>
         </div>
@@ -36,7 +36,7 @@
         </div>
         <div class="stat-spark green"></div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card" @click="$router.push('/users')">
         <div class="stat-icon-box" style="background: rgba(59, 130, 246, 0.10); color: var(--blue);">
           <el-icon :size="24"><User /></el-icon>
         </div>
@@ -56,7 +56,7 @@
           <p>审核商家入驻 · 管理平台类目</p>
         </div>
         <div class="quick-links">
-          <el-button type="primary" size="large" @click="$router.push('/merchants')">
+          <el-button type="primary" size="large" @click="$router.push('/merchants?status=0')">
             <el-icon style="margin-right:6px"><Shop /></el-icon> 商家审核
           </el-button>
           <el-button size="large" @click="$router.push('/categories')">
