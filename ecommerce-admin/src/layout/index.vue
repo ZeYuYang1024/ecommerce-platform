@@ -62,6 +62,7 @@
           <span v-if="$route.path === '/inventory'" class="active-dot"></span>
         </router-link>
 
+        <template v-if="isSuperAdmin">
         <div class="nav-section">营销工具</div>
 
         <router-link to="/coupons" class="nav-item" :class="{ active: $route.path === '/coupons' }">
@@ -74,6 +75,7 @@
           <span>秒杀管理</span>
           <span v-if="$route.path === '/seckill'" class="active-dot"></span>
         </router-link>
+        </template>
 
         <div class="nav-section">交易管理</div>
 
