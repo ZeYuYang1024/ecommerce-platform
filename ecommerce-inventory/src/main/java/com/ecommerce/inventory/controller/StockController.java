@@ -1,5 +1,6 @@
 package com.ecommerce.inventory.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.inventory.dto.request.StockOperateRequest;
 import com.ecommerce.inventory.dto.request.StockSetRequest;
@@ -32,6 +33,14 @@ public class StockController {
                 .map(stockService::toVO)
                 .collect(Collectors.toList());
         return Result.ok(vos);
+    }
+
+    @GetMapping("/admin/list")
+    public Result<Page<StockVO>> list(@RequestParam(name = "skuId", required = false) Long skuId,
+                                      @RequestParam(name = "stockStatus", required = false) Integer stockStatus,
+                                      @RequestParam(name = "page", defaultValue = "1") int page,
+                                      @RequestParam(name = "size", defaultValue = "10") int size) {
+        return Result.ok(stockService.list(skuId, stockStatus, page, size));
     }
 
     @PostMapping("/deduct")

@@ -2,8 +2,11 @@ package com.ecommerce.inventory.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.util.SnowflakeUtils;
+import com.ecommerce.inventory.client.ProductClient;
 import com.ecommerce.inventory.common.InventoryErrorCode;
 import com.ecommerce.inventory.dto.response.StockVO;
 import com.ecommerce.inventory.entity.Stock;
@@ -13,14 +16,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class StockServiceImpl implements StockService {
 
     private final StockMapper stockMapper;
+    private final ProductClient productClient;
 
-    public StockServiceImpl(StockMapper stockMapper) {
+    public StockServiceImpl(StockMapper stockMapper, ProductClient productClient) {
         this.stockMapper = stockMapper;
+        this.productClient = productClient;
     }
 
     @Override
@@ -40,6 +48,46 @@ public class StockServiceImpl implements StockService {
         }
         return stockMapper.selectList(
                 new LambdaQueryWrapper<Stock>().in(Stock::getSkuId, skuIds));
+    }
+
+    @Override
+    public Page<StockVO> list(Long skuId, Integer stockStatus, int page, int size) {
+        LambdaQueryWrapper<Stock> wrapper = new LambdaQueryWrapper<>();
+        if (skuId != null) wrapper.eq(Stock::getSkuId, skuId);
+        if (stockStatus != null) {
+            if (stockStatus == 0) wrapper.eq(Stock::getAvailableStock, 0);
+            else if (stockStatus == 1) wrapper.lt(Stock::getAvailableStock, 10).gt(Stock::getAvailableStock, 0);
+            else if (stockStatus == 2) wrapper.ge(Stock::getAvailableStock, 10);
+        }
+        wrapper.orderByDesc(Stock::getUpdatedAt);
+
+        Page<Stock> result = stockMapper.selectPage(new Page<>(page, size), wrapper);
+        List<StockVO> vos = result.getRecords().stream().map(this::toVO).collect(Collectors.toList());
+
+        if (!vos.isEmpty()) {
+            List<Long> skuIds = vos.stream().map(StockVO::getSkuId).distinct().collect(Collectors.toList());
+            try {
+                List<SkuBatchVO> skuInfos = productClient.batchQuerySkus(skuIds).getData();
+                if (skuInfos != null && !skuInfos.isEmpty()) {
+                    Map<Long, SkuBatchVO> skuMap = skuInfos.stream()
+                            .collect(Collectors.toMap(SkuBatchVO::getSkuId, Function.identity(), (a, b) -> a));
+                    for (StockVO vo : vos) {
+                        SkuBatchVO info = skuMap.get(vo.getSkuId());
+                        if (info != null) {
+                            vo.setSkuName(info.getSkuName());
+                            vo.setSpuName(info.getSpuName());
+                            vo.setPrice(info.getPrice());
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                // Feign call failed — return stock data without SKU names
+            }
+        }
+
+        Page<StockVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
+        voPage.setRecords(vos);
+        return voPage;
     }
 
     private static final int MAX_RETRIES = 3;

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.inventory.common.InventoryErrorCode;
 import com.ecommerce.inventory.dto.response.StockVO;
+import com.ecommerce.inventory.client.ProductClient;
 import com.ecommerce.inventory.entity.Stock;
 import com.ecommerce.inventory.mapper.StockMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +27,7 @@ import static org.mockito.Mockito.*;
 class StockServiceImplTest {
 
     @Mock private StockMapper stockMapper;
+    @Mock private ProductClient productClient;
     @InjectMocks private StockServiceImpl stockService;
 
     private Stock stock;

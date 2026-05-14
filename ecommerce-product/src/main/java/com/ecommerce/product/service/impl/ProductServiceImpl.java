@@ -134,6 +134,12 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    public List<Spu> getSpusByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        return spuMapper.selectBatchIds(ids);
+    }
+
+    @Override
     public Spu getSpuById(Long id) {
         Spu spu = spuMapper.selectById(id);
         if (spu == null) throw new BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND);
@@ -277,6 +283,12 @@ public class ProductServiceImpl implements ProductService {
     public List<Sku> getSkusBySpuId(Long spuId) {
         return skuMapper.selectList(
                 new LambdaQueryWrapper<Sku>().eq(Sku::getSpuId, spuId));
+    }
+
+    @Override
+    public List<Sku> getSkusByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        return skuMapper.selectBatchIds(ids);
     }
 
     @Override

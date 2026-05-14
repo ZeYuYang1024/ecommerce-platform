@@ -22,6 +22,7 @@ public interface ProductService {
     Page<Spu> spuPage(int page, int size, Long categoryId, Integer status, String keyword);
     Page<Spu> spuPageByMerchant(int page, int size, Long categoryId, Integer status, String keyword, Long merchantId);
     Spu getSpuById(Long id);
+    List<Spu> getSpusByIds(List<Long> ids);
     ProductDetailVO getProductDetail(Long id);
     SpuVO toSpuVO(Spu spu);
     Spu createProduct(CreateProductRequest request);
@@ -31,6 +32,7 @@ public interface ProductService {
 
     // SKU
     List<Sku> getSkusBySpuId(Long spuId);
+    List<Sku> getSkusByIds(List<Long> ids);
     long countAll();
     List<Long> getSpuIdsByMerchant(Long merchantId);
 }

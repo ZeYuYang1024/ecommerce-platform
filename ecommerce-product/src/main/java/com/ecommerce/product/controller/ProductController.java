@@ -6,15 +6,18 @@ import com.ecommerce.product.dto.request.CreateProductRequest;
 import com.ecommerce.product.dto.request.UpdateStatusRequest;
 import com.ecommerce.product.dto.response.ProductDetailVO;
 import com.ecommerce.common.dto.ProductStatsVO;
+import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.product.dto.response.SpuVO;
+import com.ecommerce.product.entity.Sku;
 import com.ecommerce.product.entity.Spu;
 import com.ecommerce.product.service.ProductService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
-
+import java.util.ArrayList;
 import java.util.List;
-
+import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @RestController
@@ -95,6 +98,29 @@ public class ProductController {
     @GetMapping("/internal/spu-ids")
     public Result<List<Long>> getSpuIdsByMerchant(@RequestParam("merchantId") Long merchantId) {
         return Result.ok(productService.getSpuIdsByMerchant(merchantId));
+    }
+
+    @GetMapping("/products/skus/batch")
+    public Result<List<SkuBatchVO>> batchQuerySkus(@RequestParam("ids") List<Long> ids) {
+        List<Sku> skus = productService.getSkusByIds(ids);
+        if (skus.isEmpty()) return Result.ok(List.of());
+
+        List<Long> spuIds = skus.stream().map(Sku::getSpuId).distinct().collect(Collectors.toList());
+        Map<Long, Spu> spuMap = spuIds.isEmpty() ? Map.of() :
+                productService.getSpusByIds(spuIds).stream().collect(Collectors.toMap(Spu::getId, Function.identity()));
+
+        List<SkuBatchVO> result = new ArrayList<>();
+        for (Sku sku : skus) {
+            SkuBatchVO vo = new SkuBatchVO();
+            vo.setSkuId(sku.getId());
+            vo.setSkuName(sku.getName());
+            vo.setSpuId(sku.getSpuId());
+            vo.setPrice(sku.getPrice());
+            Spu spu = spuMap.get(sku.getSpuId());
+            if (spu != null) vo.setSpuName(spu.getName());
+            result.add(vo);
+        }
+        return Result.ok(result);
     }
 
     @GetMapping("/admin/products/stats")
