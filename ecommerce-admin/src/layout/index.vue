@@ -62,7 +62,7 @@
           <span v-if="$route.path === '/inventory'" class="active-dot"></span>
         </router-link>
 
-        <template v-if="isSuperAdmin">
+        <template v-if="isOps">
         <div class="nav-section">营销工具</div>
 
         <router-link to="/coupons" class="nav-item" :class="{ active: $route.path === '/coupons' }">
