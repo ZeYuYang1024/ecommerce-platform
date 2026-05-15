@@ -90,6 +90,20 @@ services:
     volumes:
       - es-data:/usr/share/elasticsearch/data
 
+  milvus:
+    image: milvusdb/milvus:v2.4.0
+    container_name: ecommerce-milvus
+    restart: unless-stopped
+    command: ["milvus", "run", "standalone"]
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    environment:
+      ETCD_USE_EMBED: "true"
+      COMMON_STORAGETYPE: local
+    volumes:
+      - milvus-data:/var/lib/milvus
+
 volumes:
   mysql-data:
   redis-data:
@@ -98,3 +112,4 @@ volumes:
   rocketmq-broker-data:
   minio-data:
   es-data:
+  milvus-data:

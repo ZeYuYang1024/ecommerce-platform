@@ -23,6 +23,10 @@
 | Hutool | 5.8.44 | 工具库 |
 | Lombok | 1.18.46 | 代码简化 |
 | Spring Boot Admin | 4.0.4 | 集中监控 |
+| LangChain4j | 1.14.1 | AI 编排框架 (RAG + Agent) |
+| Milvus | 2.4.0 | 向量数据库 (知识库检索) |
+| Ollama | latest (bge-m3) | 本地 Embedding 模型 (1024 维) |
+| DeepSeek | deepseek-chat (V3) | LLM 对话模型 |
 
 ### 前端 (PC Web)
 
@@ -80,6 +84,7 @@ ecommerce-platform/
 ├── ecommerce-coupon/          # 优惠券 (:8088)
 ├── ecommerce-notification/    # 通知服务 (:8089)
 ├── ecommerce-file/            # 文件服务 (:8090)
+├── ecommerce-knowledge/       # AI 知识库 (:8095)  SB 3.5.13
 ├── ecommerce-search/          # 搜索服务 (:8092)
 ├── ecommerce-seckill/         # 秒杀服务 (:8093)
 ├── ecommerce-web/             # PC 前端 (Nuxt 3)  :3000
@@ -127,12 +132,14 @@ graph TB
             SEARCH["搜索服务<br/>:8092<br/>Elasticsearch"]
             NOTIFY["通知服务<br/>:8089<br/>短信/邮件/站内信"]
             FILE["文件服务<br/>:8090<br/>MinIO 存储"]
+            KNOWLEDGE["AI知识库<br/>:8095<br/>RAG + Agent"]
             MONITOR["监控中心<br/>:8094<br/>Spring Boot Admin"]
         end
     end
 
     subgraph Infra["基础设施层 (Docker Compose)"]
-        MYSQL["MySQL 8.0<br/>:3306<br/>11个业务数据库"]
+        MYSQL["MySQL 8.0<br/>:3306<br/>12个业务数据库"]
+        MILVUS["Milvus 2.4.0<br/>:19530<br/>向量数据库"]
         REDIS["Redis 7.2<br/>:6379<br/>购物车/秒杀缓存"]
         NACOS["Nacos 2.4.0<br/>:8848<br/>服务注册与发现"]
         MQ["RocketMQ 5.2.0<br/>:9876<br/>异步消息"]
@@ -157,6 +164,7 @@ graph TB
     GW --> SEARCH
     GW --> NOTIFY
     GW --> FILE
+    GW --> KNOWLEDGE
 
     AUTH -.->|OpenFeign| MERCHANT
     AUTH -.->|OpenFeign| PRODUCT
@@ -205,6 +213,9 @@ graph TB
     NOTIFY --> NACOS
     FILE --> NACOS
 
+    KNOWLEDGE --> MYSQL
+    KNOWLEDGE --> MILVUS
+    KNOWLEDGE --> NACOS
     MONITOR -.->|监控所有服务| NACOS
 
     classDef client fill:#4A90D9,stroke:#2E6BA5,color:#fff,stroke-width:2px
@@ -426,6 +437,105 @@ sequenceDiagram
     MQ->>NOTIFY: 消费 order-cancelled<br/>发送取消通知
 ```
 
+### 6. AI 知识库 RAG 问答流程
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as 用户
+    actor Admin as 管理员
+    participant GW as API Gateway :8080
+    participant KB as 知识库服务 :8095
+    participant MySQL as MySQL (ecommerce_knowledge)
+    participant Ollama as Ollama (BGE-M3)
+    participant Milvus as Milvus :19530
+    participant DS as DeepSeek API
+
+    Note over Admin,MySQL: === 文档录入 (Admin) ===
+
+    Admin->>GW: POST /api/v1/admin/knowledge/documents<br/>{title, content, categoryId}
+    GW->>GW: JWT 鉴权 (role=admin/merchant)
+    GW->>KB: 转发请求
+    KB->>MySQL: INSERT kb_document → 生成 docId
+
+    Note over KB,Milvus: Ingestion 管道
+
+    KB->>KB: DocumentSplitter.recursive(500字/块)<br/>将长文档拆分为多个文本块
+    loop 每个文本块
+        KB->>Ollama: POST /api/embeddings (bge-m3)<br/>将文本块转为 1024 维向量
+        Ollama-->>KB: float[1024]
+        KB->>Milvus: insert(embedding, textChunk, metadata)<br/>存储向量 + 原文片段 + 元数据
+    end
+    KB->>MySQL: UPDATE kb_document SET chunkCount, milvusIds
+
+    KB-->>GW: Result<Document>
+    GW-->>Admin: 创建成功
+
+    Note over User,DS: === 智能问答 (C端) ===
+
+    User->>GW: POST /api/v1/knowledge/chat<br/>{question: "如何退换货？"}
+    GW->>GW: JWT 鉴权
+    GW->>KB: 转发请求
+
+    Note over KB,Milvus: RAG 检索
+    KB->>Ollama: Embedding(question) → float[1024]
+    KB->>Milvus: search(vector, topK=5, minScore=0.5)<br/>HNSW 近似近邻检索
+    Milvus-->>KB: [textChunk1, textChunk2, ...] (按相似度排序)
+
+    Note over KB,DS: 增强生成
+    KB->>KB: 拼接 System Prompt + 检索到的知识上下文 + 用户问题
+    KB->>DS: Chat(完整上下文 prompt)
+    DS-->>KB: AI 生成回答
+    KB->>KB: 校验：知识库有 → 整理回复 / 知识库无 → 引导转人工
+
+    KB-->>GW: Result<ChatResponse {answer, sessionId}>
+    GW-->>User: Markdown 格式回答 (前端 marked.js 渲染)
+```
+
+**知识库服务技术栈 (独立于主项目)：**
+- Spring Boot 3.5.13 + Spring Cloud 2025.0.2（与父 POM SB 4.0 隔离）
+- LangChain4j 1.14.1 — AI 编排（RAG + @AiService Agent）
+- Milvus 2.4.0 — 向量存储，HNSW 索引，毫秒级检索
+- Ollama + BGE-M3 — 本地 Embedding，1024 维，中文优化，零 API 费用
+- DeepSeek Chat (V3) — LLM 对话，兼容 OpenAI 协议
+- MyBatis-Plus 3.5.16 — 文档元数据管理
+
+**调用链路：**
+
+| 调用方 | 方式 | 被调用方 | 场景 |
+|--------|------|---------|------|
+| 管理员浏览器 | HTTP → Gateway → Knowledge | Knowledge Controller | 文档 CRUD |
+| 用户浏览器 | HTTP → Nuxt Proxy → Gateway → Knowledge | Knowledge ChatController | 智能问答 |
+| Knowledge Service | HTTP Client | Ollama (localhost:11434) | 文本向量化 (BGE-M3) |
+| Knowledge Service | gRPC | Milvus (localhost:19530) | 向量存储 & HNSW 检索 |
+| Knowledge Service | HTTPS | DeepSeek API | LLM 对话生成 |
+| Knowledge Service | JDBC | MySQL (ecommerce_knowledge) | 文档/分类/会话持久化 |
+
+**Admin 管理 API：**
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/admin/knowledge/documents` | 文档分页列表（支持分类/状态筛选） |
+| POST | `/api/v1/admin/knowledge/documents` | 创建文档 → 自动向量化入库 |
+| PUT | `/api/v1/admin/knowledge/documents/{id}` | 更新文档 → 自动重新向量化 |
+| DELETE | `/api/v1/admin/knowledge/documents/{id}` | 删除文档 → 同步清理向量 |
+| POST | `/api/v1/admin/knowledge/documents/{id}/reindex` | 手动重新向量化 |
+| GET | `/api/v1/admin/knowledge/categories` | 分类列表 |
+| POST | `/api/v1/admin/knowledge/categories` | 创建分类 |
+
+**C 端 API：**
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v1/knowledge/chat` | 智能问答 `{question, sessionId?}` |
+
+**前端页面：**
+
+| 页面 | 路径 | 技术栈 |
+|------|------|--------|
+| Admin 知识库管理 | `/knowledge` | Vue 3 + Element Plus (Warm Gold 主题) |
+| PC 智能客服 | `/knowledge` | Nuxt 3 + Tailwind CSS + marked.js (MD 渲染) |
+
 ## 中间件端口
 
 | 中间件 | 端口 | 账号 / 密码 |
@@ -437,6 +547,8 @@ sequenceDiagram
 | RocketMQ Broker | 10911 (remoting) / 10909 (VIP) | - |
 | MinIO | 9000 (API) / 9001 (Console) | minio / minioadmin |
 | Elasticsearch | 9200 | - |
+| Milvus | 19530 (gRPC) / 9091 (metrics) | - |
+| Ollama | 11434 | - |
 
 ## 快速启动
 
@@ -488,7 +600,30 @@ cd ecommerce-product && mvn spring-boot:run  # :8082
 mvn compile -q
 ```
 
-建议启动顺序：`common → auth → user → product → inventory → order → payment → gateway → 其他`
+建议启动顺序：`common → auth → user → product → inventory → order → payment → gateway → knowledge → 其他`
+
+**知识库服务 (ecommerce-knowledge) 额外依赖：**
+```bash
+# 1. 启动 Milvus 向量数据库
+docker compose up -d milvus
+
+# 2. 启动 Ollama 并下载 BGE-M3 模型
+ollama pull bge-m3
+
+# 3. 初始化知识库数据库
+docker exec -i ecommerce-mysql mysql -uroot -proot < ecommerce-knowledge/sql/init.sql
+
+# 4. 设置 API Key 环境变量
+export DEEPSEEK_API_KEY=sk-xxx
+
+# 5. 编译启动（独立 POM，不参与父项目编译）
+cd ecommerce-knowledge
+mvn compile
+mvn spring-boot:run   # :8095
+
+# 6. (可选) 批量导入种子数据
+python ecommerce-knowledge/sql/seed_data.py
+```
 
 ### 4. 启动前端
 
@@ -517,6 +652,8 @@ npm run dev          # http://localhost:5173
 | API 网关 | http://localhost:8080 |
 | Nacos 控制台 | http://localhost:8848/nacos |
 | MinIO 控制台 | http://localhost:9001 |
+| **知识库管理后台** | http://localhost:5173/knowledge |
+| **PC 智能客服** | http://localhost:3000/knowledge |
 | **Spring Boot Admin** | http://localhost:8094/admin |
 | **Druid SQL 监控** | http://localhost:{服务端口}/druid/sql.html |
 | Druid 登录 | admin / admin |
@@ -535,7 +672,7 @@ npm run dev          # http://localhost:5173
 
 ### 10 个业务数据库
 
-每个数据服务独享一个数据库：`ecommerce_auth`, `ecommerce_user`, `ecommerce_product`, `ecommerce_inventory`, `ecommerce_merchant`, `ecommerce_order`, `ecommerce_payment`, `ecommerce_coupon`, `ecommerce_notification`, `ecommerce_seckill`。
+每个数据服务独享一个数据库：`ecommerce_auth`, `ecommerce_user`, `ecommerce_product`, `ecommerce_inventory`, `ecommerce_merchant`, `ecommerce_order`, `ecommerce_payment`, `ecommerce_coupon`, `ecommerce_notification`, `ecommerce_seckill`, `ecommerce_knowledge`。
 
 ### 执行初始化
 

@@ -32,6 +32,7 @@ const routes = [
       { path: 'categories', name: 'Categories', component: () => import('@/views/category/index.vue'), meta: { title: '类目管理' } },
       { path: 'brands', name: 'Brands', component: () => import('@/views/brand/index.vue'), meta: { title: '品牌管理' } },
       { path: 'reviews', name: 'Reviews', component: () => import('@/views/review/index.vue'), meta: { title: '评论管理' } },
+      { path: 'knowledge', name: 'Knowledge', component: () => import('@/views/knowledge/documents.vue'), meta: { title: '知识库' } },
       { path: 'inventory', name: 'Inventory', component: () => import('@/views/inventory/index.vue'), meta: { title: '库存管理' } },
       { path: 'coupons', name: 'Coupons', component: () => import('@/views/coupon/list.vue'), meta: { title: '优惠券管理' } },
       { path: 'seckill', name: 'Seckill', component: () => import('@/views/seckill/list.vue'), meta: { title: '秒杀管理' } },

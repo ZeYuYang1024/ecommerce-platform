@@ -72,6 +72,11 @@
             <span>评论管理</span>
             <span v-if="$route.path === '/reviews'" class="active-dot"></span>
           </router-link>
+          <router-link to="/knowledge" class="nav-item" :class="{ active: $route.path === '/knowledge' }">
+            <el-icon><Notebook /></el-icon>
+            <span>知识库</span>
+            <span v-if="$route.path === '/knowledge'" class="active-dot"></span>
+          </router-link>
           <router-link to="/inventory" class="nav-item" :class="{ active: $route.path === '/inventory' }">
             <el-icon><Box /></el-icon>
             <span>库存管理</span>

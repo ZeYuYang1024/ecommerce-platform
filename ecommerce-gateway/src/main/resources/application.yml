@@ -64,6 +64,10 @@ spring:
               uri: lb://ecommerce-seckill
               predicates:
                 - Path=/api/v1/seckill/**,/api/v1/admin/seckill/**
+            - id: knowledge
+              uri: lb://ecommerce-knowledge
+              predicates:
+                - Path=/api/v1/knowledge/**,/api/v1/admin/knowledge/**
             - id: monitor
               uri: lb://ecommerce-monitor
               predicates:

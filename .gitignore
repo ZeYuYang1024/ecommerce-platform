@@ -21,9 +21,9 @@ Thumbs.db
 # Env
 .env
 .env.local
-task_plan.md
-findings.md
-progress.md
+task_plan*.md
+findings*.md
+progress*.md
 test-results/
 playwright-real.config.ts
 .nuxt/
@@ -36,6 +36,13 @@ ecommerce-web/tests/e2e/
 # Design & planning docs (not for deployment)
 docs/specs/
 docs/superpowers/
+
+# Local dev config (contains secrets)
+**/application-local.yml
+
+# Seed data scripts (dev only)
+**/seed_data.sh
+**/seed_data.py
 
 # SQL (only keep init.sql)
 docs/P0-*.sql
