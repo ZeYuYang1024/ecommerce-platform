@@ -93,6 +93,339 @@ ecommerce-platform/
 └── docker-compose.yml         # 中间件 Docker 编排
 ```
 
+## 系统架构图
+
+```mermaid
+graph TB
+    subgraph Clients["客户端"]
+        Web["🖥 PC Web<br/>(Nuxt 3 :3000)"]
+        Admin["🔧 管理后台<br/>(Vue 3 + Element Plus :5173)"]
+        MP["📱 微信小程序<br/>(uni-app)"]
+    end
+
+    subgraph Gateway["API 网关层"]
+        GW["Spring Cloud Gateway :8080<br/>AuthFilter (JWT 鉴权 / RBAC)"]
+    end
+
+    subgraph Services["微服务层 (Spring Boot 4.0 + Spring Cloud)"]
+        direction TB
+        subgraph Core["核心业务"]
+            AUTH["认证服务<br/>:8091<br/>登录/注册/RBAC"]
+            USER["用户服务<br/>:8081<br/>地址管理"]
+            PRODUCT["商品服务<br/>:8082<br/>SPU/SKU/分类/品牌"]
+            INVENTORY["库存服务<br/>:8083<br/>库存扣减/释放"]
+            ORDER["订单服务<br/>:8084<br/>下单/取消/发货"]
+            PAYMENT["支付服务<br/>:8085<br/>支付/退款/对账/结算"]
+        end
+        subgraph Biz["商业支撑"]
+            CART["购物车<br/>:8086<br/>Redis 存储"]
+            MERCHANT["商家服务<br/>:8087<br/>入驻/审核"]
+            COUPON["优惠券<br/>:8088<br/>模板/领取/核销"]
+            SECKILL["秒杀服务<br/>:8093<br/>Redis Lua 原子扣减"]
+        end
+        subgraph Support["基础支撑"]
+            SEARCH["搜索服务<br/>:8092<br/>Elasticsearch"]
+            NOTIFY["通知服务<br/>:8089<br/>短信/邮件/站内信"]
+            FILE["文件服务<br/>:8090<br/>MinIO 存储"]
+            MONITOR["监控中心<br/>:8094<br/>Spring Boot Admin"]
+        end
+    end
+
+    subgraph Infra["基础设施层 (Docker Compose)"]
+        MYSQL["MySQL 8.0<br/>:3306<br/>11个业务数据库"]
+        REDIS["Redis 7.2<br/>:6379<br/>购物车/秒杀缓存"]
+        NACOS["Nacos 2.4.0<br/>:8848<br/>服务注册与发现"]
+        MQ["RocketMQ 5.2.0<br/>:9876<br/>异步消息"]
+        ES["Elasticsearch 7.17<br/>:9200<br/>商品搜索"]
+        MINIO["MinIO<br/>:9000<br/>对象存储"]
+    end
+
+    Web --> GW
+    Admin --> GW
+    MP --> GW
+
+    GW --> AUTH
+    GW --> USER
+    GW --> PRODUCT
+    GW --> INVENTORY
+    GW --> ORDER
+    GW --> PAYMENT
+    GW --> CART
+    GW --> MERCHANT
+    GW --> COUPON
+    GW --> SECKILL
+    GW --> SEARCH
+    GW --> NOTIFY
+    GW --> FILE
+
+    AUTH -.->|OpenFeign| MERCHANT
+    AUTH -.->|OpenFeign| PRODUCT
+    ORDER -.->|OpenFeign| CART
+    ORDER -.->|OpenFeign| INVENTORY
+    ORDER -.->|OpenFeign| PRODUCT
+    PRODUCT -.->|OpenFeign| INVENTORY
+    MERCHANT -.->|OpenFeign| AUTH
+
+    ORDER -->|RocketMQ| MQ
+    PAYMENT -->|RocketMQ| MQ
+    PRODUCT -->|RocketMQ| MQ
+    MERCHANT -->|RocketMQ| MQ
+    MQ -->|消费| INVENTORY
+    MQ -->|消费| NOTIFY
+    MQ -->|消费| SEARCH
+    MQ -->|消费| AUTH
+
+    AUTH --> MYSQL
+    USER --> MYSQL
+    PRODUCT --> MYSQL
+    INVENTORY --> MYSQL
+    ORDER --> MYSQL
+    PAYMENT --> MYSQL
+    MERCHANT --> MYSQL
+    COUPON --> MYSQL
+    NOTIFY --> MYSQL
+    SECKILL --> MYSQL
+
+    CART --> REDIS
+    SECKILL --> REDIS
+    SEARCH --> ES
+    FILE --> MINIO
+
+    AUTH --> NACOS
+    USER --> NACOS
+    PRODUCT --> NACOS
+    INVENTORY --> NACOS
+    ORDER --> NACOS
+    PAYMENT --> NACOS
+    CART --> NACOS
+    MERCHANT --> NACOS
+    COUPON --> NACOS
+    SECKILL --> NACOS
+    SEARCH --> NACOS
+    NOTIFY --> NACOS
+    FILE --> NACOS
+
+    MONITOR -.->|监控所有服务| NACOS
+
+    classDef client fill:#4A90D9,stroke:#2E6BA5,color:#fff,stroke-width:2px
+    classDef gateway fill:#F5A623,stroke:#D4891C,color:#fff,stroke-width:2px
+    classDef core fill:#7ED321,stroke:#5B9B18,color:#fff,stroke-width:2px
+    classDef biz fill:#50E3C2,stroke:#3BB29A,color:#fff,stroke-width:2px
+    classDef support fill:#B8E986,stroke:#8BBF5E,color:#333,stroke-width:2px
+    classDef infra fill:#9B9B9B,stroke:#6D6D6D,color:#fff,stroke-width:2px
+
+    class Web,Admin,MP client
+    class GW gateway
+    class AUTH,USER,PRODUCT,INVENTORY,ORDER,PAYMENT core
+    class CART,MERCHANT,COUPON,SECKILL biz
+    class SEARCH,NOTIFY,FILE,MONITOR support
+    class MYSQL,REDIS,NACOS,MQ,ES,MINIO infra
+```
+
+### 服务间通信方式
+
+| 通信方式 | 调用方 → 被调用方 | 场景 |
+|---------|-----------------|------|
+| **OpenFeign (同步)** | Order → Cart | 获取购物车选中商品 |
+| **OpenFeign (同步)** | Order → Inventory | 库存扣减/释放 |
+| **OpenFeign (同步)** | Order → Product | 查询 SKU 信息 |
+| **OpenFeign (同步)** | Product → Inventory | 商品创建时初始化库存 |
+| **OpenFeign (同步)** | Auth → Merchant | Dashboard 统计商家数 |
+| **OpenFeign (同步)** | Auth → Product | Dashboard 统计商品数 |
+| **OpenFeign (同步)** | Merchant → Auth | 审核通过后创建管理账号 |
+| **RocketMQ (异步)** | Order → Inventory | `order-created` 库存锁定 |
+| **RocketMQ (异步)** | Order → Inventory | `order-cancelled` 库存释放 |
+| **RocketMQ (异步)** | Payment → Order | `order-paid` 订单状态更新 |
+| **RocketMQ (异步)** | Payment → Notification | `order-paid` 支付成功通知 |
+| **RocketMQ (异步)** | Product → Search | `product-created` ES 索引同步 |
+| **RocketMQ (异步)** | Merchant → Auth | `merchant-approved` 创建商家管理账号 |
+| **RocketMQ (异步)** | Merchant → Notification | `merchant-approved` 审核通过通知 |
+
+## 核心业务时序图
+
+### 1. 用户下单流程
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as 用户 (PC/小程序)
+    participant GW as API Gateway<br/>:8080
+    participant ORDER as 订单服务<br/>:8084
+    participant CART as 购物车<br/>:8086
+    participant PRODUCT as 商品服务<br/>:8082
+    participant INV as 库存服务<br/>:8083
+    participant MQ as RocketMQ
+    participant NOTIFY as 通知服务<br/>:8089
+
+    User->>GW: POST /api/v1/orders<br/>{skuIds, addressId, couponId}
+    GW->>GW: AuthFilter: 校验 JWT<br/>注入 X-User-Id 头
+    GW->>ORDER: 转发请求
+
+    ORDER->>CART: [Feign] GET /api/v1/cart<br/>获取选中商品
+    CART-->>ORDER: 购物车商品列表
+
+    ORDER->>PRODUCT: [Feign] GET /products/skus/batch<br/>批量查询 SKU 信息
+    PRODUCT-->>ORDER: SKU 详情 (价格/名称/图片)
+
+    ORDER->>INV: [Feign] POST /api/v1/inventory/deduct<br/>{skuId, quantity}
+    INV->>INV: 乐观锁扣减库存<br/>(version 字段 CAS)
+    INV-->>ORDER: 扣减结果
+
+    ORDER->>ORDER: 生成订单号 (雪花算法)<br/>创建订单 + 订单项<br/>写入 MySQL
+
+    ORDER->>CART: [Feign] DELETE /api/v1/cart<br/>清除已下单商品
+
+    ORDER-->>GW: Result<Order>
+    GW-->>User: 订单创建成功
+
+    ORDER->>MQ: 发送 order-created<br/>{orderNo, skuId, qty}
+
+    Note over MQ,NOTIFY: 异步消息消费
+    MQ->>INV: 消费 order-created<br/>(二次确认库存锁定)
+```
+
+### 2. 支付流程
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as 用户
+    participant GW as API Gateway
+    participant PAY as 支付服务<br/>:8085
+    participant MQ as RocketMQ
+    participant ORDER as 订单服务<br/>:8084
+    participant NOTIFY as 通知服务<br/>:8089
+
+    User->>GW: POST /api/v1/payment/pay<br/>{orderNo, payMethod}
+    GW->>GW: JWT 鉴权
+    GW->>PAY: 转发请求
+
+    PAY->>PAY: 生成支付单号<br/>记录支付信息<br/>模拟支付成功
+
+    PAY->>MQ: 发送 order-paid<br/>{orderNo, paymentNo, amount}
+
+    PAY-->>GW: Result<Payment>
+    GW-->>User: 支付成功
+
+    Note over MQ,NOTIFY: 异步消息消费
+
+    MQ->>ORDER: 消费 order-paid<br/>更新订单状态 → PAID
+    ORDER->>ORDER: UPDATE order SET status='paid'
+
+    MQ->>NOTIFY: 消费 order-paid<br/>发送支付成功通知
+    NOTIFY->>NOTIFY: 记录通知日志<br/>(短信/邮件/站内信)
+```
+
+### 3. 商家入驻审核流程
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Merchant as 商家
+    actor Admin as 管理员
+    participant GW as API Gateway
+    participant MERCH as 商家服务<br/>:8087
+    participant MQ as RocketMQ
+    participant AUTH as 认证服务<br/>:8091
+    participant NOTIFY as 通知服务<br/>:8089
+
+    Merchant->>GW: POST /api/v1/merchants/register<br/>{name, contactInfo, license}
+    Note over GW: 白名单路由，无需鉴权
+    GW->>MERCH: 转发注册请求
+    MERCH->>MERCH: 创建商家记录<br/>status = PENDING
+    MERCH-->>GW: 注册成功
+    GW-->>Merchant: 等待审核
+
+    Admin->>GW: PUT /api/v1/admin/merchants/{id}/audit<br/>{action: "APPROVED"}
+    GW->>GW: JWT 鉴权 (role=admin)
+    GW->>MERCH: 转发审核请求
+    MERCH->>MERCH: 更新商家状态 → APPROVED<br/>记录审核日志
+
+    MERCH->>MQ: 发送 merchant-approved<br/>{merchantId, merchantName}
+
+    MERCH-->>GW: 审核完成
+    GW-->>Admin: Result<Success>
+
+    Note over MQ,NOTIFY: 异步消息消费
+
+    MQ->>AUTH: 消费 merchant-approved<br/>创建商家管理账号
+    AUTH->>AUTH: 创建 AdminUser<br/>(type=merchant, merchantId)
+
+    MQ->>NOTIFY: 消费 merchant-approved<br/>发送审核通过通知
+    NOTIFY->>NOTIFY: 记录通知日志
+```
+
+### 4. 商品上架与搜索同步
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as 商家/管理员
+    participant GW as API Gateway
+    participant PROD as 商品服务<br/>:8082
+    participant INV as 库存服务<br/>:8083
+    participant MQ as RocketMQ
+    participant SEARCH as 搜索服务<br/>:8092
+    participant ES as Elasticsearch
+
+    Admin->>GW: POST /api/v1/admin/products<br/>{name, categoryId, skus[]}
+    GW->>GW: JWT 鉴权 (merchant/admin)
+    GW->>PROD: 转发请求
+
+    PROD->>PROD: 创建 SPU + SKU 记录<br/>写入 MySQL
+
+    loop 每个 SKU
+        PROD->>INV: [Feign] POST /inventory/admin/{skuId}<br/>初始化库存
+        INV-->>PROD: 库存初始化成功
+    end
+
+    PROD->>MQ: 发送 product-created<br/>{spuId, name, price, category}
+
+    PROD-->>GW: Result<Product>
+    GW-->>Admin: 商品创建成功
+
+    Note over MQ,ES: 异步搜索索引同步
+
+    MQ->>SEARCH: 消费 product-created
+    SEARCH->>SEARCH: 构建 ProductDocument
+    SEARCH->>ES: 索引文档到 ES
+    ES-->>SEARCH: 索引成功
+
+    Note over ES: 用户搜索时查询 ES<br/>GET /api/v1/search?keyword=xxx
+```
+
+### 5. 订单取消与库存释放
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as 用户
+    participant GW as API Gateway
+    participant ORDER as 订单服务<br/>:8084
+    participant MQ as RocketMQ
+    participant INV as 库存服务<br/>:8083
+    participant NOTIFY as 通知服务<br/>:8089
+
+    User->>GW: PUT /api/v1/orders/{id}/cancel
+    GW->>GW: JWT 鉴权
+    GW->>ORDER: 转发请求
+
+    ORDER->>ORDER: 校验订单状态<br/>(仅待支付可取消)
+    ORDER->>ORDER: UPDATE status → CANCELLED
+
+    ORDER->>MQ: 发送 order-cancelled<br/>{orderNo, items[{skuId, qty}]}
+
+    ORDER-->>GW: Result<Success>
+    GW-->>User: 取消成功
+
+    Note over MQ,NOTIFY: 异步消息消费
+
+    MQ->>INV: 消费 order-cancelled
+    INV->>INV: 释放锁定库存<br/>lockedStock -= qty<br/>availableStock += qty
+
+    MQ->>NOTIFY: 消费 order-cancelled<br/>发送取消通知
+```
+
 ## 中间件端口
 
 | 中间件 | 端口 | 账号 / 密码 |
