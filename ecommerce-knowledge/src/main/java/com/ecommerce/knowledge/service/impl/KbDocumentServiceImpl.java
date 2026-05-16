@@ -74,7 +74,9 @@ public class KbDocumentServiceImpl implements KbDocumentService {
             throw new BusinessException(KnowledgeErrorCode.DOCUMENT_NOT_FOUND);
         }
 
+        String originalStatus = doc.getStatus();
         boolean needReindex = false;
+        boolean statusChanged = false;
         if (request.getTitle() != null && !request.getTitle().equals(doc.getTitle())) {
             doc.setTitle(request.getTitle());
             needReindex = true;
@@ -87,19 +89,30 @@ public class KbDocumentServiceImpl implements KbDocumentService {
             doc.setCategoryId(request.getCategoryId());
             needReindex = true;
         }
-        if (request.getStatus() != null) {
+        if (request.getStatus() != null && !request.getStatus().equals(doc.getStatus())) {
             doc.setStatus(request.getStatus());
+            statusChanged = true;
         }
 
         documentMapper.updateById(doc);
 
-        if (needReindex) {
+        if (!"published".equals(doc.getStatus())) {
+            deleteMilvusVectors(doc);
+            doc.setMilvusIds(null);
+            doc.setChunkCount(0);
+            documentMapper.updateById(doc);
+            return toVO(doc);
+        }
+
+        boolean shouldReindex = needReindex || statusChanged || !"published".equals(originalStatus);
+        if (shouldReindex) {
             deleteMilvusVectors(doc);
             try {
                 List<String> milvusIds = ingestionService.ingest(doc.getId(), doc.getTitle(),
                         doc.getContent(), doc.getCategoryId());
                 doc.setMilvusIds(JSONUtil.toJsonStr(milvusIds));
                 doc.setChunkCount(milvusIds.size());
+                doc.setStatus("published");
                 documentMapper.updateById(doc);
             } catch (Exception e) {
                 log.error("Failed to reindex document {}", doc.getId(), e);

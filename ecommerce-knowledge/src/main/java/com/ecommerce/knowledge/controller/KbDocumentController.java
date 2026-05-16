@@ -38,8 +38,8 @@ public class KbDocumentController {
     }
 
     @GetMapping
-    public Result<Page<DocumentVO>> page(@RequestParam(defaultValue = "1") int pageNum,
-                                          @RequestParam(defaultValue = "20") int pageSize,
+    public Result<Page<DocumentVO>> page(@RequestParam(name = "page", defaultValue = "1") int pageNum,
+                                          @RequestParam(name = "size", defaultValue = "20") int pageSize,
                                           @RequestParam(required = false) Long categoryId,
                                           @RequestParam(required = false) String status) {
         return Result.ok(documentService.page(pageNum, pageSize, categoryId, status));
