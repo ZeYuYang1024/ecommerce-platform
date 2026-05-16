@@ -14,6 +14,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 @Component
 public class AuthFilter implements GlobalFilter, Ordered {
@@ -34,38 +35,18 @@ public class AuthFilter implements GlobalFilter, Ordered {
             "/api/v1/coupons"
     );
 
-    // 商家不可访问的路径
-    private static final List<String> MERCHANT_FORBIDDEN = Arrays.asList(
-            "/api/v1/admin/merchants",
-            "/api/v1/admin/users",
-            "/api/v1/admin/dashboard",
-            "/api/v1/admin/reconciliation",
-            "/api/v1/admin/settlements",
-            "/api/v1/admin/brands",
-            "/api/v1/admin/categories",
-            "/api/v1/admin/reviews"
-    );
-
-    // 运营不可访问的路径（可以看 dashboard，但不能审核商家/管用户）
-    private static final List<String> OPS_FORBIDDEN = Arrays.asList(
-            "/api/v1/admin/merchants",
-            "/api/v1/admin/users"
-    );
+    private static final Set<String> WRITE_METHODS = Set.of("POST", "PUT", "DELETE", "PATCH");
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
         String method = exchange.getRequest().getMethod().name();
 
-        // 白名单：登录注册直接放行
         if (AUTH_WHITELIST.stream().anyMatch(path::startsWith)) {
             return chain.filter(exchange);
         }
 
-        // admin 路径必须鉴权，不受公开 GET 影响
         boolean isAdminPath = path.startsWith("/api/v1/admin");
-
-        // 公开 GET：商品浏览、文件访问（admin 路径除外）
         if (!isAdminPath && "GET".equalsIgnoreCase(method)) {
             for (String prefix : PUBLIC_GET_PREFIXES) {
                 if (path.startsWith(prefix)) {
@@ -74,7 +55,6 @@ public class AuthFilter implements GlobalFilter, Ordered {
             }
         }
 
-        // 其余所有请求需要登录
         String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
@@ -84,42 +64,28 @@ public class AuthFilter implements GlobalFilter, Ordered {
         try {
             String token = authHeader.substring(7);
             Claims claims = JwtUtils.parse(token);
-            // 注入 header 供下游服务使用
             Long userId = Long.valueOf(claims.getSubject());
             String userType = claims.get("type", String.class);
-            final Long merchantId;
-            Object mid = claims.get("merchantId");
-            if (mid instanceof Number n) merchantId = n.longValue();
-            else merchantId = null;
+            Object merchantIdClaim = claims.get("merchantId");
+            Long merchantId = merchantIdClaim instanceof Number number ? number.longValue() : null;
+
             exchange = exchange.mutate()
-                    .request(r -> {
-                        r.header("X-User-Id", String.valueOf(userId));
-                        r.header("X-User-Type", userType != null ? userType : "user");
-                        if (merchantId != null) r.header("X-Merchant-Id", String.valueOf(merchantId));
+                    .request(request -> {
+                        request.header("X-User-Id", String.valueOf(userId));
+                        request.header("X-User-Type", userType != null ? userType : "user");
+                        if (merchantId != null) {
+                            request.header("X-Merchant-Id", String.valueOf(merchantId));
+                        }
                     })
                     .build();
-            // admin 接口需要 admin 角色
+
             if (isAdminPath && !"admin".equals(claims.get("role"))) {
                 exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
                 return exchange.getResponse().setComplete();
             }
-            // 多角色权限控制
-            if (isAdminPath && userType != null) {
-                if ("merchant".equals(userType)) {
-                    for (String forbidden : MERCHANT_FORBIDDEN) {
-                        if (path.startsWith(forbidden)) {
-                            exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
-                            return exchange.getResponse().setComplete();
-                        }
-                    }
-                } else if ("ops".equals(userType)) {
-                    for (String forbidden : OPS_FORBIDDEN) {
-                        if (path.startsWith(forbidden)) {
-                            exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
-                            return exchange.getResponse().setComplete();
-                        }
-                    }
-                }
+            if (isAdminPath && !isAllowedAdminRoute(userType, method, path)) {
+                exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
+                return exchange.getResponse().setComplete();
             }
         } catch (ExpiredJwtException e) {
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
@@ -135,5 +101,26 @@ public class AuthFilter implements GlobalFilter, Ordered {
     @Override
     public int getOrder() {
         return -100;
+    }
+
+    private boolean isAllowedAdminRoute(String userType, String method, String path) {
+        if (userType == null || "super_admin".equals(userType)) {
+            return true;
+        }
+        if ("merchant".equals(userType)) {
+            return path.startsWith("/api/v1/admin/products")
+                    || path.startsWith("/api/v1/admin/merchant/orders")
+                    || ("PUT".equalsIgnoreCase(method) && path.matches("^/api/v1/admin/orders/[^/]+/(ship|status)$"));
+        }
+        if ("ops".equals(userType)) {
+            return path.startsWith("/api/v1/admin/dashboard")
+                    || path.startsWith("/api/v1/admin/knowledge")
+                    || path.startsWith("/api/v1/admin/payment")
+                    || path.startsWith("/api/v1/admin/reconciliation")
+                    || path.startsWith("/api/v1/admin/settlements")
+                    || (path.equals("/api/v1/admin/orders") && !WRITE_METHODS.contains(method.toUpperCase()))
+                    || path.startsWith("/api/v1/admin/orders/recon");
+        }
+        return false;
     }
 }

@@ -1,7 +1,9 @@
 package com.ecommerce.product.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.result.Result;
+import com.ecommerce.product.common.ProductErrorCode;
 import com.ecommerce.product.dto.request.CreateProductRequest;
 import com.ecommerce.product.dto.request.UpdateStatusRequest;
 import com.ecommerce.product.dto.response.ProductDetailVO;
@@ -69,28 +71,49 @@ public class ProductController {
 
     @PostMapping("/admin/products")
     public Result<Spu> create(@Valid @RequestBody CreateProductRequest request,
-                               @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+                               @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
+                               @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType) {
         Spu spu = productService.createProduct(request);
-        if (merchantId != null) {
+        if ("merchant".equals(userType)) {
+            requireMerchantId(merchantId);
             spu.setMerchantId(merchantId);
+            spu = productService.updateSpu(spu);
         }
         return Result.ok(spu);
     }
 
     @PutMapping("/admin/products/{id}")
-    public Result<Spu> update(@PathVariable Long id, @RequestBody Spu spu) {
+    public Result<Spu> update(@PathVariable Long id,
+                              @RequestBody Spu spu,
+                              @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                              @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+        if ("merchant".equals(userType)) {
+            Spu existing = requireMerchantOwnedSpu(id, merchantId);
+            spu.setMerchantId(existing.getMerchantId());
+        }
         spu.setId(id);
         return Result.ok(productService.updateSpu(spu));
     }
 
     @PutMapping("/admin/products/{id}/status")
-    public Result<Void> updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest request) {
+    public Result<Void> updateStatus(@PathVariable Long id,
+                                     @Valid @RequestBody UpdateStatusRequest request,
+                                     @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                                     @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+        if ("merchant".equals(userType)) {
+            requireMerchantOwnedSpu(id, merchantId);
+        }
         productService.updateStatus(id, request.getStatus());
         return Result.ok();
     }
 
     @DeleteMapping("/admin/products/{id}")
-    public Result<Void> delete(@PathVariable Long id) {
+    public Result<Void> delete(@PathVariable Long id,
+                               @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                               @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+        if ("merchant".equals(userType)) {
+            requireMerchantOwnedSpu(id, merchantId);
+        }
         productService.deleteSpu(id);
         return Result.ok();
     }
@@ -128,5 +151,20 @@ public class ProductController {
         ProductStatsVO stats = new ProductStatsVO();
         stats.setProductCount(productService.countAll());
         return Result.ok(stats);
+    }
+
+    private void requireMerchantId(Long merchantId) {
+        if (merchantId == null) {
+            throw new BusinessException(ProductErrorCode.PRODUCT_FORBIDDEN);
+        }
+    }
+
+    private Spu requireMerchantOwnedSpu(Long spuId, Long merchantId) {
+        requireMerchantId(merchantId);
+        Spu spu = productService.getSpuById(spuId);
+        if (!merchantId.equals(spu.getMerchantId())) {
+            throw new BusinessException(ProductErrorCode.PRODUCT_FORBIDDEN);
+        }
+        return spu;
     }
 }

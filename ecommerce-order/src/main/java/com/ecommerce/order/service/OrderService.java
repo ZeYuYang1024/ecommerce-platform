@@ -19,6 +19,6 @@ public interface OrderService {
     Page<OrderVO> listAll(int page, int size, Integer status);
     Page<OrderVO> listByMerchant(Long merchantId, int page, int size, Integer status);
     List<Order> listForRecon(LocalDateTime start, LocalDateTime end);
-    void markShipped(Long id);
-    void updateStatus(Long id, Integer status);
+    void markShipped(Long id, String userType, Long merchantId);
+    void updateStatus(Long id, Integer status, String userType, Long merchantId);
 }

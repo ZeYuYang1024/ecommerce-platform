@@ -208,11 +208,12 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public void markShipped(Long id) {
+    public void markShipped(Long id, String userType, Long merchantId) {
         Order order = orderMapper.selectById(id);
         if (order == null) {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
         }
+        ensureMerchantOwnsOrder(order, userType, merchantId);
         if (order.getStatus() == null || order.getStatus() != 1) {
             if (order.getStatus() != null && order.getStatus() == 2) throw new BusinessException(OrderErrorCode.ORDER_ALREADY_SHIPPED);
             if (order.getStatus() != null && order.getStatus() == 4) throw new BusinessException(OrderErrorCode.ORDER_ALREADY_CANCELLED);
@@ -224,13 +225,40 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public void updateStatus(Long id, Integer status) {
+    public void updateStatus(Long id, Integer status, String userType, Long merchantId) {
         Order order = orderMapper.selectById(id);
         if (order == null) {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
         }
+        ensureMerchantOwnsOrder(order, userType, merchantId);
         order.setStatus(status);
         orderMapper.updateById(order);
+    }
+
+    private void ensureMerchantOwnsOrder(Order order, String userType, Long merchantId) {
+        if (!"merchant".equals(userType)) {
+            return;
+        }
+        if (merchantId == null) {
+            throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
+        }
+        List<Long> merchantSpuIds;
+        try {
+            var response = productSpuClient.getSpuIdsByMerchant(merchantId);
+            merchantSpuIds = response.getData() != null ? response.getData() : Collections.emptyList();
+        } catch (Exception e) {
+            merchantSpuIds = Collections.emptyList();
+        }
+        if (merchantSpuIds.isEmpty()) {
+            throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
+        }
+        List<OrderItem> items = itemMapper.selectList(
+                new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, order.getId()));
+        final List<Long> ownedSpuIds = merchantSpuIds;
+        boolean owned = !items.isEmpty() && items.stream().allMatch(item -> ownedSpuIds.contains(item.getSpuId()));
+        if (!owned) {
+            throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
+        }
     }
 
     private OrderVO toVO(Order order, Map<Long, List<OrderItem>> itemsMap) {
