@@ -1,5 +1,6 @@
 package com.ecommerce.knowledge.tool;
 
+import com.ecommerce.knowledge.agent.AgentUserContextHolder;
 import com.ecommerce.knowledge.client.CouponClient;
 import com.ecommerce.knowledge.client.dto.CouponVO;
 import dev.langchain4j.agent.tool.P;
@@ -12,17 +13,18 @@ import java.util.Collections;
 import java.util.List;
 
 @Slf4j
+@Component
 @RequiredArgsConstructor
 public class CouponQueryTool {
 
     private final CouponClient couponClient;
 
-    @Tool("查询当前可领取的优惠券列表，返回优惠券名称、类型、折扣力度、有效期、剩余数量等信息。")
+    @Tool("查询当前可领取或可浏览的优惠券列表，返回优惠券名称、门槛、优惠力度和有效期。")
     public List<CouponVO> queryAvailableCoupons() {
         try {
-            var result = couponClient.listAvailable();
+            var result = couponClient.listAvailable(1, 10);
             if (result != null && result.getData() != null) {
-                return result.getData();
+                return result.getData().getRecords();
             }
         } catch (Exception e) {
             log.warn("Failed to query available coupons", e);
@@ -30,18 +32,40 @@ public class CouponQueryTool {
         return Collections.emptyList();
     }
 
-    @Tool("根据优惠券名称搜索优惠券，返回匹配的优惠券详情和使用规则。")
+    @Tool("查询当前登录用户已领取的优惠券，适用于回答我有哪些券、券是否可用。")
+    public List<CouponVO> queryCurrentUserCoupons() {
+        Long userId = currentUserId();
+        if (userId == null) {
+            return Collections.emptyList();
+        }
+        try {
+            var result = couponClient.listMine(userId, null, 1, 10);
+            if (result != null && result.getData() != null) {
+                return result.getData().getRecords();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to query coupons for user {}", userId, e);
+        }
+        return Collections.emptyList();
+    }
+
+    @Tool("根据优惠券名称关键词过滤当前可用优惠券列表。")
     public List<CouponVO> searchCoupons(@P("优惠券名称关键词") String name) {
         try {
-            var result = couponClient.listAvailable();
+            var result = couponClient.listAvailable(1, 20);
             if (result != null && result.getData() != null) {
-                return result.getData().stream()
-                        .filter(c -> c.getName() != null && c.getName().contains(name))
+                return result.getData().getRecords().stream()
+                        .filter(coupon -> coupon.getName() != null && coupon.getName().contains(name))
                         .toList();
             }
         } catch (Exception e) {
             log.warn("Failed to search coupons with name '{}'", name, e);
         }
         return Collections.emptyList();
+    }
+
+    private Long currentUserId() {
+        var context = AgentUserContextHolder.get();
+        return context != null ? context.userId() : null;
     }
 }

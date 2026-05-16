@@ -87,12 +87,14 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public PaymentVO queryByOrderNo(String orderNo) {
-        Payment payment = paymentMapper.selectOne(
-                new LambdaQueryWrapper<Payment>().eq(Payment::getOrderNo, orderNo));
-        if (payment == null) {
-            throw new BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND);
-        }
-        return toVO(payment);
+        return toVO(requirePayment(new LambdaQueryWrapper<Payment>().eq(Payment::getOrderNo, orderNo)));
+    }
+
+    @Override
+    public PaymentVO queryByOrderNoForUser(Long userId, String orderNo) {
+        return toVO(requirePayment(new LambdaQueryWrapper<Payment>()
+                .eq(Payment::getUserId, userId)
+                .eq(Payment::getOrderNo, orderNo)));
     }
 
     @Override
@@ -165,6 +167,14 @@ public class PaymentServiceImpl implements PaymentService {
         vo.setPaidAt(p.getPaidAt());
         vo.setCreatedAt(p.getCreatedAt());
         return vo;
+    }
+
+    private Payment requirePayment(LambdaQueryWrapper<Payment> wrapper) {
+        Payment payment = paymentMapper.selectOne(wrapper);
+        if (payment == null) {
+            throw new BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND);
+        }
+        return payment;
     }
 
     private String generatePaymentNo() {

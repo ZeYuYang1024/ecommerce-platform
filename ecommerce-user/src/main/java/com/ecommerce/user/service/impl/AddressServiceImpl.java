@@ -27,8 +27,7 @@ public class AddressServiceImpl implements AddressService {
     }
 
     @Override
-    public List<AddressVO> listByToken(String token) {
-        Long userId = extractUserId(token);
+    public List<AddressVO> listByUserId(Long userId) {
         List<Address> addresses = addressMapper.selectList(
                 new LambdaQueryWrapper<Address>()
                         .eq(Address::getUserId, userId)
@@ -37,6 +36,12 @@ public class AddressServiceImpl implements AddressService {
     }
 
     @Override
+    public List<AddressVO> listByToken(String token) {
+        return listByUserId(extractUserId(token));
+    }
+
+    @Override
+    @Transactional
     public AddressVO create(String token, AddressRequest request) {
         Long userId = extractUserId(token);
         List<Address> existing = addressMapper.selectList(
@@ -51,42 +56,40 @@ public class AddressServiceImpl implements AddressService {
         applyRequest(address, request);
         if (existing.isEmpty()) {
             address.setIsDefault(1);
+        } else if (Integer.valueOf(1).equals(request.getIsDefault())) {
+            clearDefaultForUser(userId);
+        } else if (address.getIsDefault() == null) {
+            address.setIsDefault(0);
         }
         addressMapper.insert(address);
         return toVO(address);
     }
 
     @Override
-    public AddressVO update(Long id, AddressRequest request) {
-        Address address = addressMapper.selectById(id);
-        if (address == null) {
-            throw new BusinessException(UserErrorCode.ADDRESS_NOT_FOUND);
-        }
+    @Transactional
+    public AddressVO update(String token, Long id, AddressRequest request) {
+        Address address = getOwnedAddress(token, id);
         applyRequest(address, request);
+        if (Integer.valueOf(1).equals(request.getIsDefault())) {
+            clearDefaultForUser(address.getUserId());
+            address.setIsDefault(1);
+        }
         addressMapper.updateById(address);
         return toVO(address);
     }
 
     @Override
-    public void delete(Long id) {
-        if (addressMapper.selectById(id) == null) {
-            throw new BusinessException(UserErrorCode.ADDRESS_NOT_FOUND);
-        }
-        addressMapper.deleteById(id);
+    public void delete(String token, Long id) {
+        Address address = getOwnedAddress(token, id);
+        addressMapper.deleteById(address.getId());
     }
 
     @Transactional
     @Override
     public void setDefault(String token, Long id) {
         Long userId = extractUserId(token);
-        Address addr = addressMapper.selectById(id);
-        if (addr == null) {
-            throw new BusinessException(UserErrorCode.ADDRESS_NOT_FOUND);
-        }
-        addressMapper.update(null,
-                new LambdaUpdateWrapper<Address>()
-                        .eq(Address::getUserId, userId)
-                        .set(Address::getIsDefault, 0));
+        Address addr = getOwnedAddress(token, id);
+        clearDefaultForUser(userId);
         addr.setIsDefault(1);
         addressMapper.updateById(addr);
     }
@@ -106,8 +109,28 @@ public class AddressServiceImpl implements AddressService {
         address.setDistrict(request.getDistrict());
         address.setDetail(request.getDetail());
         if (request.getIsDefault() != null) {
-            address.setIsDefault(request.getIsDefault());
+            address.setIsDefault(normalizeDefaultFlag(request.getIsDefault()));
         }
+    }
+
+    private Integer normalizeDefaultFlag(Integer isDefault) {
+        return Integer.valueOf(1).equals(isDefault) ? 1 : 0;
+    }
+
+    private Address getOwnedAddress(String token, Long id) {
+        Long userId = extractUserId(token);
+        Address address = addressMapper.selectById(id);
+        if (address == null || !userId.equals(address.getUserId())) {
+            throw new BusinessException(UserErrorCode.ADDRESS_NOT_FOUND);
+        }
+        return address;
+    }
+
+    private void clearDefaultForUser(Long userId) {
+        addressMapper.update(null,
+                new LambdaUpdateWrapper<Address>()
+                        .eq(Address::getUserId, userId)
+                        .set(Address::getIsDefault, 0));
     }
 
     private AddressVO toVO(Address address) {

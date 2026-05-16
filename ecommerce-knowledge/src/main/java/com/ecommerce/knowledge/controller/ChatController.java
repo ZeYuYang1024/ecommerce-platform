@@ -7,6 +7,7 @@ import com.ecommerce.knowledge.service.ChatService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -16,12 +17,16 @@ public class ChatController {
     private final ChatService chatService;
 
     @PostMapping("/api/v1/knowledge/chat")
-    public Result<ChatResponse> chat(@RequestBody ChatRequest request) {
-        return Result.ok(chatService.chat(request));
+    public Result<ChatResponse> chat(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                     @RequestHeader(value = "X-User-Type", required = false) String userType,
+                                     @RequestBody ChatRequest request) {
+        return Result.ok(chatService.chat(request, userId, userType));
     }
 
     @PostMapping("/api/v1/admin/knowledge/chat")
-    public Result<ChatResponse> adminChat(@RequestBody ChatRequest request) {
-        return Result.ok(chatService.chat(request));
+    public Result<ChatResponse> adminChat(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                          @RequestHeader(value = "X-User-Type", required = false) String userType,
+                                          @RequestBody ChatRequest request) {
+        return Result.ok(chatService.chat(request, userId, userType));
     }
 }

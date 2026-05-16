@@ -1,9 +1,8 @@
 package com.ecommerce.knowledge.tool;
 
 import com.ecommerce.knowledge.agent.AgentUserContextHolder;
-import com.ecommerce.knowledge.client.OrderClient;
-import com.ecommerce.knowledge.client.dto.OrderVO;
-import dev.langchain4j.agent.tool.P;
+import com.ecommerce.knowledge.client.AddressClient;
+import com.ecommerce.knowledge.client.dto.AddressVO;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,40 +14,43 @@ import java.util.List;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class OrderQueryTool {
+public class AddressQueryTool {
 
-    private final OrderClient orderClient;
+    private final AddressClient addressClient;
 
-    @Tool("查询当前登录用户最近的订单列表，返回订单号、状态、金额和下单时间。")
-    public List<OrderVO> queryCurrentUserOrders() {
+    @Tool("查询当前登录用户保存的收货地址列表。")
+    public List<AddressVO> queryCurrentUserAddresses() {
         Long userId = currentUserId();
         if (userId == null) {
             return Collections.emptyList();
         }
         try {
-            var result = orderClient.listByUser(userId, 1, 10);
+            var result = addressClient.getCurrentUserAddresses(userId);
             if (result != null && result.getData() != null) {
-                return result.getData().getRecords();
+                return result.getData();
             }
         } catch (Exception e) {
-            log.warn("Failed to query orders for user {}", userId, e);
+            log.warn("Failed to query addresses for user {}", userId, e);
         }
         return Collections.emptyList();
     }
 
-    @Tool("根据订单号查询当前登录用户的订单详情，适用于查询订单状态、商品明细和金额。")
-    public OrderVO queryOrderByNo(@P("订单号") String orderNo) {
+    @Tool("查询当前登录用户的默认收货地址。")
+    public AddressVO queryCurrentUserDefaultAddress() {
         Long userId = currentUserId();
         if (userId == null) {
             return null;
         }
         try {
-            var result = orderClient.getByOrderNo(userId, orderNo);
+            var result = addressClient.getCurrentUserAddresses(userId);
             if (result != null && result.getData() != null) {
-                return result.getData();
+                return result.getData().stream()
+                        .filter(address -> Integer.valueOf(1).equals(address.getIsDefault()))
+                        .findFirst()
+                        .orElse(null);
             }
         } catch (Exception e) {
-            log.warn("Failed to query order by no {}", orderNo, e);
+            log.warn("Failed to query default address for user {}", userId, e);
         }
         return null;
     }

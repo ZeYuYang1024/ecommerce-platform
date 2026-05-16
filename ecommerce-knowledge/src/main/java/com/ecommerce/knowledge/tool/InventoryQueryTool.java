@@ -8,25 +8,23 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.Collections;
-import java.util.List;
-
 @Slf4j
+@Component
 @RequiredArgsConstructor
 public class InventoryQueryTool {
 
     private final InventoryClient inventoryClient;
 
-    @Tool("查询商品库存信息，可按SKU编码或名称查询。返回SKU编码、名称、可用库存量等信息。")
-    public List<InventoryVO> queryInventory(@P("SKU编码或名称，可为空") String keyword) {
+    @Tool("根据SKU ID查询库存详情，返回商品名、价格、总库存、锁定库存和可用库存。")
+    public InventoryVO queryInventoryBySkuId(@P("SKU ID") Long skuId) {
         try {
-            var result = inventoryClient.query(keyword, keyword, 1, 10);
+            var result = inventoryClient.getBySkuId(skuId);
             if (result != null && result.getData() != null) {
                 return result.getData();
             }
         } catch (Exception e) {
-            log.warn("Failed to query inventory with keyword '{}'", keyword, e);
+            log.warn("Failed to query inventory for skuId {}", skuId, e);
         }
-        return Collections.emptyList();
+        return null;
     }
 }

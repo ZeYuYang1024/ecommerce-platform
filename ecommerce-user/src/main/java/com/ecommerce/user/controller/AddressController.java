@@ -19,6 +19,11 @@ public class AddressController {
         this.addressService = addressService;
     }
 
+    @GetMapping("/addresses/current")
+    public Result<List<AddressVO>> listCurrent(@RequestHeader("X-User-Id") Long userId) {
+        return Result.ok(addressService.listByUserId(userId));
+    }
+
     @GetMapping("/addresses")
     public Result<List<AddressVO>> list(@RequestHeader("Authorization") String token) {
         return Result.ok(addressService.listByToken(token));
@@ -32,13 +37,15 @@ public class AddressController {
 
     @PutMapping("/addresses/{id}")
     public Result<AddressVO> update(@PathVariable Long id,
+                                     @RequestHeader("Authorization") String token,
                                      @Valid @RequestBody AddressRequest request) {
-        return Result.ok(addressService.update(id, request));
+        return Result.ok(addressService.update(token, id, request));
     }
 
     @DeleteMapping("/addresses/{id}")
-    public Result<Void> delete(@PathVariable Long id) {
-        addressService.delete(id);
+    public Result<Void> delete(@PathVariable Long id,
+                               @RequestHeader("Authorization") String token) {
+        addressService.delete(token, id);
         return Result.ok();
     }
 

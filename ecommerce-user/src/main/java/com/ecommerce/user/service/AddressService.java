@@ -6,9 +6,10 @@ import com.ecommerce.user.dto.response.AddressVO;
 import java.util.List;
 
 public interface AddressService {
+    List<AddressVO> listByUserId(Long userId);
     List<AddressVO> listByToken(String token);
     AddressVO create(String token, AddressRequest request);
-    AddressVO update(Long id, AddressRequest request);
-    void delete(Long id);
+    AddressVO update(String token, Long id, AddressRequest request);
+    void delete(String token, Long id);
     void setDefault(String token, Long id);
 }

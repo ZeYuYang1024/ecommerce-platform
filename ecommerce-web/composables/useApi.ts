@@ -10,6 +10,18 @@ function parseBigInt(text: string): any {
   })
 }
 
+function parseBody(text: string): any {
+  if (!text.trim()) {
+    return null
+  }
+
+  try {
+    return parseBigInt(text)
+  } catch {
+    return text
+  }
+}
+
 export const useApi = () => {
   const config = useRuntimeConfig()
   const base = config.public.apiBase as string
@@ -25,7 +37,19 @@ export const useApi = () => {
     }
     const res = await fetch(`${base}${path}`, { ...options, headers })
     const text = await res.text()
-    return parseBigInt(text)
+    const body = parseBody(text)
+
+    if (!res.ok) {
+      const error = new Error(typeof body === 'object' && body?.message ? body.message : `HTTP ${res.status}`) as Error & {
+        status: number
+        body: any
+      }
+      error.status = res.status
+      error.body = body
+      throw error
+    }
+
+    return body as T
   }
 
   return {
