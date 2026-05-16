@@ -24,6 +24,7 @@ test.describe('Auth Guard & Layout', () => {
     await page.addInitScript(() => {
       localStorage.setItem('token', 'mock-token')
       localStorage.setItem('username', 'admin')
+      localStorage.setItem('type', 'super_admin')
     })
 
     // generic API mock
@@ -38,7 +39,7 @@ test.describe('Auth Guard & Layout', () => {
     await page.waitForTimeout(300)
 
     // click sidebar nav to products
-    await page.click('.nav-item:has-text("商品列表")')
+    await page.click('.nav-item:has-text("商品管理")')
     await page.waitForTimeout(300)
     expect(page.url()).toContain('/products')
   })
@@ -47,6 +48,7 @@ test.describe('Auth Guard & Layout', () => {
     await page.addInitScript(() => {
       localStorage.setItem('token', 'mock-token')
       localStorage.setItem('username', 'admin')
+      localStorage.setItem('type', 'super_admin')
     })
     await page.route('**/api/**', async (route) => {
       await route.fulfill({
@@ -63,6 +65,7 @@ test.describe('Auth Guard & Layout', () => {
     await page.addInitScript(() => {
       localStorage.setItem('token', 'mock-token')
       localStorage.setItem('username', 'admin')
+      localStorage.setItem('type', 'super_admin')
     })
     await page.route('**/api/**', async (route) => {
       await route.fulfill({
@@ -81,6 +84,7 @@ test.describe('Auth Guard & Layout', () => {
     await page.addInitScript(() => {
       localStorage.setItem('token', 'mock-token')
       localStorage.setItem('username', 'AdminUser')
+      localStorage.setItem('type', 'super_admin')
     })
     await page.route('**/api/**', async (route) => {
       await route.fulfill({
@@ -97,6 +101,13 @@ test.describe('Auth Guard & Layout', () => {
     await page.addInitScript(() => {
       localStorage.setItem('token', 'mock-token')
       localStorage.setItem('username', 'admin')
+      localStorage.setItem('type', 'super_admin')
+    })
+    await page.route('**/api/**', async (route) => {
+      await route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ code: 200, data: { records: [], total: 0 } })
+      })
     })
     await page.goto('/dashboard')
     await page.waitForTimeout(300)
@@ -107,9 +118,52 @@ test.describe('Auth Guard & Layout', () => {
     await page.addInitScript(() => {
       localStorage.setItem('token', 'mock-token')
       localStorage.setItem('username', 'admin')
+      localStorage.setItem('type', 'super_admin')
+    })
+    await page.route('**/api/**', async (route) => {
+      await route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ code: 200, data: { records: [], total: 0 } })
+      })
     })
     await page.goto('/dashboard')
     await page.waitForTimeout(300)
     await expect(page.locator('.clock')).toBeVisible()
+  })
+
+  test('P1: merchant sidebar hides platform category entry', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('token', 'mock-token')
+      localStorage.setItem('username', 'merchant-a')
+      localStorage.setItem('type', 'merchant')
+    })
+    await page.route('**/api/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 200, data: { records: [], total: 0 } })
+      })
+    })
+    await page.goto('/merchant/dashboard')
+    await page.waitForTimeout(300)
+    await expect(page.getByText('类目管理')).toHaveCount(0)
+    await expect(page.getByText('品牌管理')).toBeVisible()
+  })
+
+  test('P1: merchant visiting platform category route is redirected', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('token', 'mock-token')
+      localStorage.setItem('type', 'merchant')
+      localStorage.setItem('username', 'merchant-a')
+    })
+    await page.route('**/api/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 200, data: { records: [], total: 0 } })
+      })
+    })
+    await page.goto('/categories')
+    await page.waitForURL('**/merchant/dashboard')
   })
 })

@@ -104,13 +104,11 @@ public class AuthFilter implements GlobalFilter, Ordered {
     }
 
     private boolean isAllowedAdminRoute(String userType, String method, String path) {
-        if (userType == null || "super_admin".equals(userType)) {
+        if (userType == null || "super_admin".equals(userType) || "platform_admin".equals(userType)) {
             return true;
         }
         if ("merchant".equals(userType)) {
-            return path.startsWith("/api/v1/admin/products")
-                    || path.startsWith("/api/v1/admin/merchant/orders")
-                    || ("PUT".equalsIgnoreCase(method) && path.matches("^/api/v1/admin/orders/[^/]+/(ship|status)$"));
+            return path.startsWith("/api/v1/admin/merchant/");
         }
         if ("ops".equals(userType)) {
             return path.startsWith("/api/v1/admin/dashboard")
@@ -118,6 +116,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
                     || path.startsWith("/api/v1/admin/payment")
                     || path.startsWith("/api/v1/admin/reconciliation")
                     || path.startsWith("/api/v1/admin/settlements")
+                    || path.startsWith("/api/v1/admin/brands")
                     || (path.equals("/api/v1/admin/orders") && !WRITE_METHODS.contains(method.toUpperCase()))
                     || path.startsWith("/api/v1/admin/orders/recon");
         }

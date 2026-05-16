@@ -31,9 +31,9 @@ class AuthFilterAuthorizationTest {
     }
 
     @Test
-    void merchantAdminShouldBeAllowedToReachProductAdminRoutes() {
+    void merchantAdminShouldBeAllowedToReachMerchantRoutes() {
         RecordingChain chain = new RecordingChain();
-        MockServerWebExchange exchange = exchange("GET", "/api/v1/admin/products",
+        MockServerWebExchange exchange = exchange("GET", "/api/v1/admin/merchant/orders",
                 JwtUtils.generate(1L, "merchant", "admin", "merchant", 100L));
 
         filter.filter(exchange, chain).block();
@@ -64,6 +64,30 @@ class AuthFilterAuthorizationTest {
 
         assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(chain.invoked).isFalse();
+    }
+
+    @Test
+    void merchantAdminShouldBeForbiddenFromPlatformCategoryRoutes() {
+        RecordingChain chain = new RecordingChain();
+        MockServerWebExchange exchange = exchange("GET", "/api/v1/admin/categories",
+                JwtUtils.generate(3L, "merchant", "admin", "merchant", 2001L));
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(chain.invoked).isFalse();
+    }
+
+    @Test
+    void merchantAdminShouldBeAllowedToReachMerchantInventoryRoutes() {
+        RecordingChain chain = new RecordingChain();
+        MockServerWebExchange exchange = exchange("GET", "/api/v1/admin/merchant/inventory",
+                JwtUtils.generate(3L, "merchant", "admin", "merchant", 2001L));
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(chain.invoked).isTrue();
+        assertThat(exchange.getResponse().getStatusCode()).isNull();
     }
 
     private MockServerWebExchange exchange(String method, String path, String token) {

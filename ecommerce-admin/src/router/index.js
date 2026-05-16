@@ -21,7 +21,14 @@ const routes = [
       { path: 'dashboard', name: 'Dashboard', component: () => import('@/views/dashboard/index.vue'), meta: { title: '数据概览' } },
       { path: 'merchant/dashboard', name: 'MerchantDashboard', component: () => import('@/views/merchant/dashboard.vue'), meta: { title: '商家中心' } },
       { path: 'merchant/products', name: 'MerchantProducts', component: () => import('@/views/merchant/products.vue'), meta: { title: '商品管理' } },
+      { path: 'merchant/brands', name: 'MerchantBrands', component: () => import('@/views/brand/index.vue'), meta: { title: '品牌管理' } },
+      { path: 'merchant/reviews', name: 'MerchantReviews', component: () => import('@/views/review/index.vue'), meta: { title: '评论管理' } },
+      { path: 'merchant/knowledge', name: 'MerchantKnowledge', component: () => import('@/views/knowledge/documents.vue'), meta: { title: '知识库' } },
+      { path: 'merchant/inventory', name: 'MerchantInventory', component: () => import('@/views/inventory/index.vue'), meta: { title: '库存管理' } },
       { path: 'merchant/orders', name: 'MerchantOrders', component: () => import('@/views/merchant/orders.vue'), meta: { title: '订单管理' } },
+      { path: 'merchant/payments', name: 'MerchantPayments', component: () => import('@/views/payment/list.vue'), meta: { title: '支付管理' } },
+      { path: 'merchant/reconciliation', name: 'MerchantReconciliation', component: () => import('@/views/reconciliation/index.vue'), meta: { title: '对账管理' } },
+      { path: 'merchant/settlement', name: 'MerchantSettlement', component: () => import('@/views/settlement/index.vue'), meta: { title: '结算管理' } },
       { path: 'merchant/shop', name: 'MerchantShop', component: () => import('@/views/merchant/shop.vue'), meta: { title: '店铺信息' } },
       { path: 'merchants', name: 'Merchants', component: () => import('@/views/merchant/list.vue'), meta: { title: '商家管理' } },
       { path: 'merchants/:id', name: 'MerchantDetail', component: () => import('@/views/merchant/detail.vue'), meta: { title: '商家详情' } },
@@ -55,11 +62,23 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
+  const type = localStorage.getItem('type')
+
   if (!to.meta.noAuth && !token) {
     next('/login')
   } else {
+    if (type === 'merchant' && !to.meta.noAuth) {
+      if (to.path === '/dashboard') {
+        next('/merchant/dashboard')
+        return
+      }
+      if (!to.path.startsWith('/merchant/')) {
+        next('/merchant/dashboard')
+        return
+      }
+    }
+
     if (to.path === '/dashboard') {
-      const type = localStorage.getItem('type')
       if (type === 'merchant') next('/merchant/dashboard')
       else next()
     } else {

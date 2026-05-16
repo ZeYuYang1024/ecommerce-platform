@@ -34,13 +34,78 @@
           </router-link>
         </template>
 
-        <template v-if="!isOps">
+        <template v-else-if="isMerchant">
+          <router-link to="/merchant/dashboard" class="nav-item" :class="{ active: $route.path === '/merchant/dashboard' }">
+            <el-icon><DataAnalysis /></el-icon>
+            <span>工作台</span>
+          </router-link>
+
+          <div class="nav-section">商品经营</div>
+
+          <router-link to="/merchant/products" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/products') }">
+            <el-icon><Goods /></el-icon>
+            <span>商品管理</span>
+            <span v-if="$route.path.startsWith('/merchant/products')" class="active-dot"></span>
+          </router-link>
+          <router-link to="/merchant/brands" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/brands') }">
+            <el-icon><Collection /></el-icon>
+            <span>品牌管理</span>
+            <span v-if="$route.path.startsWith('/merchant/brands')" class="active-dot"></span>
+          </router-link>
+          <router-link to="/merchant/reviews" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/reviews') }">
+            <el-icon><ChatDotRound /></el-icon>
+            <span>评论管理</span>
+            <span v-if="$route.path.startsWith('/merchant/reviews')" class="active-dot"></span>
+          </router-link>
+          <router-link to="/merchant/knowledge" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/knowledge') }">
+            <el-icon><Notebook /></el-icon>
+            <span>知识库</span>
+            <span v-if="$route.path.startsWith('/merchant/knowledge')" class="active-dot"></span>
+          </router-link>
+          <router-link to="/merchant/inventory" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/inventory') }">
+            <el-icon><Box /></el-icon>
+            <span>库存管理</span>
+            <span v-if="$route.path.startsWith('/merchant/inventory')" class="active-dot"></span>
+          </router-link>
+
+          <div class="nav-section">交易与财务</div>
+
+          <router-link to="/merchant/orders" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/orders') }">
+            <el-icon><Document /></el-icon>
+            <span>订单管理</span>
+            <span v-if="$route.path.startsWith('/merchant/orders')" class="active-dot"></span>
+          </router-link>
+          <router-link to="/merchant/payments" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/payments') }">
+            <el-icon><Money /></el-icon>
+            <span>支付管理</span>
+            <span v-if="$route.path.startsWith('/merchant/payments')" class="active-dot"></span>
+          </router-link>
+          <router-link to="/merchant/reconciliation" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/reconciliation') }">
+            <el-icon><RefreshRight /></el-icon>
+            <span>对账管理</span>
+            <span v-if="$route.path.startsWith('/merchant/reconciliation')" class="active-dot"></span>
+          </router-link>
+          <router-link to="/merchant/settlement" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/settlement') }">
+            <el-icon><TrendCharts /></el-icon>
+            <span>结算管理</span>
+            <span v-if="$route.path.startsWith('/merchant/settlement')" class="active-dot"></span>
+          </router-link>
+
+          <div class="nav-section">店铺</div>
+
+          <router-link to="/merchant/shop" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/shop') }">
+            <el-icon><Shop /></el-icon>
+            <span>店铺信息</span>
+            <span v-if="$route.path.startsWith('/merchant/shop')" class="active-dot"></span>
+          </router-link>
+        </template>
+
+        <template v-else>
           <router-link to="/dashboard" class="nav-item" :class="{ active: $route.path === '/dashboard' }">
             <el-icon><DataAnalysis /></el-icon>
             <span>数据概览</span>
           </router-link>
 
-          <template v-if="!isMerchant">
           <div class="nav-section">商家管理</div>
 
           <router-link to="/merchants" class="nav-item" :class="{ active: $route.path.startsWith('/merchants') }">
@@ -48,7 +113,6 @@
             <span>商家列表</span>
             <span v-if="$route.path.startsWith('/merchants')" class="active-dot"></span>
           </router-link>
-          </template>
 
           <div class="nav-section">商品运营</div>
 
@@ -109,7 +173,6 @@
             <span v-if="$route.path === '/settlement'" class="active-dot"></span>
           </router-link>
 
-          <template v-if="!isMerchant">
           <div class="nav-section">用户</div>
 
           <router-link to="/users" class="nav-item" :class="{ active: $route.path === '/users' }">
@@ -127,7 +190,6 @@
             <span>权限管理</span>
             <span v-if="$route.path === '/permissions'" class="active-dot"></span>
           </router-link>
-          </template>
         </template>
       </nav>
 
