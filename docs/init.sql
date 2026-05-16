@@ -147,6 +147,9 @@ CREATE TABLE IF NOT EXISTS brand (
     name        VARCHAR(64)  NOT NULL,
     logo        VARCHAR(512),
     description VARCHAR(256),
+    merchant_id BIGINT       DEFAULT NULL COMMENT '平台品牌为空，商家品牌为所属商家ID',
+    source_type VARCHAR(32)  DEFAULT 'platform' COMMENT 'platform/merchant',
+    audit_status VARCHAR(32) DEFAULT 'approved' COMMENT 'pending/approved/rejected',
     created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted     TINYINT      DEFAULT 0

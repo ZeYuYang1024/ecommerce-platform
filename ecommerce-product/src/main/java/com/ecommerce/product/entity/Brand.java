@@ -12,4 +12,7 @@ public class Brand extends BaseEntity {
     private String name;
     private String logo;
     private String description;
+    private Long merchantId;
+    private String sourceType;
+    private String auditStatus;
 }

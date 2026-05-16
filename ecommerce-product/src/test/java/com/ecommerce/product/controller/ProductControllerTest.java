@@ -3,12 +3,14 @@ package com.ecommerce.product.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.result.Result;
+import com.ecommerce.product.common.ProductErrorCode;
 import com.ecommerce.product.dto.request.CreateProductRequest;
 import com.ecommerce.product.dto.request.UpdateStatusRequest;
 import com.ecommerce.product.dto.response.ProductDetailVO;
 import com.ecommerce.product.dto.response.SkuVO;
 import com.ecommerce.product.dto.response.SpuVO;
 import com.ecommerce.product.entity.Spu;
+import com.ecommerce.product.service.BrandService;
 import com.ecommerce.product.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -30,6 +32,7 @@ import static org.mockito.Mockito.*;
 class ProductControllerTest {
 
     @Mock private ProductService productService;
+    @Mock private BrandService brandService;
     @InjectMocks private ProductController controller;
 
     private SpuVO spuVO;
@@ -184,7 +187,7 @@ class ProductControllerTest {
         void create_shouldAssignMerchantIdForMerchantAdmin() {
             CreateProductRequest req = new CreateProductRequest();
             CreateProductRequest.SpuRequest spuReq = new CreateProductRequest.SpuRequest();
-            spuReq.setName("鏂板搧");
+            spuReq.setName("新品");
             req.setSpu(spuReq);
 
             Spu created = new Spu();
@@ -197,6 +200,41 @@ class ProductControllerTest {
 
             assertThat(result.getData().getMerchantId()).isEqualTo(88L);
             verify(productService).updateSpu(argThat(spu -> Long.valueOf(88L).equals(spu.getMerchantId())));
+        }
+
+        @Test
+        void create_shouldValidateMerchantBrandBeforeCreate() {
+            CreateProductRequest req = new CreateProductRequest();
+            CreateProductRequest.SpuRequest spuReq = new CreateProductRequest.SpuRequest();
+            spuReq.setName("品牌商品");
+            spuReq.setBrandId(3001L);
+            req.setSpu(spuReq);
+
+            Spu created = new Spu();
+            created.setId(101L);
+            when(productService.createProduct(any(CreateProductRequest.class))).thenReturn(created);
+            when(productService.updateSpu(any(Spu.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            controller.create(req, 88L, "merchant");
+
+            verify(brandService).validateMerchantBrandSelectable(88L, 3001L);
+        }
+
+        @Test
+        void create_shouldRejectPendingMerchantBrand() {
+            CreateProductRequest req = new CreateProductRequest();
+            CreateProductRequest.SpuRequest spuReq = new CreateProductRequest.SpuRequest();
+            spuReq.setName("待审品牌商品");
+            spuReq.setBrandId(3001L);
+            req.setSpu(spuReq);
+
+            doThrow(new BusinessException(ProductErrorCode.PRODUCT_FORBIDDEN))
+                    .when(brandService).validateMerchantBrandSelectable(88L, 3001L);
+
+            assertThatThrownBy(() -> controller.create(req, 88L, "merchant"))
+                    .isInstanceOf(BusinessException.class);
+
+            verify(productService, never()).createProduct(any(CreateProductRequest.class));
         }
 
         @Test

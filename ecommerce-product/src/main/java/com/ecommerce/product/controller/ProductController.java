@@ -12,6 +12,7 @@ import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.product.dto.response.SpuVO;
 import com.ecommerce.product.entity.Sku;
 import com.ecommerce.product.entity.Spu;
+import com.ecommerce.product.service.BrandService;
 import com.ecommerce.product.service.ProductService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -27,9 +28,11 @@ import java.util.stream.Collectors;
 public class ProductController {
 
     private final ProductService productService;
+    private final BrandService brandService;
 
-    public ProductController(ProductService productService) {
+    public ProductController(ProductService productService, BrandService brandService) {
         this.productService = productService;
+        this.brandService = brandService;
     }
 
     @GetMapping("/products")
@@ -73,6 +76,10 @@ public class ProductController {
     public Result<Spu> create(@Valid @RequestBody CreateProductRequest request,
                                @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId,
                                @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType) {
+        if ("merchant".equals(userType) && request.getSpu().getBrandId() != null) {
+            requireMerchantId(merchantId);
+            brandService.validateMerchantBrandSelectable(merchantId, request.getSpu().getBrandId());
+        }
         Spu spu = productService.createProduct(request);
         if ("merchant".equals(userType)) {
             requireMerchantId(merchantId);
