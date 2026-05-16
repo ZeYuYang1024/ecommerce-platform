@@ -68,6 +68,9 @@ const tableData = ref([])
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
+const isMerchantView = localStorage.getItem('type') === 'merchant'
+const listUrl = isMerchantView ? '/api/v1/admin/merchant/reviews' : '/api/v1/admin/reviews'
+const deleteBaseUrl = isMerchantView ? '/api/v1/admin/merchant/reviews' : '/api/v1/admin/reviews'
 
 function handleSizeChange() {
   page.value = 1
@@ -77,7 +80,7 @@ function handleSizeChange() {
 async function fetchData() {
   loading.value = true
   try {
-    const { data } = await axios.get('/api/v1/admin/reviews', {
+    const { data } = await axios.get(listUrl, {
       params: { page: page.value, size: size.value }
     })
     if (data.code === 200) {
@@ -88,7 +91,7 @@ async function fetchData() {
 }
 
 async function doDelete(id) {
-  await axios.delete(`/api/v1/admin/reviews/${id}`)
+  await axios.delete(`${deleteBaseUrl}/${id}`)
   fetchData()
 }
 
