@@ -1,6 +1,7 @@
 package com.ecommerce.payment.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.payment.dto.response.SettlementVO;
 import com.ecommerce.payment.entity.DailySettlement;
 import com.ecommerce.payment.entity.Payment;
@@ -19,13 +20,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SettlementServiceImplTest {
@@ -66,7 +67,8 @@ class SettlementServiceImplTest {
         @Test
         void shouldReturnExistingSettlement() {
             DailySettlement existing = new DailySettlement();
-            existing.setId(1L); existing.setSettlementDate(LocalDate.now().minusDays(1));
+            existing.setId(1L);
+            existing.setSettlementDate(LocalDate.now().minusDays(1));
             existing.setTotalPaymentAmount(new BigDecimal("300.00"));
             existing.setStatus(1);
             when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(existing);
@@ -93,23 +95,37 @@ class SettlementServiceImplTest {
     class ListTests {
         @Test
         void shouldListSettlements() {
-            DailySettlement s = new DailySettlement();
-            s.setId(1L); s.setSettlementDate(LocalDate.now().minusDays(1));
-            s.setTotalPaymentAmount(new BigDecimal("500.00"));
-            s.setNetAmount(new BigDecimal("400.00")); s.setStatus(1);
-            when(settlementMapper.selectList(any(LambdaQueryWrapper.class)))
-                    .thenReturn(Collections.singletonList(s));
+            DailySettlement settlement = new DailySettlement();
+            settlement.setId(1L);
+            settlement.setSettlementDate(LocalDate.now().minusDays(1));
+            settlement.setTotalPaymentAmount(new BigDecimal("500.00"));
+            settlement.setNetAmount(new BigDecimal("400.00"));
+            settlement.setStatus(1);
 
-            List<SettlementVO> list = service.listSettlements();
-            assertThat(list).hasSize(1);
-            assertThat(list.get(0).getStatusText()).isEqualTo("已确认");
+            when(settlementMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                    .thenAnswer(invocation -> {
+                        Page<DailySettlement> page = invocation.getArgument(0);
+                        page.setRecords(Collections.singletonList(settlement));
+                        page.setTotal(1);
+                        return page;
+                    });
+
+            Page<SettlementVO> result = service.listSettlements(1, 10);
+            assertThat(result.getRecords()).hasSize(1);
+            assertThat(result.getRecords().get(0).getStatus()).isEqualTo(1);
         }
 
         @Test
         void shouldReturnEmptyList() {
-            when(settlementMapper.selectList(any(LambdaQueryWrapper.class)))
-                    .thenReturn(Collections.emptyList());
-            assertThat(service.listSettlements()).isEmpty();
+            when(settlementMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                    .thenAnswer(invocation -> {
+                        Page<DailySettlement> page = invocation.getArgument(0);
+                        page.setRecords(Collections.emptyList());
+                        page.setTotal(0);
+                        return page;
+                    });
+
+            assertThat(service.listSettlements(1, 10).getRecords()).isEmpty();
         }
     }
 
@@ -131,7 +147,6 @@ class SettlementServiceImplTest {
         void shouldOnlyCountPaidPayments() {
             when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
             Payment paid = buildPayment(1L, new BigDecimal("100.00"), 1, LocalDateTime.now().minusDays(1));
-            // DB query filters by status=1, so only paid payments are returned
             when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(Collections.singletonList(paid));
             when(refundMapper.selectList(any(LambdaQueryWrapper.class)))
@@ -148,7 +163,6 @@ class SettlementServiceImplTest {
             when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
             when(paymentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
             Refund done = buildRefund(1L, new BigDecimal("50.00"), 1, LocalDateTime.now().minusDays(1));
-            // DB query filters by status=1, so only completed refunds are returned
             when(refundMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(Collections.singletonList(done));
             when(settlementMapper.insert(any(DailySettlement.class))).thenReturn(1);
@@ -160,8 +174,8 @@ class SettlementServiceImplTest {
         @Test
         void shouldHandleLargeAmounts() {
             when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-            Payment p = buildPayment(1L, new BigDecimal("99999999.99"), 1, LocalDateTime.now().minusDays(1));
-            when(paymentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.singletonList(p));
+            Payment payment = buildPayment(1L, new BigDecimal("99999999.99"), 1, LocalDateTime.now().minusDays(1));
+            when(paymentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.singletonList(payment));
             when(refundMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
             when(settlementMapper.insert(any(DailySettlement.class))).thenReturn(1);
 
@@ -172,10 +186,10 @@ class SettlementServiceImplTest {
         @Test
         void shouldHandleNegativeNetAmount() {
             when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-            Payment p = buildPayment(1L, new BigDecimal("50.00"), 1, LocalDateTime.now().minusDays(1));
-            when(paymentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.singletonList(p));
-            Refund r = buildRefund(1L, new BigDecimal("100.00"), 1, LocalDateTime.now().minusDays(1));
-            when(refundMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.singletonList(r));
+            Payment payment = buildPayment(1L, new BigDecimal("50.00"), 1, LocalDateTime.now().minusDays(1));
+            when(paymentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.singletonList(payment));
+            Refund refund = buildRefund(1L, new BigDecimal("100.00"), 1, LocalDateTime.now().minusDays(1));
+            when(refundMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.singletonList(refund));
             when(settlementMapper.insert(any(DailySettlement.class))).thenReturn(1);
 
             SettlementVO vo = service.generateSettlement(null);
@@ -186,7 +200,6 @@ class SettlementServiceImplTest {
         void shouldFilterByDateOnlyFromYesterday() {
             when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
             Payment yesterday = buildPayment(2L, new BigDecimal("200.00"), 1, LocalDateTime.now().minusDays(1));
-            // DB query filters by yesterday's date range, so only yesterday's payment is returned
             when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(Collections.singletonList(yesterday));
             when(refundMapper.selectList(any(LambdaQueryWrapper.class)))
@@ -200,14 +213,20 @@ class SettlementServiceImplTest {
     }
 
     private Payment buildPayment(Long id, BigDecimal amount, int status, LocalDateTime createdAt) {
-        Payment p = new Payment();
-        p.setId(id); p.setAmount(amount); p.setStatus(status); p.setCreatedAt(createdAt);
-        return p;
+        Payment payment = new Payment();
+        payment.setId(id);
+        payment.setAmount(amount);
+        payment.setStatus(status);
+        payment.setCreatedAt(createdAt);
+        return payment;
     }
 
     private Refund buildRefund(Long id, BigDecimal amount, int status, LocalDateTime createdAt) {
-        Refund r = new Refund();
-        r.setId(id); r.setAmount(amount); r.setStatus(status); r.setCreatedAt(createdAt);
-        return r;
+        Refund refund = new Refund();
+        refund.setId(id);
+        refund.setAmount(amount);
+        refund.setStatus(status);
+        refund.setCreatedAt(createdAt);
+        return refund;
     }
 }

@@ -1,7 +1,11 @@
 package com.ecommerce.payment.service.impl;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.payment.client.OrderClient;
 import com.ecommerce.payment.common.PaymentErrorCode;
 import com.ecommerce.payment.dto.request.PayRequest;
 import com.ecommerce.payment.dto.request.RefundRequest;
@@ -10,6 +14,8 @@ import com.ecommerce.payment.entity.Payment;
 import com.ecommerce.payment.entity.Refund;
 import com.ecommerce.payment.mapper.PaymentMapper;
 import com.ecommerce.payment.mapper.RefundMapper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -20,7 +26,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.Collections;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -31,12 +36,16 @@ class PaymentServiceImplTest {
 
     @Mock private PaymentMapper paymentMapper;
     @Mock private RefundMapper refundMapper;
+    @Mock private OrderClient orderClient;
+    @Mock private RocketMQTemplate rocketMQTemplate;
     @InjectMocks private PaymentServiceImpl service;
 
     private Payment payment;
 
     @BeforeEach
     void setUp() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Payment.class);
+
         payment = new Payment();
         payment.setId(1L);
         payment.setPaymentNo("PAY202605091200000001");
@@ -87,6 +96,16 @@ class PaymentServiceImplTest {
         }
 
         @Test
+        void shouldQueryByOrderNoForUser() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
+
+            PaymentVO vo = service.queryByOrderNoForUser(1L, "202605091200000001");
+
+            verify(paymentMapper).selectOne(any(LambdaQueryWrapper.class));
+            assertThat(vo.getPaymentNo()).isEqualTo("PAY202605091200000001");
+        }
+
+        @Test
         void shouldThrowWhenNotFound() {
             when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
             assertThatThrownBy(() -> service.queryByOrderNo("xxx"))
@@ -94,11 +113,27 @@ class PaymentServiceImplTest {
         }
 
         @Test
+        void shouldThrowWhenUserScopedPaymentNotFound() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            assertThatThrownBy(() -> service.queryByOrderNoForUser(1L, "xxx"))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(PaymentErrorCode.PAYMENT_NOT_FOUND.getCode());
+        }
+
+        @Test
         void shouldListAll() {
-            when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
-                    .thenReturn(Collections.singletonList(payment));
-            List<PaymentVO> list = service.listAll(null);
-            assertThat(list).hasSize(1);
+            when(paymentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                    .thenAnswer(invocation -> {
+                        Page<Payment> page = invocation.getArgument(0);
+                        page.setRecords(Collections.singletonList(payment));
+                        page.setTotal(1);
+                        return page;
+                    });
+
+            Page<PaymentVO> page = service.listAll(null, 1, 10);
+
+            assertThat(page.getRecords()).hasSize(1);
         }
     }
 
@@ -157,7 +192,6 @@ class PaymentServiceImplTest {
             req.setReason("部分退款"); req.setAmount(new BigDecimal("1000.00"));
 
             PaymentVO vo = service.refund("202605091200000001", req);
-            // partial refund keeps status=1
             assertThat(vo.getStatus()).isEqualTo(1);
         }
     }
@@ -206,19 +240,33 @@ class PaymentServiceImplTest {
         @Test
         void shouldListPaymentsByStatus() {
             payment.setStatus(3);
-            when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
-                    .thenReturn(Collections.singletonList(payment));
-            List<PaymentVO> list = service.listAll(3);
-            assertThat(list).hasSize(1);
-            assertThat(list.get(0).getStatusText()).isEqualTo("已退款");
+            when(paymentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                    .thenAnswer(invocation -> {
+                        Page<Payment> page = invocation.getArgument(0);
+                        page.setRecords(Collections.singletonList(payment));
+                        page.setTotal(1);
+                        return page;
+                    });
+
+            Page<PaymentVO> page = service.listAll(3, 1, 10);
+
+            assertThat(page.getRecords()).hasSize(1);
+            assertThat(page.getRecords().get(0).getStatusText()).isEqualTo("已退款");
         }
 
         @Test
         void shouldListAllPaymentsWhenNoFilter() {
-            when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
-                    .thenReturn(Collections.emptyList());
-            List<PaymentVO> list = service.listAll(null);
-            assertThat(list).isEmpty();
+            when(paymentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                    .thenAnswer(invocation -> {
+                        Page<Payment> page = invocation.getArgument(0);
+                        page.setRecords(Collections.emptyList());
+                        page.setTotal(0);
+                        return page;
+                    });
+
+            Page<PaymentVO> page = service.listAll(null, 1, 10);
+
+            assertThat(page.getRecords()).isEmpty();
         }
 
         @Test
@@ -261,7 +309,7 @@ class PaymentServiceImplTest {
             RefundRequest req = new RefundRequest();
             req.setReason("全额退"); req.setAmount(null);
             PaymentVO vo = service.refund("202605091200000001", req);
-            assertThat(vo.getStatus()).isEqualTo(3); // full refund
+            assertThat(vo.getStatus()).isEqualTo(3);
         }
 
         @Test
@@ -298,9 +346,15 @@ class PaymentServiceImplTest {
 
         @Test
         void shouldListAllPaymentsWhenEmpty() {
-            when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
-                    .thenReturn(Collections.emptyList());
-            assertThat(service.listAll(null)).isEmpty();
+            when(paymentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                    .thenAnswer(invocation -> {
+                        Page<Payment> page = invocation.getArgument(0);
+                        page.setRecords(Collections.emptyList());
+                        page.setTotal(0);
+                        return page;
+                    });
+
+            assertThat(service.listAll(null, 1, 10).getRecords()).isEmpty();
         }
 
         @Test
@@ -327,7 +381,7 @@ class PaymentServiceImplTest {
             RefundRequest req = new RefundRequest();
             req.setReason("一分退款"); req.setAmount(new BigDecimal("0.01"));
             PaymentVO vo = service.refund("202605091200000001", req);
-            assertThat(vo.getStatus()).isEqualTo(1); // partial
+            assertThat(vo.getStatus()).isEqualTo(1);
         }
     }
 }
