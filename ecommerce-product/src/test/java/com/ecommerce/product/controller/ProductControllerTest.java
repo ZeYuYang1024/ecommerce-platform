@@ -145,6 +145,31 @@ class ProductControllerTest {
         }
 
         @Test
+        void merchantList_shouldDelegateToMerchantScopedService() {
+            Page<Spu> spuPage = new Page<>(1, 10);
+            spuPage.setRecords(Collections.emptyList());
+            when(productService.spuPageByMerchant(eq(1), eq(10), isNull(), isNull(), isNull(), eq(88L)))
+                    .thenReturn(spuPage);
+
+            Result<Page<SpuVO>> result = controller.merchantList(1, 10, null, null, null, 88L);
+
+            assertThat(result.getCode()).isEqualTo(200);
+            verify(productService).spuPageByMerchant(1, 10, null, null, null, 88L);
+            verify(productService, never()).spuPage(eq(1), eq(10), isNull(), isNull(), isNull());
+        }
+
+        @Test
+        void merchantDetail_shouldRejectCrossTenantAccess() {
+            Spu existing = new Spu();
+            existing.setId(1L);
+            existing.setMerchantId(3002L);
+            when(productService.getSpuById(1L)).thenReturn(existing);
+
+            assertThatThrownBy(() -> controller.merchantDetail(1L, 2001L))
+                    .isInstanceOf(BusinessException.class);
+        }
+
+        @Test
         void create_shouldCreateProduct() {
             CreateProductRequest req = new CreateProductRequest();
             CreateProductRequest.SpuRequest spuReq = new CreateProductRequest.SpuRequest();

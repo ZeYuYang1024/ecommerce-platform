@@ -9,6 +9,7 @@ import com.ecommerce.product.dto.request.UpdateStatusRequest;
 import com.ecommerce.product.dto.response.ProductDetailVO;
 import com.ecommerce.common.dto.ProductStatsVO;
 import com.ecommerce.common.dto.SkuBatchVO;
+import com.ecommerce.common.dto.SkuOwnerVO;
 import com.ecommerce.product.dto.response.SpuVO;
 import com.ecommerce.product.entity.Sku;
 import com.ecommerce.product.entity.Spu;
@@ -67,8 +68,25 @@ public class ProductController {
         return Result.ok(voPage);
     }
 
+    @GetMapping("/admin/merchant/products")
+    public Result<Page<SpuVO>> merchantList(@RequestParam(name = "page", defaultValue = "1") int page,
+                                            @RequestParam(name = "size", defaultValue = "10") int size,
+                                            @RequestParam(name = "categoryId", required = false) Long categoryId,
+                                            @RequestParam(name = "status", required = false) Integer status,
+                                            @RequestParam(name = "keyword", required = false) String keyword,
+                                            @RequestHeader("X-Merchant-Id") Long merchantId) {
+        return adminList(page, size, categoryId, status, keyword, "merchant", merchantId);
+    }
+
     @GetMapping("/products/{id}")
     public Result<ProductDetailVO> detail(@PathVariable Long id) {
+        return Result.ok(productService.getProductDetail(id));
+    }
+
+    @GetMapping("/admin/merchant/products/{id}")
+    public Result<ProductDetailVO> merchantDetail(@PathVariable Long id,
+                                                  @RequestHeader("X-Merchant-Id") Long merchantId) {
+        requireMerchantOwnedSpu(id, merchantId);
         return Result.ok(productService.getProductDetail(id));
     }
 
@@ -89,6 +107,12 @@ public class ProductController {
         return Result.ok(spu);
     }
 
+    @PostMapping("/admin/merchant/products")
+    public Result<Spu> merchantCreate(@Valid @RequestBody CreateProductRequest request,
+                                      @RequestHeader("X-Merchant-Id") Long merchantId) {
+        return create(request, merchantId, "merchant");
+    }
+
     @PutMapping("/admin/products/{id}")
     public Result<Spu> update(@PathVariable Long id,
                               @RequestBody Spu spu,
@@ -100,6 +124,13 @@ public class ProductController {
         }
         spu.setId(id);
         return Result.ok(productService.updateSpu(spu));
+    }
+
+    @PutMapping("/admin/merchant/products/{id}")
+    public Result<Spu> merchantUpdate(@PathVariable Long id,
+                                      @RequestBody Spu spu,
+                                      @RequestHeader("X-Merchant-Id") Long merchantId) {
+        return update(id, spu, "merchant", merchantId);
     }
 
     @PutMapping("/admin/products/{id}/status")
@@ -114,6 +145,13 @@ public class ProductController {
         return Result.ok();
     }
 
+    @PutMapping("/admin/merchant/products/{id}/status")
+    public Result<Void> merchantUpdateStatus(@PathVariable Long id,
+                                             @Valid @RequestBody UpdateStatusRequest request,
+                                             @RequestHeader("X-Merchant-Id") Long merchantId) {
+        return updateStatus(id, request, "merchant", merchantId);
+    }
+
     @DeleteMapping("/admin/products/{id}")
     public Result<Void> delete(@PathVariable Long id,
                                @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
@@ -125,9 +163,35 @@ public class ProductController {
         return Result.ok();
     }
 
+    @DeleteMapping("/admin/merchant/products/{id}")
+    public Result<Void> merchantDelete(@PathVariable Long id,
+                                       @RequestHeader("X-Merchant-Id") Long merchantId) {
+        return delete(id, "merchant", merchantId);
+    }
+
     @GetMapping("/internal/spu-ids")
     public Result<List<Long>> getSpuIdsByMerchant(@RequestParam("merchantId") Long merchantId) {
         return Result.ok(productService.getSpuIdsByMerchant(merchantId));
+    }
+
+    @GetMapping("/internal/sku-ids")
+    public Result<List<Long>> getSkuIdsByMerchant(@RequestParam("merchantId") Long merchantId) {
+        return Result.ok(productService.getSkuIdsByMerchant(merchantId));
+    }
+
+    @GetMapping("/internal/sku-owner")
+    public Result<SkuOwnerVO> getSkuOwner(@RequestParam("skuId") Long skuId) {
+        List<Sku> skus = productService.getSkusByIds(List.of(skuId));
+        if (skus.isEmpty()) {
+            return Result.ok(null);
+        }
+        Sku sku = skus.get(0);
+        Spu spu = productService.getSpuById(sku.getSpuId());
+        SkuOwnerVO owner = new SkuOwnerVO();
+        owner.setSkuId(sku.getId());
+        owner.setSpuId(sku.getSpuId());
+        owner.setMerchantId(spu.getMerchantId());
+        return Result.ok(owner);
     }
 
     @GetMapping("/products/skus/batch")

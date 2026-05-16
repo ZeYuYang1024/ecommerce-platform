@@ -27,7 +27,7 @@ spring:
             - id: product
               uri: lb://ecommerce-product
               predicates:
-                - Path=/api/v1/products/**,/api/v1/categories/**,/api/v1/reviews/**,/api/v1/admin/products/**,/api/v1/admin/categories/**,/api/v1/admin/brands/**,/api/v1/admin/reviews/**,/api/v1/internal/spu-ids
+                - Path=/api/v1/products/**,/api/v1/categories/**,/api/v1/reviews/**,/api/v1/admin/products/**,/api/v1/admin/merchant/products/**,/api/v1/admin/categories/**,/api/v1/admin/brands/**,/api/v1/admin/merchant/brands/**,/api/v1/admin/reviews/**,/api/v1/admin/merchant/reviews/**,/api/v1/internal/spu-ids
             - id: inventory
               uri: lb://ecommerce-inventory
               predicates:
@@ -47,7 +47,7 @@ spring:
             - id: payment
               uri: lb://ecommerce-payment
               predicates:
-                - Path=/api/v1/payment/**,/api/v1/admin/payment/**,/api/v1/admin/reconciliation/**,/api/v1/admin/settlements/**
+                - Path=/api/v1/payment/**,/api/v1/admin/payment/**,/api/v1/admin/merchant/payment/**,/api/v1/admin/reconciliation/**,/api/v1/admin/merchant/reconciliation/**,/api/v1/admin/settlements/**,/api/v1/admin/merchant/settlement/**
             - id: search
               uri: lb://ecommerce-search
               predicates:
@@ -67,7 +67,7 @@ spring:
             - id: knowledge
               uri: lb://ecommerce-knowledge
               predicates:
-                - Path=/api/v1/knowledge/**,/api/v1/admin/knowledge/**
+                - Path=/api/v1/knowledge/**,/api/v1/admin/knowledge/**,/api/v1/admin/merchant/knowledge/**
             - id: monitor
               uri: lb://ecommerce-monitor
               predicates:
