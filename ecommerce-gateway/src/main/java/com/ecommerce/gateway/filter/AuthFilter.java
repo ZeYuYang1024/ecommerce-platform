@@ -108,7 +108,8 @@ public class AuthFilter implements GlobalFilter, Ordered {
             return true;
         }
         if ("merchant".equals(userType)) {
-            return path.startsWith("/api/v1/admin/merchant/");
+            return path.startsWith("/api/v1/admin/merchant/")
+                    || (path.matches("^/api/v1/admin/merchants/[^/]+$") && isMerchantSelfServiceMethod(method));
         }
         if ("ops".equals(userType)) {
             return path.startsWith("/api/v1/admin/dashboard")
@@ -121,5 +122,9 @@ public class AuthFilter implements GlobalFilter, Ordered {
                     || path.startsWith("/api/v1/admin/orders/recon");
         }
         return false;
+    }
+
+    private boolean isMerchantSelfServiceMethod(String method) {
+        return "GET".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method);
     }
 }

@@ -298,6 +298,18 @@ public class ProductServiceImpl implements ProductService {
         return spus.stream().map(Spu::getId).collect(java.util.stream.Collectors.toList());
     }
 
+    @Override
+    public List<Long> getSkuIdsByMerchant(Long merchantId) {
+        List<Long> spuIds = getSpuIdsByMerchant(merchantId);
+        if (spuIds.isEmpty()) {
+            return List.of();
+        }
+        return skuMapper.selectList(new LambdaQueryWrapper<Sku>().in(Sku::getSpuId, spuIds))
+                .stream()
+                .map(Sku::getId)
+                .toList();
+    }
+
     public long countAll() {
         return spuMapper.selectCount(new LambdaQueryWrapper<>());
     }

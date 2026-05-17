@@ -68,6 +68,19 @@
             <span v-if="$route.path.startsWith('/merchant/inventory')" class="active-dot"></span>
           </router-link>
 
+          <div class="nav-section">营销工具</div>
+
+          <router-link to="/merchant/coupons" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/coupons') }">
+            <el-icon><Present /></el-icon>
+            <span>优惠券管理</span>
+            <span v-if="$route.path.startsWith('/merchant/coupons')" class="active-dot"></span>
+          </router-link>
+          <router-link to="/merchant/seckill" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/seckill') }">
+            <el-icon><Lightning /></el-icon>
+            <span>秒杀管理</span>
+            <span v-if="$route.path.startsWith('/merchant/seckill')" class="active-dot"></span>
+          </router-link>
+
           <div class="nav-section">交易与财务</div>
 
           <router-link to="/merchant/orders" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/orders') }">
@@ -223,6 +236,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { clearAuthContext } from '@/utils/auth'
 
 const router = useRouter()
 const username = ref(localStorage.getItem('username') || '管理员')
@@ -246,7 +260,7 @@ onMounted(() => {
 onUnmounted(() => clearInterval(timer))
 
 function logout() {
-  localStorage.removeItem('token')
+  clearAuthContext()
   router.push('/login')
 }
 </script>

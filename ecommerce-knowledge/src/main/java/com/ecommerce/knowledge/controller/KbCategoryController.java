@@ -18,17 +18,17 @@ public class KbCategoryController {
 
     @PostMapping
     public Result<CategoryVO> create(@RequestBody CreateCategoryRequest request) {
-        return Result.ok(categoryService.create(request));
+        return Result.ok(categoryService.createPlatform(request));
     }
 
     @GetMapping
     public Result<List<CategoryVO>> listAll() {
-        return Result.ok(categoryService.listAll());
+        return Result.ok(categoryService.listPlatform());
     }
 
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
-        categoryService.delete(id);
+        categoryService.deletePlatform(id);
         return Result.ok();
     }
 }

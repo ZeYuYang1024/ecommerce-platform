@@ -5,7 +5,7 @@
         <span class="section-label">商品管理</span>
         <p class="page-desc">管理您店铺的商品</p>
       </div>
-      <el-button type="primary" @click="$router.push('/products/create')">
+      <el-button type="primary" @click="$router.push('/merchant/products/create')">
         <el-icon style="margin-right:6px"><Plus /></el-icon> 新增商品
       </el-button>
     </div>
@@ -28,7 +28,7 @@
         </el-table-column>
         <el-table-column label="操作" width="140" align="center">
           <template #default="{ row }">
-            <el-button size="small" @click="$router.push(`/products/${row.id}/edit`)">编辑</el-button>
+            <el-button size="small" @click="$router.push(`/merchant/products/${row.id}/edit`)">编辑</el-button>
           </template>
         </el-table-column>
 
@@ -67,14 +67,14 @@ function handleSizeChange() {
 async function fetchData() {
   loading.value = true
   try {
-    const { data } = await axios.get('/api/v1/admin/products', { params: { page: page.value, size: size.value } })
+    const { data } = await axios.get('/api/v1/admin/merchant/products', { params: { page: page.value, size: size.value } })
     if (data.code === 200) { tableData.value = data.data.records || []; total.value = Number(data.data.total) || tableData.value.length }
   } finally { loading.value = false }
 }
 
 async function toggleStatus(row) {
   const newStatus = row.status === 1 ? 0 : 1
-  await axios.put(`/api/v1/admin/products/${row.id}/status`, { status: newStatus })
+  await axios.put(`/api/v1/admin/merchant/products/${row.id}/status`, { status: newStatus })
   row.status = newStatus
 }
 

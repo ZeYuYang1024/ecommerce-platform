@@ -2,7 +2,7 @@
   <div>
     <div class="page-header">
       <h1 class="section-label">库存管理</h1>
-      <p class="page-desc">查询和管理商品 SKU 库存</p>
+      <p class="page-desc">{{ pageDesc }}</p>
     </div>
 
     <div class="toolbar">
@@ -66,6 +66,9 @@
             <el-button size="small" type="primary" @click="openUpdate(row)">更新库存</el-button>
           </template>
         </el-table-column>
+        <template #empty>
+          <el-empty :description="emptyDescription" />
+        </template>
       </el-table>
 
       <div class="pagination-row">
@@ -100,13 +103,26 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 
 const route = useRoute()
 const router = useRouter()
+const isMerchantView = computed(() => route.path.startsWith('/merchant/inventory'))
+const pageDesc = computed(() => (isMerchantView.value
+  ? '查询并维护本店商品 SKU 库存'
+  : '查询和管理全量商品 SKU 库存'))
+const listUrl = computed(() => isMerchantView.value
+  ? '/api/v1/admin/merchant/inventory'
+  : '/api/v1/admin/inventory')
+const updateUrl = computed(() => isMerchantView.value
+  ? '/api/v1/admin/merchant/inventory'
+  : '/api/v1/admin/inventory')
+const emptyDescription = computed(() => (isMerchantView.value
+  ? '暂无本店库存记录，可先创建商品或补充 SKU'
+  : '暂无库存记录'))
 
 const loading = ref(false)
 const tableData = ref([])
@@ -133,7 +149,7 @@ async function fetchData() {
     const sid = skuIdFilter.value.trim()
     if (sid) params.skuId = sid
     if (stockStatus.value !== null && stockStatus.value !== '') params.stockStatus = stockStatus.value
-    const { data } = await axios.get('/api/v1/inventory/admin/list', { params })
+    const { data } = await axios.get(listUrl.value, { params })
     if (data.code === 200) {
       tableData.value = data.data?.records || []
       total.value = Number(data.data?.total) || tableData.value.length
@@ -156,7 +172,7 @@ function openUpdate(row) {
 async function doUpdate() {
   saving.value = true
   try {
-    await axios.post(`/api/v1/inventory/admin/${updateForm.value.skuId}`, { totalStock: newStock.value })
+    await axios.post(`${updateUrl.value}/${updateForm.value.skuId}`, { totalStock: newStock.value })
     ElMessage.success('库存更新成功')
     updateVisible.value = false
     fetchData()

@@ -3,18 +3,18 @@
     <div class="toolbar">
       <div>
         <span class="section-label">日终结算</span>
-        <p class="page-desc">按日汇总支付和退款数据</p>
+        <p class="page-desc">{{ pageDesc }}</p>
       </div>
-      <el-button type="primary" size="large" @click="generateSettlement" :loading="generating">
-        <el-icon style="margin-right:6px"><Plus /></el-icon> 生成今日结算
+      <el-button v-if="!isMerchantView" type="primary" size="large" @click="generateSettlement" :loading="generating">
+        <el-icon style="margin-right: 6px"><Plus /></el-icon> 生成今日结算
       </el-button>
     </div>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading">
+      <el-table :data="tableData" v-loading="loading" size="small">
         <el-table-column label="结算日期" width="140">
           <template #default="{ row }">
-            <span class="font-mono" style="font-weight:600">{{ row.settlementDate }}</span>
+            <span class="font-mono time-text" style="font-weight: 600">{{ formatDateTime(row.settlementDate) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="支付笔数" width="100" align="center">
@@ -34,7 +34,7 @@
         </el-table-column>
         <el-table-column label="退款总额" width="140" align="right">
           <template #default="{ row }">
-            <span class="amount-text" style="color:var(--red)">¥{{ row.totalRefundAmount || '0.00' }}</span>
+            <span class="amount-text" style="color: var(--red)">¥{{ row.totalRefundAmount || '0.00' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="净收入" width="140" align="right">
@@ -47,35 +47,45 @@
             <el-tag :type="row.status === 1 ? 'success' : 'warning'" size="small">{{ row.statusText }}</el-tag>
           </template>
         </el-table-column>
-
+        <template #empty>
+          <el-empty :description="emptyDescription" />
+        </template>
       </el-table>
 
       <div class="pagination-row">
-              <el-pagination
-                v-model:current-page="page"
-                v-model:page-size="size"
-                :page-sizes="[10, 20, 50, 100]"
-                :total="total"
-                layout="total, sizes, prev, pager, next, jumper"
-                @size-change="handleSizeChange"
-                @current-change="fetchData"
-              />
-            </div>
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="size"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="total"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="fetchData"
+        />
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
+import { formatDateTime } from '@/utils/dateTime'
 
+const route = useRoute()
 const loading = ref(false)
 const generating = ref(false)
 const tableData = ref([])
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
+
+const isMerchantView = computed(() => route.path.startsWith('/merchant/settlement'))
+const listUrl = computed(() => (isMerchantView.value ? '/api/v1/admin/merchant/settlement' : '/api/v1/admin/settlements'))
+const pageDesc = computed(() => (isMerchantView.value ? '查看本店支付与退款汇总' : '按日汇总支付与退款数据'))
+const emptyDescription = computed(() => (isMerchantView.value ? '暂无本店结算记录' : '暂无结算记录'))
 
 function handleSizeChange() {
   page.value = 1
@@ -84,20 +94,22 @@ function handleSizeChange() {
 
 function netClass(val) {
   if (!val || val === '0.00') return ''
-  return val.startsWith('-') ? 'negative' : 'positive'
+  return `${val}`.startsWith('-') ? 'negative' : 'positive'
 }
 
 async function fetchData() {
   loading.value = true
   try {
-    const { data } = await axios.get('/api/v1/admin/settlements', {
+    const { data } = await axios.get(listUrl.value, {
       params: { page: page.value, size: size.value }
     })
     if (data.code === 200) {
       tableData.value = data.data?.records || []
       total.value = Number(data.data?.total) || tableData.value.length
     }
-  } finally { loading.value = false }
+  } finally {
+    loading.value = false
+  }
 }
 
 async function generateSettlement() {
@@ -108,7 +120,9 @@ async function generateSettlement() {
     fetchData()
   } catch {
     ElMessage.error('生成失败')
-  } finally { generating.value = false }
+  } finally {
+    generating.value = false
+  }
 }
 
 onMounted(fetchData)
@@ -121,12 +135,57 @@ onMounted(fetchData)
   align-items: flex-start;
   margin-bottom: 20px;
 }
-.page-desc { font-size: 13.5px; color: var(--text-muted); margin-top: 4px; }
-.table-card { border-radius: var(--radius-lg); }
-.stat-num { font-weight: 700; font-size: 15px; font-family: var(--font-mono); }
-.amount-text { font-weight: 700; font-family: var(--font-mono); font-size: 14px; color: var(--text-primary); }
-.net-amount { font-weight: 800; font-size: 16px; font-family: var(--font-mono); }
-.net-amount.positive { color: var(--green); }
-.net-amount.negative { color: var(--red); }
-.pagination-row { padding: 18px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
+
+.page-desc {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.table-card {
+  border-radius: var(--radius-lg);
+}
+
+.stat-num {
+  font-weight: 700;
+  font-size: 15px;
+  font-family: var(--font-mono);
+}
+
+.amount-text {
+  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.net-amount {
+  font-weight: 800;
+  font-size: 16px;
+  font-family: var(--font-mono);
+}
+
+.net-amount.positive {
+  color: var(--green);
+}
+
+.net-amount.negative {
+  color: var(--red);
+}
+
+.time-text {
+  white-space: nowrap;
+}
+
+.pagination-row {
+  padding: 18px 24px;
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+}
+
+.table-card :deep(.el-table .cell) {
+  line-height: 1.5;
+}
 </style>

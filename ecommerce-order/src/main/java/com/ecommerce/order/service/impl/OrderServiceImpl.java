@@ -29,8 +29,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -164,12 +163,9 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Page<OrderVO> listByMerchant(Long merchantId, int page, int size, Integer status) {
-        List<Long> spuIds;
-        try { var r = productSpuClient.getSpuIdsByMerchant(merchantId); spuIds = r.getData() != null ? r.getData() : Collections.emptyList(); }
-        catch (Exception e) { spuIds = Collections.emptyList(); }
+        List<Long> spuIds = loadMerchantSpuIds(merchantId);
         if (spuIds.isEmpty()) return new Page<>(page, size, 0);
-        List<OrderItem> items = itemMapper.selectList(new LambdaQueryWrapper<OrderItem>().in(OrderItem::getSpuId, spuIds));
-        List<Long> orderIds = items.stream().map(OrderItem::getOrderId).distinct().collect(Collectors.toList());
+        List<Long> orderIds = loadMerchantOrderIds(spuIds);
         if (orderIds.isEmpty()) return new Page<>(page, size, 0);
         LambdaQueryWrapper<Order> w = new LambdaQueryWrapper<Order>().in(Order::getId, orderIds);
         if (status != null) w.eq(Order::getStatus, status);
@@ -180,6 +176,23 @@ public class OrderServiceImpl implements OrderService {
         Page<OrderVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         voPage.setRecords(vos);
         return voPage;
+    }
+
+    @Override
+    public List<String> listOrderNosByMerchant(Long merchantId) {
+        List<Long> spuIds = loadMerchantSpuIds(merchantId);
+        if (spuIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Long> orderIds = loadMerchantOrderIds(spuIds);
+        if (orderIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return orderMapper.selectList(new LambdaQueryWrapper<Order>().in(Order::getId, orderIds)).stream()
+                .map(Order::getOrderNo)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -242,13 +255,7 @@ public class OrderServiceImpl implements OrderService {
         if (merchantId == null) {
             throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
         }
-        List<Long> merchantSpuIds;
-        try {
-            var response = productSpuClient.getSpuIdsByMerchant(merchantId);
-            merchantSpuIds = response.getData() != null ? response.getData() : Collections.emptyList();
-        } catch (Exception e) {
-            merchantSpuIds = Collections.emptyList();
-        }
+        List<Long> merchantSpuIds = loadMerchantSpuIds(merchantId);
         if (merchantSpuIds.isEmpty()) {
             throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
         }
@@ -290,6 +297,25 @@ public class OrderServiceImpl implements OrderService {
         }
         vo.setItems(itemVOs);
         return vo;
+    }
+
+    private List<Long> loadMerchantSpuIds(Long merchantId) {
+        try {
+            var response = productSpuClient.getSpuIdsByMerchant(merchantId);
+            return response.getData() != null ? response.getData() : Collections.emptyList();
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
+
+    private List<Long> loadMerchantOrderIds(List<Long> spuIds) {
+        List<OrderItem> items = itemMapper.selectList(
+                new LambdaQueryWrapper<OrderItem>().in(OrderItem::getSpuId, spuIds));
+        return items.stream()
+                .map(OrderItem::getOrderId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     private Map<Long, List<OrderItem>> loadItemsForOrders(List<Order> orders) {

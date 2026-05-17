@@ -21,13 +21,18 @@ const routes = [
       { path: 'dashboard', name: 'Dashboard', component: () => import('@/views/dashboard/index.vue'), meta: { title: '数据概览' } },
       { path: 'merchant/dashboard', name: 'MerchantDashboard', component: () => import('@/views/merchant/dashboard.vue'), meta: { title: '商家中心' } },
       { path: 'merchant/products', name: 'MerchantProducts', component: () => import('@/views/merchant/products.vue'), meta: { title: '商品管理' } },
+      { path: 'merchant/products/create', name: 'MerchantProductCreate', component: () => import('@/views/product/form.vue'), meta: { title: '新增商品' } },
+      { path: 'merchant/products/:id/edit', name: 'MerchantProductEdit', component: () => import('@/views/product/form.vue'), meta: { title: '编辑商品' } },
       { path: 'merchant/brands', name: 'MerchantBrands', component: () => import('@/views/brand/index.vue'), meta: { title: '品牌管理' } },
       { path: 'merchant/reviews', name: 'MerchantReviews', component: () => import('@/views/review/index.vue'), meta: { title: '评论管理' } },
       { path: 'merchant/knowledge', name: 'MerchantKnowledge', component: () => import('@/views/knowledge/documents.vue'), meta: { title: '知识库' } },
       { path: 'merchant/inventory', name: 'MerchantInventory', component: () => import('@/views/inventory/index.vue'), meta: { title: '库存管理' } },
+      { path: 'merchant/coupons', name: 'MerchantCoupons', component: () => import('@/views/coupon/list.vue'), meta: { title: '优惠券管理' } },
+      { path: 'merchant/seckill', name: 'MerchantSeckill', component: () => import('@/views/seckill/list.vue'), meta: { title: '秒杀管理' } },
       { path: 'merchant/orders', name: 'MerchantOrders', component: () => import('@/views/merchant/orders.vue'), meta: { title: '订单管理' } },
       { path: 'merchant/payments', name: 'MerchantPayments', component: () => import('@/views/payment/list.vue'), meta: { title: '支付管理' } },
       { path: 'merchant/reconciliation', name: 'MerchantReconciliation', component: () => import('@/views/reconciliation/index.vue'), meta: { title: '对账管理' } },
+      { path: 'merchant/reconciliation/:id', name: 'MerchantReconciliationDetail', component: () => import('@/views/reconciliation/detail.vue'), meta: { title: '对账明细' } },
       { path: 'merchant/settlement', name: 'MerchantSettlement', component: () => import('@/views/settlement/index.vue'), meta: { title: '结算管理' } },
       { path: 'merchant/shop', name: 'MerchantShop', component: () => import('@/views/merchant/shop.vue'), meta: { title: '店铺信息' } },
       { path: 'merchants', name: 'Merchants', component: () => import('@/views/merchant/list.vue'), meta: { title: '商家管理' } },
@@ -50,7 +55,7 @@ const routes = [
       { path: 'settlement', name: 'Settlement', component: () => import('@/views/settlement/index.vue'), meta: { title: '日终结算' } },
       { path: 'users', name: 'Users', component: () => import('@/views/user/list.vue'), meta: { title: '用户管理' } },
       { path: 'roles', name: 'Roles', component: () => import('@/views/role/index.vue'), meta: { title: '角色管理' } },
-      { path: 'permissions', name: 'Permissions', component: () => import('@/views/permission/index.vue'), meta: { title: '权限管理' } },
+      { path: 'permissions', name: 'Permissions', component: () => import('@/views/permission/index.vue'), meta: { title: '权限管理' } }
     ]
   }
 ]

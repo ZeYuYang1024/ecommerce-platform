@@ -1,9 +1,16 @@
 package com.ecommerce.product.service.impl;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfo;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.core.toolkit.LambdaUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.product.entity.Brand;
 import com.ecommerce.product.mapper.BrandMapper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -12,7 +19,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -22,6 +28,15 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class BrandServiceImplTest {
+
+    @BeforeAll
+    static void initLambdaCache() {
+        TableInfo tableInfo = TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""),
+                Brand.class
+        );
+        LambdaUtils.installCache(tableInfo);
+    }
 
     @Mock
     private BrandMapper brandMapper;
@@ -69,7 +84,7 @@ class BrandServiceImplTest {
     }
 
     @Test
-    void pageForMerchant_shouldQueryVisibleBrands() {
+    void pageForMerchant_shouldQueryOwnMerchantBrandsOnly() {
         Page<Brand> page = new Page<>(1, 10);
         page.setRecords(List.of(new Brand()));
         when(brandMapper.selectPage(any(Page.class), any())).thenReturn(page);
@@ -78,8 +93,14 @@ class BrandServiceImplTest {
 
         assertThat(result.getRecords()).hasSize(1);
         ArgumentCaptor<Page<Brand>> pageCaptor = ArgumentCaptor.forClass(Page.class);
-        verify(brandMapper).selectPage(pageCaptor.capture(), any());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<LambdaQueryWrapper<Brand>> wrapperCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(brandMapper).selectPage(pageCaptor.capture(), wrapperCaptor.capture());
         assertThat(pageCaptor.getValue().getCurrent()).isEqualTo(1);
+        String sqlSegment = wrapperCaptor.getValue().getSqlSegment();
+        assertThat(sqlSegment).contains("merchant_id");
+        assertThat(sqlSegment).contains("source_type");
+        assertThat(sqlSegment).doesNotContain("audit_status");
     }
 
     @Test

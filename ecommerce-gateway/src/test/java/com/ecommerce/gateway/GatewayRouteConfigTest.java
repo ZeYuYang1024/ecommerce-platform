@@ -18,9 +18,13 @@ class GatewayRouteConfigTest {
         );
 
         assertThat(yaml)
+                .contains("/api/v1/admin/inventory/**")
+                .contains("/api/v1/admin/merchant/inventory/**")
                 .contains("/api/v1/admin/merchant/products/**")
                 .contains("/api/v1/admin/merchant/brands/**")
                 .contains("/api/v1/admin/merchant/reviews/**")
+                .contains("/api/v1/admin/merchant/coupons/**")
+                .contains("/api/v1/admin/merchant/seckill/**")
                 .contains("/api/v1/admin/merchant/payment/**")
                 .contains("/api/v1/admin/merchant/reconciliation/**")
                 .contains("/api/v1/admin/merchant/settlement/**")

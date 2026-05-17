@@ -3,6 +3,7 @@ package com.ecommerce.knowledge.service.impl;
 import cn.hutool.json.JSONUtil;
 import com.ecommerce.knowledge.service.DocumentIngestionService;
 import dev.langchain4j.data.document.Document;
+import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.document.DocumentSplitter;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
@@ -26,12 +27,16 @@ public class DocumentIngestionServiceImpl implements DocumentIngestionService {
     private final EmbeddingStore<TextSegment> embeddingStore;
 
     @Override
-    public List<String> ingest(Long documentId, String title, String content, Long categoryId) {
-        Document document = Document.from(content,
-                dev.langchain4j.data.document.Metadata
-                        .from("document_id", String.valueOf(documentId))
-                        .put("category_id", String.valueOf(categoryId))
-                        .put("title", title));
+    public List<String> ingest(Long documentId, String title, String content, Long categoryId,
+                               String ownerType, Long merchantId) {
+        Metadata metadata = Metadata.from("document_id", String.valueOf(documentId))
+                .put("category_id", String.valueOf(categoryId))
+                .put("owner_type", ownerType)
+                .put("title", title);
+        if (merchantId != null) {
+            metadata.put("merchant_id", merchantId);
+        }
+        Document document = Document.from(content, metadata);
 
         DocumentSplitter splitter = recursive(500, 100);
         List<TextSegment> segments = splitter.split(document);
@@ -42,6 +47,10 @@ public class DocumentIngestionServiceImpl implements DocumentIngestionService {
         for (TextSegment segment : segments) {
             segment.metadata().put("document_id", String.valueOf(documentId));
             segment.metadata().put("category_id", String.valueOf(categoryId));
+            segment.metadata().put("owner_type", ownerType);
+            if (merchantId != null) {
+                segment.metadata().put("merchant_id", merchantId);
+            }
             segment.metadata().put("title", title);
 
             Embedding embedding = embeddingModel.embed(segment.text()).content();

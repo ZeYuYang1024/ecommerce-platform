@@ -20,6 +20,10 @@ public class KbCategory {
 
     private Integer sortOrder;
 
+    private String ownerType;
+
+    private Long merchantId;
+
     @TableLogic
     private Integer deleted;
 

@@ -152,7 +152,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Delete, Close } from '@element-plus/icons-vue'
@@ -160,7 +160,11 @@ import axios from 'axios'
 
 const route = useRoute()
 const router = useRouter()
-const isEdit = ref(!!route.params.id)
+const isEdit = computed(() => !!route.params.id)
+const isMerchantMode = computed(() => route.path.startsWith('/merchant/products'))
+const productBaseUrl = computed(() => (isMerchantMode.value ? '/api/v1/admin/merchant/products' : '/api/v1/admin/products'))
+const detailUrl = computed(() => (isMerchantMode.value ? `/api/v1/admin/merchant/products/${route.params.id}` : `/api/v1/products/${route.params.id}`))
+const listRoute = computed(() => (isMerchantMode.value ? '/merchant/products' : '/products'))
 const saving = ref(false)
 const categories = ref([])
 
@@ -251,7 +255,7 @@ onMounted(async () => {
   if (data.code === 200) categories.value = data.data
 
   if (isEdit.value) {
-    const { data: detail } = await axios.get(`/api/v1/products/${route.params.id}`)
+    const { data: detail } = await axios.get(detailUrl.value)
     if (detail.code === 200) {
       const d = detail.data
       form.spu = {
@@ -305,12 +309,12 @@ async function submit() {
     }
 
     if (isEdit.value) {
-      await axios.put(`/api/v1/admin/products/${route.params.id}`, payload.spu)
+      await axios.put(`${productBaseUrl.value}/${route.params.id}`, payload.spu)
     } else {
-      await axios.post('/api/v1/admin/products', payload)
+      await axios.post(productBaseUrl.value, payload)
     }
     ElMessage.success(isEdit.value ? '保存成功' : '创建成功')
-    router.push('/products')
+    router.push(listRoute.value)
   } catch (e) {
     ElMessage.error('操作失败')
   } finally {

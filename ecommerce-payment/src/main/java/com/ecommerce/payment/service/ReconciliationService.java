@@ -10,4 +10,6 @@ public interface ReconciliationService {
     List<ReconciliationVO> listReconciliations();
     Page<ReconciliationVO> listReconciliations(int page, int size);
     ReconciliationVO getReconciliationDetail(Long id);
+    Page<ReconciliationVO> listByMerchant(Long merchantId, int page, int size);
+    ReconciliationVO getReconciliationDetailByMerchant(Long merchantId, Long id);
 }

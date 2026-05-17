@@ -50,6 +50,11 @@ public class OrderController {
         return Result.ok(vo);
     }
 
+    @GetMapping("/internal/orders/merchant/order-nos")
+    public Result<List<String>> internalListOrderNosByMerchant(@RequestParam("merchantId") Long merchantId) {
+        return Result.ok(orderService.listOrderNosByMerchant(merchantId));
+    }
+
     @GetMapping("/orders/no/{orderNo}")
     public Result<OrderVO> detailByOrderNo(@RequestHeader("X-User-Id") Long userId, @PathVariable String orderNo) {
         return Result.ok(orderService.getOrderByOrderNo(userId, orderNo));

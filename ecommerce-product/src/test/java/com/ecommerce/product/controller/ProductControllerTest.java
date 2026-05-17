@@ -297,6 +297,26 @@ class ProductControllerTest {
         }
 
         @Test
+        void update_shouldValidateMerchantBrandSelectionForMerchantAdmin() {
+            Spu existing = new Spu();
+            existing.setId(1L);
+            existing.setMerchantId(88L);
+            when(productService.getSpuById(1L)).thenReturn(existing);
+
+            Spu incoming = new Spu();
+            incoming.setName("updated");
+            incoming.setBrandId(3001L);
+
+            doThrow(new BusinessException(ProductErrorCode.BRAND_FORBIDDEN))
+                    .when(brandService).validateMerchantBrandSelectable(88L, 3001L);
+
+            assertThatThrownBy(() -> controller.update(1L, incoming, "merchant", 88L))
+                    .isInstanceOf(BusinessException.class);
+
+            verify(productService, never()).updateSpu(any(Spu.class));
+        }
+
+        @Test
         void updateStatus_shouldRejectMerchantCrossTenantModification() {
             Spu existing = new Spu();
             existing.setId(1L);

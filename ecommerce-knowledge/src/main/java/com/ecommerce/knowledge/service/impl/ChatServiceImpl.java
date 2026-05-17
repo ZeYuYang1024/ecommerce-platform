@@ -32,6 +32,8 @@ import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.rag.content.retriever.EmbeddingStoreContentRetriever;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.store.embedding.EmbeddingStore;
+import dev.langchain4j.store.embedding.filter.Filter;
+import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -48,6 +50,8 @@ public class ChatServiceImpl implements ChatService {
 
     private static final int MAX_MEMORY_MESSAGES = 24;
     private static final int MAX_SOURCE_LENGTH = 180;
+    private static final String OWNER_PLATFORM = "platform";
+    private static final String OWNER_MERCHANT = "merchant";
 
     private final ChatModel chatModel;
     private final EmbeddingModel embeddingModel;
@@ -63,8 +67,9 @@ public class ChatServiceImpl implements ChatService {
     private final KbChatSessionMapper chatSessionMapper;
 
     private final Map<String, ChatMemory> chatMemories = new ConcurrentHashMap<>();
+    private final Map<Long, KnowledgeAgent> merchantAgents = new ConcurrentHashMap<>();
 
-    private KnowledgeAgent agent;
+    private KnowledgeAgent platformAgent;
 
     public ChatServiceImpl(ChatModel chatModel,
                            EmbeddingModel embeddingModel,
@@ -94,53 +99,43 @@ public class ChatServiceImpl implements ChatService {
 
     @PostConstruct
     public void init() {
-        ContentRetriever contentRetriever = EmbeddingStoreContentRetriever.builder()
-                .embeddingStore(embeddingStore)
-                .embeddingModel(embeddingModel)
-                .maxResults(5)
-                .minScore(0.55)
-                .build();
-
-        RetrievalAugmentor augmentor = DefaultRetrievalAugmentor.builder()
-                .contentRetriever(contentRetriever)
-                .build();
-
-        this.agent = AiServices.builder(KnowledgeAgent.class)
-                .chatModel(chatModel)
-                .retrievalAugmentor(augmentor)
-                .chatMemoryProvider(memoryId -> chatMemories.computeIfAbsent(String.valueOf(memoryId),
-                        ignored -> MessageWindowChatMemory.builder()
-                                .id(String.valueOf(memoryId))
-                                .maxMessages(MAX_MEMORY_MESSAGES)
-                                .build()))
-                .tools(
-                        productQueryTool,
-                        orderQueryTool,
-                        inventoryQueryTool,
-                        couponQueryTool,
-                        cartQueryTool,
-                        addressQueryTool,
-                        notificationQueryTool,
-                        paymentQueryTool
-                )
-                .build();
-
-        log.info("KnowledgeAgent initialized with RAG, memory and user query tools");
+        this.platformAgent = buildAgent(buildOwnershipFilter(OWNER_PLATFORM, null));
+        log.info("KnowledgeAgent initialized with tenant-scoped RAG retrievers");
     }
 
     @Override
     public ChatResponse chat(ChatRequest request, Long userId, String userType) {
+        return executeChat(platformAgent, request, userId, userType, null, OWNER_PLATFORM);
+    }
+
+    @Override
+    public ChatResponse merchantChat(ChatRequest request, Long userId, String userType, Long merchantId) {
+        if (merchantId == null) {
+            throw new BusinessException(KnowledgeErrorCode.VALIDATION_ERROR);
+        }
+        KnowledgeAgent merchantAgent = merchantAgents.computeIfAbsent(
+                merchantId, id -> buildAgent(buildOwnershipFilter(OWNER_MERCHANT, id)));
+        return executeChat(merchantAgent, request, userId, userType, merchantId, OWNER_MERCHANT);
+    }
+
+    private ChatResponse executeChat(KnowledgeAgent agent,
+                                     ChatRequest request,
+                                     Long userId,
+                                     String userType,
+                                     Long merchantId,
+                                     String ownerType) {
         if (StrUtil.isBlank(request.getQuestion())) {
             throw new BusinessException(KnowledgeErrorCode.VALIDATION_ERROR);
         }
 
         String sessionId = StrUtil.blankToDefault(request.getSessionId(), UUID.randomUUID().toString());
+        String memoryId = buildMemoryId(ownerType, merchantId, sessionId);
 
         try {
             AgentUserContextHolder.set(new AgentUserContext(userId, userType));
 
             dev.langchain4j.service.Result<String> result =
-                    agent.chat(sessionId, buildPromptInput(request.getQuestion(), userId, userType));
+                    agent.chat(memoryId, buildPromptInput(request.getQuestion(), userId, userType, ownerType, merchantId));
 
             upsertSession(sessionId, request.getQuestion(), userId);
 
@@ -159,13 +154,71 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
-    private String buildPromptInput(String question, Long userId, String userType) {
+    private KnowledgeAgent buildAgent(Filter filter) {
+        ContentRetriever contentRetriever = EmbeddingStoreContentRetriever.builder()
+                .embeddingStore(embeddingStore)
+                .embeddingModel(embeddingModel)
+                .maxResults(5)
+                .minScore(0.55)
+                .filter(filter)
+                .build();
+
+        RetrievalAugmentor augmentor = DefaultRetrievalAugmentor.builder()
+                .contentRetriever(contentRetriever)
+                .build();
+
+        return AiServices.builder(KnowledgeAgent.class)
+                .chatModel(chatModel)
+                .retrievalAugmentor(augmentor)
+                .chatMemoryProvider(memoryId -> chatMemories.computeIfAbsent(String.valueOf(memoryId),
+                        ignored -> MessageWindowChatMemory.builder()
+                                .id(String.valueOf(memoryId))
+                                .maxMessages(MAX_MEMORY_MESSAGES)
+                                .build()))
+                .tools(
+                        productQueryTool,
+                        orderQueryTool,
+                        inventoryQueryTool,
+                        couponQueryTool,
+                        cartQueryTool,
+                        addressQueryTool,
+                        notificationQueryTool,
+                        paymentQueryTool
+                )
+                .build();
+    }
+
+    private Filter buildOwnershipFilter(String ownerType, Long merchantId) {
+        Filter filter = MetadataFilterBuilder.metadataKey("owner_type").isEqualTo(ownerType);
+        if (merchantId != null) {
+            filter = filter.and(MetadataFilterBuilder.metadataKey("merchant_id").isEqualTo(merchantId));
+        }
+        return filter;
+    }
+
+    private String buildMemoryId(String ownerType, Long merchantId, String sessionId) {
+        if (OWNER_MERCHANT.equals(ownerType)) {
+            return "merchant:" + merchantId + ":" + sessionId;
+        }
+        return "platform:" + sessionId;
+    }
+
+    private String buildPromptInput(String question, Long userId, String userType, String ownerType, Long merchantId) {
         StringBuilder builder = new StringBuilder();
         builder.append("用户问题：").append(question.trim());
 
+        builder.append("\n\n[知识库范围]");
+        if (OWNER_MERCHANT.equals(ownerType)) {
+            builder.append("\n当前只能检索当前商家的私有知识库")
+                    .append("\n商家ID=").append(merchantId)
+                    .append("\n不要引用平台知识库，也不要回答其他商家的知识文档内容。");
+        } else {
+            builder.append("\n当前只能检索平台知识库。");
+        }
+
         if (userId != null) {
             builder.append("\n\n[会话上下文]")
-                    .append("\n当前用户已登录。")
+                    .append("\n当前用户已登录")
                     .append("\n用户ID=").append(userId);
             if (StrUtil.isNotBlank(userType)) {
                 builder.append("\n用户类型=").append(userType);

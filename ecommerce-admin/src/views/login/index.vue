@@ -88,6 +88,11 @@ async function login() {
       localStorage.setItem('token', data.data.token)
       localStorage.setItem('username', data.data.username)
       localStorage.setItem('type', data.data.type || 'super_admin')
+      if (data.data.merchantId !== null && data.data.merchantId !== undefined) {
+        localStorage.setItem('merchantId', String(data.data.merchantId))
+      } else {
+        localStorage.removeItem('merchantId')
+      }
       router.push('/dashboard')
     } else {
       ElMessage.error(data.message)

@@ -26,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.Collections;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -135,6 +136,24 @@ class PaymentServiceImplTest {
 
             assertThat(page.getRecords()).hasSize(1);
         }
+
+        @Test
+        void shouldListPaymentsByMerchant() {
+            when(orderClient.listOrderNosByMerchant(2001L))
+                    .thenReturn(com.ecommerce.common.result.Result.ok(List.of("202605091200000001")));
+            when(paymentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                    .thenAnswer(invocation -> {
+                        Page<Payment> page = invocation.getArgument(0);
+                        page.setRecords(Collections.singletonList(payment));
+                        page.setTotal(1);
+                        return page;
+                    });
+
+            Page<PaymentVO> page = service.listByMerchant(2001L, null, 1, 10);
+
+            assertThat(page.getRecords()).hasSize(1);
+            assertThat(page.getRecords().get(0).getOrderNo()).isEqualTo("202605091200000001");
+        }
     }
 
     @Nested
@@ -193,6 +212,35 @@ class PaymentServiceImplTest {
 
             PaymentVO vo = service.refund("202605091200000001", req);
             assertThat(vo.getStatus()).isEqualTo(1);
+        }
+
+        @Test
+        void shouldRejectMerchantRefundForForeignOrder() {
+            when(orderClient.listOrderNosByMerchant(2001L))
+                    .thenReturn(com.ecommerce.common.result.Result.ok(List.of("OTHER-ORDER")));
+
+            RefundRequest req = new RefundRequest();
+            req.setReason("merchant refund");
+
+            assertThatThrownBy(() -> service.refundByMerchant(2001L, "202605091200000001", req))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(PaymentErrorCode.PAYMENT_NOT_FOUND.getCode());
+        }
+
+        @Test
+        void shouldRejectRefundAmountGreaterThanPayment() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
+            when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+
+            RefundRequest req = new RefundRequest();
+            req.setReason("over refund");
+            req.setAmount(new BigDecimal("7000.00"));
+
+            assertThatThrownBy(() -> service.refund("202605091200000001", req))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(PaymentErrorCode.REFUND_AMOUNT_INVALID.getCode());
         }
     }
 

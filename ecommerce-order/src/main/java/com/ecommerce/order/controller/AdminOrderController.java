@@ -7,6 +7,7 @@ import com.ecommerce.common.dto.ReconOrderVO;
 import com.ecommerce.order.dto.response.OrderVO;
 import com.ecommerce.order.entity.Order;
 import com.ecommerce.order.service.OrderService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -48,7 +49,7 @@ public class AdminOrderController {
 
     @PutMapping("/orders/{id}/status")
     public Result<Void> updateStatus(@PathVariable Long id,
-                                     @RequestBody UpdateOrderStatusRequest request,
+                                     @Valid @RequestBody UpdateOrderStatusRequest request,
                                      @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
                                      @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
         orderService.updateStatus(id, request.getStatus(), userType, merchantId);

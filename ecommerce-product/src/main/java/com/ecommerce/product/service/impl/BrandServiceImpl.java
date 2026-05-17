@@ -34,11 +34,8 @@ public class BrandServiceImpl implements BrandService {
     public Page<Brand> pageForMerchant(Long merchantId, int page, int size) {
         Page<Brand> pageReq = new Page<>(page, size);
         LambdaQueryWrapper<Brand> wrapper = new LambdaQueryWrapper<Brand>()
-                .and(query -> query.eq(Brand::getSourceType, SOURCE_PLATFORM)
-                                .eq(Brand::getAuditStatus, AUDIT_APPROVED)
-                        .or(or -> or.eq(Brand::getSourceType, SOURCE_MERCHANT)
-                                .eq(Brand::getMerchantId, merchantId)))
-                .orderByAsc(Brand::getSourceType)
+                .eq(Brand::getSourceType, SOURCE_MERCHANT)
+                .eq(Brand::getMerchantId, merchantId)
                 .orderByAsc(Brand::getName);
         return brandMapper.selectPage(pageReq, wrapper);
     }

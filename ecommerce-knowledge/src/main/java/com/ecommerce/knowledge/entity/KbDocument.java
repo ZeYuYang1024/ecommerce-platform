@@ -22,6 +22,10 @@ public class KbDocument {
 
     private String status;
 
+    private String ownerType;
+
+    private Long merchantId;
+
     private String milvusIds;
 
     private Integer chunkCount;

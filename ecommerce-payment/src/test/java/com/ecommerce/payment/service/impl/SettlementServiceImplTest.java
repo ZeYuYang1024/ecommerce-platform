@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -34,6 +35,7 @@ class SettlementServiceImplTest {
     @Mock private DailySettlementMapper settlementMapper;
     @Mock private PaymentMapper paymentMapper;
     @Mock private RefundMapper refundMapper;
+    @Mock private com.ecommerce.payment.client.OrderClient orderClient;
     @InjectMocks private SettlementServiceImpl service;
 
     @BeforeEach
@@ -126,6 +128,68 @@ class SettlementServiceImplTest {
                     });
 
             assertThat(service.listSettlements(1, 10).getRecords()).isEmpty();
+        }
+
+        @Test
+        void shouldListSettlementsByMerchant() {
+            when(orderClient.listOrderNosByMerchant(2001L))
+                    .thenReturn(com.ecommerce.common.result.Result.ok(List.of("ORD001")));
+
+            Payment payment = buildPayment(1L, new BigDecimal("500.00"), 1, LocalDateTime.of(2026, 5, 15, 10, 0));
+            payment.setOrderNo("ORD001");
+            when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(Collections.singletonList(payment));
+
+            Refund refund = buildRefund(1L, new BigDecimal("100.00"), 1, LocalDateTime.of(2026, 5, 15, 12, 0));
+            refund.setOrderNo("ORD001");
+            when(refundMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(Collections.singletonList(refund));
+
+            Page<SettlementVO> result = service.listByMerchant(2001L, 1, 10);
+
+            assertThat(result.getRecords()).hasSize(1);
+            assertThat(result.getRecords().get(0).getSettlementDate()).isEqualTo(LocalDate.of(2026, 5, 15));
+            assertThat(result.getRecords().get(0).getNetAmount()).isEqualByComparingTo("400.00");
+        }
+
+        @Test
+        void shouldUseReadableStatusTextForPlatformSettlements() {
+            DailySettlement settlement = new DailySettlement();
+            settlement.setId(1L);
+            settlement.setSettlementDate(LocalDate.of(2026, 5, 15));
+            settlement.setStatus(1);
+
+            when(settlementMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                    .thenAnswer(invocation -> {
+                        Page<DailySettlement> page = invocation.getArgument(0);
+                        page.setRecords(Collections.singletonList(settlement));
+                        page.setTotal(1);
+                        return page;
+                    });
+
+            Page<SettlementVO> result = service.listSettlements(1, 10);
+
+            assertThat(result.getRecords()).hasSize(1);
+            assertThat(result.getRecords().get(0).getStatusText()).isEqualTo("已确认");
+        }
+
+        @Test
+        void shouldUseReadableStatusTextForMerchantSettlements() {
+            when(orderClient.listOrderNosByMerchant(2001L))
+                    .thenReturn(com.ecommerce.common.result.Result.ok(List.of("ORD001")));
+
+            Payment payment = buildPayment(1L, new BigDecimal("500.00"), 1, LocalDateTime.of(2026, 5, 15, 10, 0));
+            payment.setOrderNo("ORD001");
+            when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(Collections.singletonList(payment));
+
+            when(refundMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(Collections.emptyList());
+
+            Page<SettlementVO> result = service.listByMerchant(2001L, 1, 10);
+
+            assertThat(result.getRecords()).hasSize(1);
+            assertThat(result.getRecords().get(0).getStatusText()).isEqualTo("已确认");
         }
     }
 

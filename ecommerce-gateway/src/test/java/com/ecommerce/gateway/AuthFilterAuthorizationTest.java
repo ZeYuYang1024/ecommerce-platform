@@ -115,6 +115,42 @@ class AuthFilterAuthorizationTest {
     }
 
     @Test
+    void merchantAdminShouldBeAllowedToReachMerchantCouponRoutes() {
+        RecordingChain chain = new RecordingChain();
+        MockServerWebExchange exchange = exchange("GET", "/api/v1/admin/merchant/coupons",
+                JwtUtils.generate(3L, "merchant", "admin", "merchant", 2001L));
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(chain.invoked).isTrue();
+        assertThat(exchange.getResponse().getStatusCode()).isNull();
+    }
+
+    @Test
+    void merchantAdminShouldBeAllowedToReachMerchantSeckillRoutes() {
+        RecordingChain chain = new RecordingChain();
+        MockServerWebExchange exchange = exchange("GET", "/api/v1/admin/merchant/seckill/sessions",
+                JwtUtils.generate(3L, "merchant", "admin", "merchant", 2001L));
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(chain.invoked).isTrue();
+        assertThat(exchange.getResponse().getStatusCode()).isNull();
+    }
+
+    @Test
+    void merchantAdminShouldBeAllowedToReachOwnMerchantDetailRoute() {
+        RecordingChain chain = new RecordingChain();
+        MockServerWebExchange exchange = exchange("GET", "/api/v1/admin/merchants/2001",
+                JwtUtils.generate(3L, "merchant", "admin", "merchant", 2001L));
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(chain.invoked).isTrue();
+        assertThat(exchange.getResponse().getStatusCode()).isNull();
+    }
+
+    @Test
     void merchantAdminShouldBeForbiddenFromPlatformProductRoutes() {
         RecordingChain chain = new RecordingChain();
         MockServerWebExchange exchange = exchange("GET", "/api/v1/admin/products",

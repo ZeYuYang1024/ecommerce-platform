@@ -29,4 +29,12 @@ public class ChatController {
                                           @RequestBody ChatRequest request) {
         return Result.ok(chatService.chat(request, userId, userType));
     }
+
+    @PostMapping("/api/v1/admin/merchant/knowledge/chat")
+    public Result<ChatResponse> merchantChat(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                             @RequestHeader(value = "X-User-Type", required = false) String userType,
+                                             @RequestHeader("X-Merchant-Id") Long merchantId,
+                                             @RequestBody ChatRequest request) {
+        return Result.ok(chatService.merchantChat(request, userId, userType, merchantId));
+    }
 }

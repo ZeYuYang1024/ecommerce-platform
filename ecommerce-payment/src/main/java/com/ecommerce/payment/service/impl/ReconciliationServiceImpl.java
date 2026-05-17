@@ -161,19 +161,43 @@ public class ReconciliationServiceImpl implements ReconciliationService {
         List<ReconciliationDetail> details = detailMapper.selectList(
                 new LambdaQueryWrapper<ReconciliationDetail>()
                         .eq(ReconciliationDetail::getReconciliationId, id));
-        vo.setDetails(details.stream().map(d -> {
-            ReconciliationVO.DetailVO dv = new ReconciliationVO.DetailVO();
-            dv.setId(d.getId());
-            dv.setRecordType(d.getRecordType());
-            dv.setOrderNo(d.getOrderNo());
-            dv.setPaymentNo(d.getPaymentNo());
-            dv.setAmount(d.getAmount());
-            dv.setRecordStatus(d.getRecordStatus());
-            dv.setMatchStatus(d.getMatchStatus());
-            dv.setDiffReason(d.getDiffReason());
-            return dv;
-        }).collect(Collectors.toList()));
+        vo.setDetails(details.stream().map(this::toDetailVO).collect(Collectors.toList()));
         return vo;
+    }
+
+    @Override
+    public Page<ReconciliationVO> listByMerchant(Long merchantId, int page, int size) {
+        Set<String> merchantOrderNos = loadMerchantOrderNos(merchantId);
+        if (merchantOrderNos.isEmpty()) {
+            return new Page<>(page, size, 0);
+        }
+        List<Reconciliation> list = reconciliationMapper.selectList(
+                new LambdaQueryWrapper<Reconciliation>().orderByDesc(Reconciliation::getCreatedAt));
+        List<ReconciliationVO> merchantViews = list.stream()
+                .map(rec -> toMerchantView(rec, merchantOrderNos, false))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        int fromIndex = Math.max((page - 1) * size, 0);
+        if (fromIndex >= merchantViews.size()) {
+            return new Page<>(page, size, merchantViews.size());
+        }
+        int toIndex = Math.min(fromIndex + size, merchantViews.size());
+        Page<ReconciliationVO> result = new Page<>(page, size, merchantViews.size());
+        result.setRecords(merchantViews.subList(fromIndex, toIndex));
+        return result;
+    }
+
+    @Override
+    public ReconciliationVO getReconciliationDetailByMerchant(Long merchantId, Long id) {
+        Reconciliation rec = reconciliationMapper.selectById(id);
+        if (rec == null) {
+            return null;
+        }
+        Set<String> merchantOrderNos = loadMerchantOrderNos(merchantId);
+        if (merchantOrderNos.isEmpty()) {
+            return null;
+        }
+        return toMerchantView(rec, merchantOrderNos, true);
     }
 
     private void addDetail(List<ReconciliationDetail> details, Long recId,
@@ -211,6 +235,69 @@ public class ReconciliationServiceImpl implements ReconciliationService {
     private String generateBatchNo() {
         return "REC" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
                 + String.format("%04d", SnowflakeUtils.nextId() % 10000);
+    }
+
+    private Set<String> loadMerchantOrderNos(Long merchantId) {
+        try {
+            var response = orderClient.listOrderNosByMerchant(merchantId);
+            List<String> orderNos = response.getData() != null ? response.getData() : Collections.emptyList();
+            return new HashSet<>(orderNos);
+        } catch (Exception e) {
+            return Collections.emptySet();
+        }
+    }
+
+    private ReconciliationVO toMerchantView(Reconciliation rec, Set<String> merchantOrderNos, boolean includeDetails) {
+        List<ReconciliationDetail> details = detailMapper.selectList(
+                new LambdaQueryWrapper<ReconciliationDetail>()
+                        .eq(ReconciliationDetail::getReconciliationId, rec.getId()));
+        List<ReconciliationDetail> merchantDetails = details.stream()
+                .filter(detail -> detail.getOrderNo() != null && merchantOrderNos.contains(detail.getOrderNo()))
+                .collect(Collectors.toList());
+        if (merchantDetails.isEmpty()) {
+            return null;
+        }
+
+        Set<String> orderCountSet = merchantDetails.stream()
+                .filter(detail -> "ORDER".equals(detail.getRecordType()))
+                .map(ReconciliationDetail::getOrderNo)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Set<String> paymentCountSet = merchantDetails.stream()
+                .filter(detail -> "PAYMENT".equals(detail.getRecordType()) || "MATCHED".equals(detail.getMatchStatus()))
+                .map(ReconciliationDetail::getOrderNo)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Set<String> matchedOrderSet = merchantDetails.stream()
+                .filter(detail -> "MATCHED".equals(detail.getMatchStatus()))
+                .map(ReconciliationDetail::getOrderNo)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        ReconciliationVO vo = toVO(rec);
+        vo.setTotalOrderCount(orderCountSet.size());
+        vo.setTotalPaymentCount(paymentCountSet.size());
+        vo.setMatchedCount(matchedOrderSet.size());
+        vo.setUnmatchedCount((int) merchantDetails.stream()
+                .filter(detail -> !"MATCHED".equals(detail.getMatchStatus()))
+                .count());
+        if (includeDetails) {
+            vo.setDetails(merchantDetails.stream().map(this::toDetailVO).collect(Collectors.toList()));
+        }
+        return vo;
+    }
+
+    private ReconciliationVO.DetailVO toDetailVO(ReconciliationDetail detail) {
+        ReconciliationVO.DetailVO dv = new ReconciliationVO.DetailVO();
+        dv.setId(detail.getId());
+        dv.setRecordType(detail.getRecordType());
+        dv.setOrderNo(detail.getOrderNo());
+        dv.setPaymentNo(detail.getPaymentNo());
+        dv.setAmount(detail.getAmount());
+        dv.setRecordStatus(detail.getRecordStatus());
+        dv.setMatchStatus(detail.getMatchStatus());
+        dv.setDiffReason(detail.getDiffReason());
+        return dv;
     }
 
 

@@ -35,4 +35,5 @@ public interface ProductService {
     List<Sku> getSkusByIds(List<Long> ids);
     long countAll();
     List<Long> getSpuIdsByMerchant(Long merchantId);
+    List<Long> getSkuIdsByMerchant(Long merchantId);
 }

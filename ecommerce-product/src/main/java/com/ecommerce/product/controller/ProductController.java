@@ -115,11 +115,14 @@ public class ProductController {
 
     @PutMapping("/admin/products/{id}")
     public Result<Spu> update(@PathVariable Long id,
-                              @RequestBody Spu spu,
+                              @Valid @RequestBody Spu spu,
                               @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
                               @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
         if ("merchant".equals(userType)) {
             Spu existing = requireMerchantOwnedSpu(id, merchantId);
+            if (spu.getBrandId() != null) {
+                brandService.validateMerchantBrandSelectable(merchantId, spu.getBrandId());
+            }
             spu.setMerchantId(existing.getMerchantId());
         }
         spu.setId(id);
@@ -128,7 +131,7 @@ public class ProductController {
 
     @PutMapping("/admin/merchant/products/{id}")
     public Result<Spu> merchantUpdate(@PathVariable Long id,
-                                      @RequestBody Spu spu,
+                                      @Valid @RequestBody Spu spu,
                                       @RequestHeader("X-Merchant-Id") Long merchantId) {
         return update(id, spu, "merchant", merchantId);
     }

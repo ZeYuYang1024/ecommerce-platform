@@ -12,7 +12,7 @@
     </div>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading">
+      <el-table :data="tableData" v-loading="loading" size="small">
         <el-table-column label="订单号" width="200">
           <template #default="{ row }"><span class="font-mono" style="font-size:12px">{{ row.orderNo }}</span></template>
         </el-table-column>
@@ -26,7 +26,7 @@
           <template #default="{ row }"><span style="font-size:13px">{{ row.receiverName }}</span></template>
         </el-table-column>
         <el-table-column label="时间" width="180">
-          <template #default="{ row }"><span class="time-text">{{ row.createdAt }}</span></template>
+          <template #default="{ row }"><span class="time-text">{{ formatDateTime(row.createdAt) }}</span></template>
         </el-table-column>
 
       </el-table>
@@ -49,6 +49,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import { formatDateTime } from '@/utils/dateTime'
 
 const loading = ref(false)
 const tableData = ref([])
@@ -83,5 +84,6 @@ onMounted(fetchData)
 .table-card { border-radius: var(--radius-lg); }
 .pagination-row { padding: 18px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
 .amount-text { font-weight: 700; color: var(--text-primary); }
-.time-text { font-size: 12px; color: var(--text-secondary); }
+.time-text { font-size: 12px; color: var(--text-secondary); white-space: nowrap; display: inline-block; }
+.table-card :deep(.el-table .cell) { line-height: 1.5; }
 </style>

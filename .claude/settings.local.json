@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm uninstall *)",
+      "Bash(npm *)",
+      "Bash(node --check \"D:/ecommerce-platform/ecommerce-miniprogram/stores/auth.js\")",
+      "Bash(node --check \"D:/ecommerce-platform/ecommerce-miniprogram/stores/cart.js\")",
+      "Bash(node --check \"D:/ecommerce-platform/ecommerce-miniprogram/main.js\")",
+      "Bash(node *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(rm -f ui_*.png)",
+      "Bash(rm -rf mp_screenshots/)",
+      "Bash(git -C D:/ecommerce-platform log --all --oneline -- manifest.json)",
+      "Bash(git *)"
+    ]
+  }
+}

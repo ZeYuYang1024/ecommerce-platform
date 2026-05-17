@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.SkuBatchVO;
+import com.ecommerce.common.dto.SkuOwnerVO;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.inventory.client.ProductClient;
@@ -23,6 +24,8 @@ import java.util.stream.Collectors;
 @Service
 public class StockServiceImpl implements StockService {
 
+    private static final int MAX_RETRIES = 3;
+
     private final StockMapper stockMapper;
     private final ProductClient productClient;
 
@@ -33,8 +36,7 @@ public class StockServiceImpl implements StockService {
 
     @Override
     public Stock getBySkuId(Long skuId) {
-        Stock stock = stockMapper.selectOne(
-                new LambdaQueryWrapper<Stock>().eq(Stock::getSkuId, skuId));
+        Stock stock = stockMapper.selectOne(new LambdaQueryWrapper<Stock>().eq(Stock::getSkuId, skuId));
         if (stock == null) {
             throw new BusinessException(InventoryErrorCode.STOCK_NOT_FOUND);
         }
@@ -44,28 +46,52 @@ public class StockServiceImpl implements StockService {
     @Override
     public List<Stock> batchQuery(List<Long> skuIds) {
         if (skuIds == null || skuIds.isEmpty()) {
-            return java.util.Collections.emptyList();
+            return List.of();
         }
-        return stockMapper.selectList(
-                new LambdaQueryWrapper<Stock>().in(Stock::getSkuId, skuIds));
+        return stockMapper.selectList(new LambdaQueryWrapper<Stock>().in(Stock::getSkuId, skuIds));
     }
 
     @Override
     public Page<StockVO> list(Long skuId, Integer stockStatus, int page, int size) {
+        Page<Stock> result = stockMapper.selectPage(new Page<>(page, size), buildListWrapper(skuId, stockStatus, null));
+        return enrichPage(result);
+    }
+
+    @Override
+    public Page<StockVO> listForMerchant(Long merchantId, Long skuId, Integer stockStatus, int page, int size) {
+        List<Long> merchantSkuIds = productClient.listSkuIdsByMerchant(merchantId).getData();
+        if (merchantSkuIds == null || merchantSkuIds.isEmpty()) {
+            return new Page<>(page, size, 0);
+        }
+        Page<Stock> result = stockMapper.selectPage(new Page<>(page, size), buildListWrapper(skuId, stockStatus, merchantSkuIds));
+        return enrichPage(result);
+    }
+
+    private LambdaQueryWrapper<Stock> buildListWrapper(Long skuId, Integer stockStatus, List<Long> skuIds) {
         LambdaQueryWrapper<Stock> wrapper = new LambdaQueryWrapper<>();
-        if (skuId != null) wrapper.eq(Stock::getSkuId, skuId);
+        if (skuIds != null) {
+            wrapper.in(Stock::getSkuId, skuIds);
+        }
+        if (skuId != null) {
+            wrapper.eq(Stock::getSkuId, skuId);
+        }
         if (stockStatus != null) {
-            if (stockStatus == 0) wrapper.eq(Stock::getAvailableStock, 0);
-            else if (stockStatus == 1) wrapper.lt(Stock::getAvailableStock, 10).gt(Stock::getAvailableStock, 0);
-            else if (stockStatus == 2) wrapper.ge(Stock::getAvailableStock, 10);
+            if (stockStatus == 0) {
+                wrapper.eq(Stock::getAvailableStock, 0);
+            } else if (stockStatus == 1) {
+                wrapper.lt(Stock::getAvailableStock, 10).gt(Stock::getAvailableStock, 0);
+            } else if (stockStatus == 2) {
+                wrapper.ge(Stock::getAvailableStock, 10);
+            }
         }
         wrapper.orderByDesc(Stock::getUpdatedAt);
+        return wrapper;
+    }
 
-        Page<Stock> result = stockMapper.selectPage(new Page<>(page, size), wrapper);
+    private Page<StockVO> enrichPage(Page<Stock> result) {
         List<StockVO> vos = result.getRecords().stream().map(this::toVO).collect(Collectors.toList());
-
         if (!vos.isEmpty()) {
-            List<Long> skuIds = vos.stream().map(StockVO::getSkuId).distinct().collect(Collectors.toList());
+            List<Long> skuIds = vos.stream().map(StockVO::getSkuId).distinct().toList();
             try {
                 List<SkuBatchVO> skuInfos = productClient.batchQuerySkus(skuIds).getData();
                 if (skuInfos != null && !skuInfos.isEmpty()) {
@@ -80,17 +106,14 @@ public class StockServiceImpl implements StockService {
                         }
                     }
                 }
-            } catch (Exception e) {
-                // Feign call failed — return stock data without SKU names
+            } catch (Exception ignored) {
+                // best effort enrich only
             }
         }
-
         Page<StockVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         voPage.setRecords(vos);
         return voPage;
     }
-
-    private static final int MAX_RETRIES = 3;
 
     @Transactional
     @Override
@@ -149,9 +172,11 @@ public class StockServiceImpl implements StockService {
             throw new BusinessException(InventoryErrorCode.INVALID_QUANTITY);
         }
         for (int i = 0; i < MAX_RETRIES; i++) {
-            Stock existing = stockMapper.selectOne(
-                    new LambdaQueryWrapper<Stock>().eq(Stock::getSkuId, skuId));
+            Stock existing = stockMapper.selectOne(new LambdaQueryWrapper<Stock>().eq(Stock::getSkuId, skuId));
             if (existing != null) {
+                if (totalStock < existing.getLockedStock()) {
+                    throw new BusinessException(InventoryErrorCode.TOTAL_STOCK_BELOW_LOCKED);
+                }
                 int diff = totalStock - existing.getTotalStock();
                 int updated = stockMapper.update(null,
                         new LambdaUpdateWrapper<Stock>()
@@ -178,14 +203,28 @@ public class StockServiceImpl implements StockService {
         throw new BusinessException(InventoryErrorCode.STOCK_UPDATE_FAILED);
     }
 
+    @Transactional
     @Override
-    public StockVO toVO(Stock s) {
+    public void setStockForMerchant(Long merchantId, Long skuId, int totalStock) {
+        ensureMerchantOwnsSku(merchantId, skuId);
+        setStock(skuId, totalStock);
+    }
+
+    private void ensureMerchantOwnsSku(Long merchantId, Long skuId) {
+        SkuOwnerVO owner = productClient.querySkuOwner(skuId).getData();
+        if (owner == null || owner.getMerchantId() == null || !merchantId.equals(owner.getMerchantId())) {
+            throw new BusinessException(InventoryErrorCode.STOCK_FORBIDDEN);
+        }
+    }
+
+    @Override
+    public StockVO toVO(Stock stock) {
         StockVO vo = new StockVO();
-        vo.setId(s.getId());
-        vo.setSkuId(s.getSkuId());
-        vo.setTotalStock(s.getTotalStock());
-        vo.setLockedStock(s.getLockedStock());
-        vo.setAvailableStock(s.getAvailableStock());
+        vo.setId(stock.getId());
+        vo.setSkuId(stock.getSkuId());
+        vo.setTotalStock(stock.getTotalStock());
+        vo.setLockedStock(stock.getLockedStock());
+        vo.setAvailableStock(stock.getAvailableStock());
         return vo;
     }
 }

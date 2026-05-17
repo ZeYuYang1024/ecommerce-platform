@@ -31,7 +31,7 @@ spring:
             - id: inventory
               uri: lb://ecommerce-inventory
               predicates:
-                - Path=/api/v1/inventory/**
+                - Path=/api/v1/inventory/**,/api/v1/admin/inventory/**,/api/v1/admin/merchant/inventory/**
             - id: merchant
               uri: lb://ecommerce-merchant
               predicates:
@@ -55,7 +55,7 @@ spring:
             - id: coupon
               uri: lb://ecommerce-coupon
               predicates:
-                - Path=/api/v1/coupons/**,/api/v1/admin/coupons/**
+                - Path=/api/v1/coupons/**,/api/v1/admin/coupons/**,/api/v1/admin/merchant/coupons/**
             - id: notification
               uri: lb://ecommerce-notification
               predicates:
@@ -63,7 +63,7 @@ spring:
             - id: seckill
               uri: lb://ecommerce-seckill
               predicates:
-                - Path=/api/v1/seckill/**,/api/v1/admin/seckill/**
+                - Path=/api/v1/seckill/**,/api/v1/admin/seckill/**,/api/v1/admin/merchant/seckill/**
             - id: knowledge
               uri: lb://ecommerce-knowledge
               predicates:

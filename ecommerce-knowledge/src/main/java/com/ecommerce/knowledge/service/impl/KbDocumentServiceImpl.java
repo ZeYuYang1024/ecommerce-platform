@@ -20,7 +20,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collections;
 import java.util.List;
 
 @Slf4j
@@ -28,27 +27,43 @@ import java.util.List;
 @RequiredArgsConstructor
 public class KbDocumentServiceImpl implements KbDocumentService {
 
+    private static final String OWNER_PLATFORM = "platform";
+    private static final String OWNER_MERCHANT = "merchant";
+
     private final KbDocumentMapper documentMapper;
     private final KbCategoryMapper categoryMapper;
     private final DocumentIngestionService ingestionService;
 
     @Override
     @Transactional
-    public DocumentVO create(CreateDocumentRequest request) {
+    public DocumentVO createPlatform(CreateDocumentRequest request) {
+        return createInternal(request, OWNER_PLATFORM, null);
+    }
+
+    @Override
+    @Transactional
+    public DocumentVO createForMerchant(Long merchantId, CreateDocumentRequest request) {
+        return createInternal(request, OWNER_MERCHANT, merchantId);
+    }
+
+    private DocumentVO createInternal(CreateDocumentRequest request, String ownerType, Long merchantId) {
         try {
+            loadOwnedCategory(request.getCategoryId(), ownerType, merchantId);
             KbDocument doc = new KbDocument();
             doc.setCategoryId(request.getCategoryId());
             doc.setTitle(request.getTitle());
             doc.setContent(request.getContent());
             doc.setSourceType(request.getSourceType() != null ? request.getSourceType() : "manual");
             doc.setStatus("published");
+            doc.setOwnerType(ownerType);
+            doc.setMerchantId(merchantId);
             doc.setChunkCount(0);
             documentMapper.insert(doc);
             log.info("Document {} inserted, starting ingestion...", doc.getId());
 
             try {
                 List<String> milvusIds = ingestionService.ingest(doc.getId(), doc.getTitle(),
-                        doc.getContent(), doc.getCategoryId());
+                        doc.getContent(), doc.getCategoryId(), ownerType, merchantId);
                 doc.setMilvusIds(JSONUtil.toJsonStr(milvusIds));
                 doc.setChunkCount(milvusIds.size());
                 documentMapper.updateById(doc);
@@ -60,6 +75,8 @@ public class KbDocumentServiceImpl implements KbDocumentService {
             }
 
             return toVO(doc);
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Create document failed", e);
             throw new BusinessException(96998, "创建失败: " + e.getMessage());
@@ -68,11 +85,18 @@ public class KbDocumentServiceImpl implements KbDocumentService {
 
     @Override
     @Transactional
-    public DocumentVO update(Long id, UpdateDocumentRequest request) {
-        KbDocument doc = documentMapper.selectById(id);
-        if (doc == null) {
-            throw new BusinessException(KnowledgeErrorCode.DOCUMENT_NOT_FOUND);
-        }
+    public DocumentVO updatePlatform(Long id, UpdateDocumentRequest request) {
+        return updateInternal(id, request, OWNER_PLATFORM, null);
+    }
+
+    @Override
+    @Transactional
+    public DocumentVO updateForMerchant(Long merchantId, Long id, UpdateDocumentRequest request) {
+        return updateInternal(id, request, OWNER_MERCHANT, merchantId);
+    }
+
+    private DocumentVO updateInternal(Long id, UpdateDocumentRequest request, String ownerType, Long merchantId) {
+        KbDocument doc = loadOwnedDocument(id, ownerType, merchantId);
 
         String originalStatus = doc.getStatus();
         boolean needReindex = false;
@@ -86,6 +110,7 @@ public class KbDocumentServiceImpl implements KbDocumentService {
             needReindex = true;
         }
         if (request.getCategoryId() != null) {
+            loadOwnedCategory(request.getCategoryId(), ownerType, merchantId);
             doc.setCategoryId(request.getCategoryId());
             needReindex = true;
         }
@@ -109,7 +134,7 @@ public class KbDocumentServiceImpl implements KbDocumentService {
             deleteMilvusVectors(doc);
             try {
                 List<String> milvusIds = ingestionService.ingest(doc.getId(), doc.getTitle(),
-                        doc.getContent(), doc.getCategoryId());
+                        doc.getContent(), doc.getCategoryId(), ownerType, merchantId);
                 doc.setMilvusIds(JSONUtil.toJsonStr(milvusIds));
                 doc.setChunkCount(milvusIds.size());
                 doc.setStatus("published");
@@ -126,27 +151,49 @@ public class KbDocumentServiceImpl implements KbDocumentService {
 
     @Override
     @Transactional
-    public void delete(Long id) {
-        KbDocument doc = documentMapper.selectById(id);
-        if (doc == null) {
-            throw new BusinessException(KnowledgeErrorCode.DOCUMENT_NOT_FOUND);
-        }
+    public void deletePlatform(Long id) {
+        deleteInternal(id, OWNER_PLATFORM, null);
+    }
+
+    @Override
+    @Transactional
+    public void deleteForMerchant(Long merchantId, Long id) {
+        deleteInternal(id, OWNER_MERCHANT, merchantId);
+    }
+
+    private void deleteInternal(Long id, String ownerType, Long merchantId) {
+        KbDocument doc = loadOwnedDocument(id, ownerType, merchantId);
         deleteMilvusVectors(doc);
         documentMapper.deleteById(id);
     }
 
     @Override
-    public DocumentVO getById(Long id) {
-        KbDocument doc = documentMapper.selectById(id);
-        if (doc == null) {
-            throw new BusinessException(KnowledgeErrorCode.DOCUMENT_NOT_FOUND);
-        }
-        return toVO(doc);
+    public DocumentVO getPlatformById(Long id) {
+        return toVO(loadOwnedDocument(id, OWNER_PLATFORM, null));
     }
 
     @Override
-    public Page<DocumentVO> page(int pageNum, int pageSize, Long categoryId, String status) {
+    public DocumentVO getForMerchant(Long merchantId, Long id) {
+        return toVO(loadOwnedDocument(id, OWNER_MERCHANT, merchantId));
+    }
+
+    @Override
+    public Page<DocumentVO> pagePlatform(int pageNum, int pageSize, Long categoryId, String status) {
+        return pageInternal(pageNum, pageSize, categoryId, status, OWNER_PLATFORM, null);
+    }
+
+    @Override
+    public Page<DocumentVO> pageForMerchant(Long merchantId, int pageNum, int pageSize, Long categoryId, String status) {
+        return pageInternal(pageNum, pageSize, categoryId, status, OWNER_MERCHANT, merchantId);
+    }
+
+    private Page<DocumentVO> pageInternal(int pageNum, int pageSize, Long categoryId, String status,
+                                          String ownerType, Long merchantId) {
         LambdaQueryWrapper<KbDocument> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(KbDocument::getOwnerType, ownerType);
+        if (merchantId != null) {
+            wrapper.eq(KbDocument::getMerchantId, merchantId);
+        }
         if (categoryId != null) {
             wrapper.eq(KbDocument::getCategoryId, categoryId);
         }
@@ -163,15 +210,22 @@ public class KbDocumentServiceImpl implements KbDocumentService {
 
     @Override
     @Transactional
-    public void reindex(Long id) {
-        KbDocument doc = documentMapper.selectById(id);
-        if (doc == null) {
-            throw new BusinessException(KnowledgeErrorCode.DOCUMENT_NOT_FOUND);
-        }
+    public void reindexPlatform(Long id) {
+        reindexInternal(id, OWNER_PLATFORM, null);
+    }
+
+    @Override
+    @Transactional
+    public void reindexForMerchant(Long merchantId, Long id) {
+        reindexInternal(id, OWNER_MERCHANT, merchantId);
+    }
+
+    private void reindexInternal(Long id, String ownerType, Long merchantId) {
+        KbDocument doc = loadOwnedDocument(id, ownerType, merchantId);
         deleteMilvusVectors(doc);
         try {
             List<String> milvusIds = ingestionService.ingest(doc.getId(), doc.getTitle(),
-                    doc.getContent(), doc.getCategoryId());
+                    doc.getContent(), doc.getCategoryId(), ownerType, merchantId);
             doc.setMilvusIds(JSONUtil.toJsonStr(milvusIds));
             doc.setChunkCount(milvusIds.size());
             doc.setStatus("published");
@@ -180,6 +234,24 @@ public class KbDocumentServiceImpl implements KbDocumentService {
             log.error("Failed to reindex document {}", doc.getId(), e);
             throw new BusinessException(KnowledgeErrorCode.DOCUMENT_REINDEX_FAILED);
         }
+    }
+
+    private KbCategory loadOwnedCategory(Long categoryId, String ownerType, Long merchantId) {
+        KbCategory category = categoryMapper.selectById(categoryId);
+        if (category == null || !ownerType.equals(category.getOwnerType())
+                || (merchantId != null && !merchantId.equals(category.getMerchantId()))) {
+            throw new BusinessException(KnowledgeErrorCode.CATEGORY_NOT_FOUND);
+        }
+        return category;
+    }
+
+    private KbDocument loadOwnedDocument(Long id, String ownerType, Long merchantId) {
+        KbDocument doc = documentMapper.selectById(id);
+        if (doc == null || !ownerType.equals(doc.getOwnerType())
+                || (merchantId != null && !merchantId.equals(doc.getMerchantId()))) {
+            throw new BusinessException(KnowledgeErrorCode.DOCUMENT_NOT_FOUND);
+        }
+        return doc;
     }
 
     private void deleteMilvusVectors(KbDocument doc) {
