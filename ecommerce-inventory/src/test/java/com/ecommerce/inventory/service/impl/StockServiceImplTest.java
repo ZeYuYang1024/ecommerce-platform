@@ -153,6 +153,22 @@ class StockServiceImplTest {
 
             verify(stockMapper).update(isNull(), any());
         }
+
+        @Test
+        void setStock_shouldRejectTotalStockBelowLockedStock() {
+            stock.setTotalStock(100);
+            stock.setLockedStock(40);
+            stock.setAvailableStock(60);
+            when(stockMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(stock);
+
+            assertThatThrownBy(() -> stockService.setStock(100L, 39))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(30010007);
+
+            verify(stockMapper, never()).update(isNull(), any());
+            verify(stockMapper, never()).insert(any(Stock.class));
+        }
     }
 
     @Nested
@@ -228,6 +244,9 @@ class StockServiceImplTest {
 
         @Test
         void setStock_shouldHandleZero() {
+            stock.setTotalStock(100);
+            stock.setLockedStock(0);
+            stock.setAvailableStock(100);
             when(stockMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(stock);
             when(stockMapper.update(eq(null), any())).thenReturn(1);
 

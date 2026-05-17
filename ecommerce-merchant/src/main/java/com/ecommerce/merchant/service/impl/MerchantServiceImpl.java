@@ -1,13 +1,13 @@
 package com.ecommerce.merchant.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.merchant.common.MerchantErrorCode;
 import com.ecommerce.merchant.dto.request.MerchantAuditRequest;
 import com.ecommerce.merchant.dto.request.MerchantRegisterRequest;
+import com.ecommerce.merchant.dto.request.MerchantUpdateRequest;
 import com.ecommerce.merchant.dto.response.MerchantVO;
 import com.ecommerce.merchant.entity.Merchant;
 import com.ecommerce.merchant.entity.MerchantAudit;
@@ -71,6 +71,29 @@ public class MerchantServiceImpl implements MerchantService {
     }
 
     @Override
+    public MerchantVO update(Long id, MerchantUpdateRequest request) {
+        Merchant merchant = merchantMapper.selectById(id);
+        if (merchant == null) {
+            throw new BusinessException(MerchantErrorCode.MERCHANT_NOT_FOUND);
+        }
+        if (request.getName() != null && !request.getName().equals(merchant.getName())) {
+            Long count = merchantMapper.selectCount(new LambdaQueryWrapper<Merchant>()
+                    .eq(Merchant::getName, request.getName())
+                    .ne(Merchant::getId, id));
+            if (count > 0) {
+                throw new BusinessException(MerchantErrorCode.MERCHANT_NAME_EXISTS);
+            }
+        }
+        merchant.setName(request.getName());
+        merchant.setLogo(request.getLogo());
+        merchant.setContactName(request.getContactName());
+        merchant.setContactPhone(request.getContactPhone());
+        merchant.setBusinessLicense(request.getBusinessLicense());
+        merchantMapper.updateById(merchant);
+        return toVO(merchant);
+    }
+
+    @Override
     public List<MerchantVO> listAll(Integer status) {
         LambdaQueryWrapper<Merchant> wrapper = new LambdaQueryWrapper<>();
         if (status != null) {
@@ -80,6 +103,10 @@ public class MerchantServiceImpl implements MerchantService {
         return merchantMapper.selectList(wrapper).stream()
                 .map(this::toVO)
                 .collect(Collectors.toList());
+    }
+
+    public List<MerchantVO> list(Integer status) {
+        return listAll(status);
     }
 
     @Override

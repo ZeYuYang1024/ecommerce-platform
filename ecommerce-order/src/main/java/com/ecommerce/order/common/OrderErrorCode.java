@@ -9,7 +9,7 @@ public enum OrderErrorCode implements ErrorCode {
     ORDER_ITEMS_EMPTY(40010004, "订单商品不能为空"),
     ORDER_NOT_PAID(40010005, "订单未支付"),
     ORDER_ALREADY_SHIPPED(40010006, "订单已发货"),
-    ;
+    ORDER_FORBIDDEN(40010007, "无权操作该订单");
 
     private final int code;
     private final String message;
@@ -19,6 +19,13 @@ public enum OrderErrorCode implements ErrorCode {
         this.message = message;
     }
 
-    @Override public int getCode() { return code; }
-    @Override public String getMessage() { return message; }
+    @Override
+    public int getCode() {
+        return code;
+    }
+
+    @Override
+    public String getMessage() {
+        return message;
+    }
 }

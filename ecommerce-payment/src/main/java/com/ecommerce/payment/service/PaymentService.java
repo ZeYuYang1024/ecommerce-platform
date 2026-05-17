@@ -11,4 +11,6 @@ public interface PaymentService {
     PaymentVO queryByOrderNoForUser(Long userId, String orderNo);
     PaymentVO refund(String orderNo, RefundRequest request);
     Page<PaymentVO> listAll(Integer status, int page, int size);
+    Page<PaymentVO> listByMerchant(Long merchantId, Integer status, int page, int size);
+    PaymentVO refundByMerchant(Long merchantId, String orderNo, RefundRequest request);
 }

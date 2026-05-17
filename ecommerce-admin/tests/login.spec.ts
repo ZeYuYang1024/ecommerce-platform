@@ -29,6 +29,16 @@ test.describe('Login Page', () => {
         })
       }
     })
+    await page.route('**/api/v1/admin/dashboard/stats', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 200,
+          data: { merchantCount: 128, pendingAuditCount: 7, productCount: 256, userCount: 1024 }
+        })
+      })
+    })
     await page.goto('/login')
   })
 

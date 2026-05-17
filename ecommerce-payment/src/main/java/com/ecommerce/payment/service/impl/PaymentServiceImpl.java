@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -117,6 +118,9 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         BigDecimal refundAmount = request.getAmount() != null ? request.getAmount() : payment.getAmount();
+        if (refundAmount.compareTo(BigDecimal.ZERO) <= 0 || refundAmount.compareTo(payment.getAmount()) > 0) {
+            throw new BusinessException(PaymentErrorCode.REFUND_AMOUNT_INVALID);
+        }
 
         // Create refund
         Refund refund = new Refund();
@@ -149,9 +153,32 @@ public class PaymentServiceImpl implements PaymentService {
         wrapper.orderByDesc(Payment::getCreatedAt);
         Page<Payment> pageReq = new Page<>(page, size);
         paymentMapper.selectPage(pageReq, wrapper);
-        return new Page<PaymentVO>(pageReq.getCurrent(), pageReq.getSize(), pageReq.getTotal())
-                .setRecords(pageReq.getRecords().stream()
-                        .map(this::toVO).collect(Collectors.toList()));
+        return toPage(pageReq);
+    }
+
+    @Override
+    public Page<PaymentVO> listByMerchant(Long merchantId, Integer status, int page, int size) {
+        List<String> orderNos = loadMerchantOrderNos(merchantId);
+        if (orderNos.isEmpty()) {
+            return new Page<>(page, size, 0);
+        }
+        LambdaQueryWrapper<Payment> wrapper = new LambdaQueryWrapper<Payment>()
+                .in(Payment::getOrderNo, orderNos)
+                .eq(status != null, Payment::getStatus, status)
+                .orderByDesc(Payment::getCreatedAt);
+        Page<Payment> pageReq = new Page<>(page, size);
+        paymentMapper.selectPage(pageReq, wrapper);
+        return toPage(pageReq);
+    }
+
+    @Override
+    @Transactional
+    public PaymentVO refundByMerchant(Long merchantId, String orderNo, RefundRequest request) {
+        List<String> orderNos = loadMerchantOrderNos(merchantId);
+        if (!orderNos.contains(orderNo)) {
+            throw new BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND);
+        }
+        return refund(orderNo, request);
     }
 
     private PaymentVO toVO(Payment p) {
@@ -175,6 +202,21 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND);
         }
         return payment;
+    }
+
+    private Page<PaymentVO> toPage(Page<Payment> pageReq) {
+        return new Page<PaymentVO>(pageReq.getCurrent(), pageReq.getSize(), pageReq.getTotal())
+                .setRecords(pageReq.getRecords().stream()
+                        .map(this::toVO).collect(Collectors.toList()));
+    }
+
+    private List<String> loadMerchantOrderNos(Long merchantId) {
+        try {
+            var response = orderClient.listOrderNosByMerchant(merchantId);
+            return response.getData() != null ? response.getData() : Collections.emptyList();
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
     }
 
     private String generatePaymentNo() {

@@ -3,6 +3,8 @@ package com.ecommerce.order.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.common.result.Result;
+import com.ecommerce.order.client.ProductSpuClient;
 import com.ecommerce.order.common.OrderErrorCode;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
 import com.ecommerce.order.dto.response.OrderVO;
@@ -34,6 +36,7 @@ class OrderServiceImplTest {
     @Mock private OrderMapper orderMapper;
     @Mock private RocketMQTemplate rocketMQTemplate;
     @Mock private OrderItemMapper itemMapper;
+    @Mock private ProductSpuClient productSpuClient;
     @InjectMocks private OrderServiceImpl service;
 
     private Order order;
@@ -135,7 +138,7 @@ class OrderServiceImplTest {
             order.setStatus(1);
             when(orderMapper.selectById(1L)).thenReturn(order);
             when(orderMapper.updateById(any(Order.class))).thenReturn(1);
-            service.markShipped(1L);
+            service.markShipped(1L, "super_admin", null);
             verify(orderMapper).updateById(any(Order.class));
         }
 
@@ -143,7 +146,7 @@ class OrderServiceImplTest {
         void shouldRejectShipWhenNotPaid() {
             order.setStatus(0);
             when(orderMapper.selectById(1L)).thenReturn(order);
-            assertThatThrownBy(() -> service.markShipped(1L))
+            assertThatThrownBy(() -> service.markShipped(1L, "super_admin", null))
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
                     .isEqualTo(OrderErrorCode.ORDER_NOT_PAID.getCode());
@@ -153,14 +156,30 @@ class OrderServiceImplTest {
         void shouldRejectShipWhenAlreadyCancelled() {
             order.setStatus(4);
             when(orderMapper.selectById(1L)).thenReturn(order);
-            assertThatThrownBy(() -> service.markShipped(1L))
+            assertThatThrownBy(() -> service.markShipped(1L, "super_admin", null))
                     .isInstanceOf(BusinessException.class);
         }
 
         @Test
         void shouldThrowWhenShipNotFound() {
             when(orderMapper.selectById(999L)).thenReturn(null);
-            assertThatThrownBy(() -> service.markShipped(999L)).isInstanceOf(BusinessException.class);
+            assertThatThrownBy(() -> service.markShipped(999L, "super_admin", null)).isInstanceOf(BusinessException.class);
+        }
+
+        @Test
+        void shouldRejectMerchantShipForOrderOutsideMerchantScope() {
+            order.setStatus(1);
+            when(orderMapper.selectById(1L)).thenReturn(order);
+            when(productSpuClient.getSpuIdsByMerchant(100L)).thenReturn(Result.ok(List.of(10L)));
+            OrderItem foreignItem = new OrderItem();
+            foreignItem.setOrderId(1L);
+            foreignItem.setSpuId(99L);
+            when(itemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(foreignItem));
+
+            assertThatThrownBy(() -> service.markShipped(1L, "merchant", 100L))
+                    .isInstanceOf(BusinessException.class);
+
+            verify(orderMapper, never()).updateById(any(Order.class));
         }
     }
 
@@ -279,7 +298,7 @@ class OrderServiceImplTest {
         void shouldUpdateStatusToAllValidTransitions() {
             when(orderMapper.selectById(1L)).thenReturn(order);
             when(orderMapper.updateById(any(Order.class))).thenReturn(1);
-            service.updateStatus(1L, 3); // completed
+            service.updateStatus(1L, 3, "super_admin", null); // completed
             assertThat(order.getStatus()).isEqualTo(3);
         }
 
@@ -296,8 +315,23 @@ class OrderServiceImplTest {
         @Test
         void shouldUpdateStatusThrowsWhenOrderNotFound() {
             when(orderMapper.selectById(999L)).thenReturn(null);
-            assertThatThrownBy(() -> service.updateStatus(999L, 1))
+            assertThatThrownBy(() -> service.updateStatus(999L, 1, "super_admin", null))
                     .isInstanceOf(BusinessException.class);
+        }
+
+        @Test
+        void shouldRejectMerchantStatusUpdateForOrderOutsideMerchantScope() {
+            when(orderMapper.selectById(1L)).thenReturn(order);
+            when(productSpuClient.getSpuIdsByMerchant(100L)).thenReturn(Result.ok(List.of(10L)));
+            OrderItem foreignItem = new OrderItem();
+            foreignItem.setOrderId(1L);
+            foreignItem.setSpuId(99L);
+            when(itemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(foreignItem));
+
+            assertThatThrownBy(() -> service.updateStatus(1L, 3, "merchant", 100L))
+                    .isInstanceOf(BusinessException.class);
+
+            verify(orderMapper, never()).updateById(any(Order.class));
         }
     }
 }

@@ -8,7 +8,7 @@
     </div>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading">
+      <el-table :data="tableData" v-loading="loading" size="small">
         <el-table-column prop="id" label="ID" width="180">
           <template #default="{ row }">
             <span class="font-mono id-text">{{ row.id }}</span>
@@ -31,7 +31,7 @@
         </el-table-column>
         <el-table-column label="时间" width="180">
           <template #default="{ row }">
-            <span class="font-mono time-text">{{ row.createdAt }}</span>
+            <span class="font-mono time-text">{{ formatDateTime(row.createdAt) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="100" align="center">
@@ -62,12 +62,16 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import { formatDateTime } from '@/utils/dateTime'
 
 const loading = ref(false)
 const tableData = ref([])
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
+const isMerchantView = localStorage.getItem('type') === 'merchant'
+const listUrl = isMerchantView ? '/api/v1/admin/merchant/reviews' : '/api/v1/admin/reviews'
+const deleteBaseUrl = isMerchantView ? '/api/v1/admin/merchant/reviews' : '/api/v1/admin/reviews'
 
 function handleSizeChange() {
   page.value = 1
@@ -77,7 +81,7 @@ function handleSizeChange() {
 async function fetchData() {
   loading.value = true
   try {
-    const { data } = await axios.get('/api/v1/admin/reviews', {
+    const { data } = await axios.get(listUrl, {
       params: { page: page.value, size: size.value }
     })
     if (data.code === 200) {
@@ -88,7 +92,7 @@ async function fetchData() {
 }
 
 async function doDelete(id) {
-  await axios.delete(`/api/v1/admin/reviews/${id}`)
+  await axios.delete(`${deleteBaseUrl}/${id}`)
   fetchData()
 }
 
@@ -105,6 +109,7 @@ onMounted(fetchData)
 .page-desc { font-size: 13.5px; color: var(--text-muted); margin-top: 4px; }
 .table-card { border-radius: var(--radius-lg); }
 .id-text { font-size: 12px; color: var(--text-muted); }
-.time-text { font-size: 12px; color: var(--text-secondary); }
+.time-text { font-size: 12px; color: var(--text-secondary); white-space: nowrap; display: inline-block; }
+.table-card :deep(.el-table .cell) { line-height: 1.5; }
 .pagination-row { padding: 18px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
 </style>

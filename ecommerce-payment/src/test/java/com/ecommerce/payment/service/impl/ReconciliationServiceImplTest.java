@@ -153,6 +153,31 @@ class ReconciliationServiceImplTest {
                     .thenReturn(Collections.emptyList());
             assertThat(service.listReconciliations()).isEmpty();
         }
+
+        @Test
+        void shouldListReconciliationsByMerchant() {
+            Reconciliation reconciliation = new Reconciliation();
+            reconciliation.setId(1L);
+            reconciliation.setBatchNo("REC001");
+            reconciliation.setStatus(1);
+            when(orderClient.listOrderNosByMerchant(2001L)).thenReturn(Result.ok(List.of("ORD001")));
+            when(reconciliationMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(Collections.singletonList(reconciliation));
+
+            ReconciliationDetail detail = new ReconciliationDetail();
+            detail.setId(1L);
+            detail.setReconciliationId(1L);
+            detail.setOrderNo("ORD001");
+            detail.setRecordType("ORDER");
+            detail.setMatchStatus("MATCHED");
+            when(detailMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(Collections.singletonList(detail));
+
+            var page = service.listByMerchant(2001L, 1, 10);
+
+            assertThat(page.getRecords()).hasSize(1);
+            assertThat(page.getRecords().get(0).getBatchNo()).isEqualTo("REC001");
+        }
     }
 
     @Nested
@@ -181,6 +206,38 @@ class ReconciliationServiceImplTest {
         void shouldReturnNullWhenReconciliationNotFound() {
             when(reconciliationMapper.selectById(999L)).thenReturn(null);
             assertThat(service.getReconciliationDetail(999L)).isNull();
+        }
+
+        @Test
+        void shouldOnlyReturnMerchantReconciliationDetails() {
+            Reconciliation reconciliation = new Reconciliation();
+            reconciliation.setId(1L);
+            reconciliation.setBatchNo("REC001");
+            reconciliation.setStatus(1);
+            when(reconciliationMapper.selectById(1L)).thenReturn(reconciliation);
+            when(orderClient.listOrderNosByMerchant(2001L)).thenReturn(Result.ok(List.of("ORD001")));
+
+            ReconciliationDetail ownDetail = new ReconciliationDetail();
+            ownDetail.setId(1L);
+            ownDetail.setReconciliationId(1L);
+            ownDetail.setOrderNo("ORD001");
+            ownDetail.setRecordType("ORDER");
+            ownDetail.setMatchStatus("MATCHED");
+
+            ReconciliationDetail otherDetail = new ReconciliationDetail();
+            otherDetail.setId(2L);
+            otherDetail.setReconciliationId(1L);
+            otherDetail.setOrderNo("ORD999");
+            otherDetail.setRecordType("ORDER");
+            otherDetail.setMatchStatus("MATCHED");
+
+            when(detailMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(List.of(ownDetail, otherDetail));
+
+            ReconciliationVO result = service.getReconciliationDetailByMerchant(2001L, 1L);
+
+            assertThat(result.getDetails()).hasSize(1);
+            assertThat(result.getDetails().get(0).getOrderNo()).isEqualTo("ORD001");
         }
     }
 

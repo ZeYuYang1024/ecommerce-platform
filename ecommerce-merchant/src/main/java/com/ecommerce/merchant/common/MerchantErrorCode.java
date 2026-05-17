@@ -8,6 +8,7 @@ public enum MerchantErrorCode implements ErrorCode {
     MERCHANT_ALREADY_APPROVED(60010003, "商家已通过审核"),
     MERCHANT_NOT_PENDING(60010004, "商家不在待审核状态"),
     INVALID_AUDIT_ACTION(60010005, "无效的审核操作"),
+    MERCHANT_PERMISSION_DENIED(60010006, "没有操作该商家的权限"),
     ;
 
     private final int code;
@@ -18,6 +19,13 @@ public enum MerchantErrorCode implements ErrorCode {
         this.message = message;
     }
 
-    @Override public int getCode() { return code; }
-    @Override public String getMessage() { return message; }
+    @Override
+    public int getCode() {
+        return code;
+    }
+
+    @Override
+    public String getMessage() {
+        return message;
+    }
 }

@@ -7,7 +7,11 @@ import com.ecommerce.knowledge.dto.response.CategoryVO;
 import java.util.List;
 
 public interface KbCategoryService {
-    CategoryVO create(CreateCategoryRequest request);
-    List<CategoryVO> listAll();
-    void delete(Long id);
+    CategoryVO createPlatform(CreateCategoryRequest request);
+    List<CategoryVO> listPlatform();
+    void deletePlatform(Long id);
+
+    CategoryVO createForMerchant(Long merchantId, CreateCategoryRequest request);
+    List<CategoryVO> listForMerchant(Long merchantId);
+    void deleteForMerchant(Long merchantId, Long id);
 }

@@ -1,17 +1,30 @@
 import { test, expect } from '@playwright/test'
 
-test.describe('Dashboard', () => {
+const DASHBOARD_STATS = {
+  merchantCount: 128,
+  pendingAuditCount: 7,
+  productCount: 256,
+  userCount: 1024,
+}
 
+test.describe('Dashboard', () => {
   test.beforeEach(async ({ page }) => {
-    // Set token so router guard lets us through
     await page.addInitScript(() => {
       localStorage.setItem('token', 'mock-token')
       localStorage.setItem('username', 'admin')
+      localStorage.setItem('type', 'super_admin')
     })
+
+    await page.route('**/api/v1/admin/dashboard/stats', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 200, data: DASHBOARD_STATS }),
+      })
+    })
+
     await page.goto('/dashboard')
   })
-
-  // ---- P1: Core features ----
 
   test('P1: dashboard loads with 4 stat cards', async ({ page }) => {
     await expect(page.locator('.stat-card')).toHaveCount(4)
@@ -21,21 +34,22 @@ test.describe('Dashboard', () => {
     await expect(page.locator('.greeting h1')).toContainText('admin')
   })
 
-  test('P1: stat cards show placeholder values', async ({ page }) => {
-    // All cards show "--" since no backend integration
+  test('P1: stat cards show mocked values', async ({ page }) => {
     const values = page.locator('.stat-value')
     await expect(values).toHaveCount(4)
-    // at least one should show "--"
-    await expect(values.first()).toContainText('--')
+    await expect(values.nth(0)).toContainText('128')
+    await expect(values.nth(1)).toContainText('7')
+    await expect(values.nth(2)).toContainText('256')
+    await expect(values.nth(3)).toContainText('1024')
   })
 
-  test('P1: "新增商品" quick link navigates to create page', async ({ page }) => {
-    await page.click('button:has-text("新增商品")')
-    await page.waitForURL('**/products/create')
+  test('P1: merchant audit quick link navigates to pending merchants', async ({ page }) => {
+    await page.locator('.quick-links .el-button').nth(0).click()
+    await page.waitForURL('**/merchants?status=0')
   })
 
-  test('P1: "商品列表" quick link navigates to product list', async ({ page }) => {
-    await page.click('button:has-text("商品列表")')
-    await page.waitForURL('**/products')
+  test('P1: category quick link navigates to categories', async ({ page }) => {
+    await page.locator('.quick-links .el-button').nth(1).click()
+    await page.waitForURL('**/categories')
   })
 })

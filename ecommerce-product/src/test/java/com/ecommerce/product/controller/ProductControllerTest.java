@@ -1,12 +1,16 @@
 package com.ecommerce.product.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.result.Result;
+import com.ecommerce.product.common.ProductErrorCode;
 import com.ecommerce.product.dto.request.CreateProductRequest;
+import com.ecommerce.product.dto.request.UpdateStatusRequest;
 import com.ecommerce.product.dto.response.ProductDetailVO;
 import com.ecommerce.product.dto.response.SkuVO;
 import com.ecommerce.product.dto.response.SpuVO;
 import com.ecommerce.product.entity.Spu;
+import com.ecommerce.product.service.BrandService;
 import com.ecommerce.product.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -28,6 +32,7 @@ import static org.mockito.Mockito.*;
 class ProductControllerTest {
 
     @Mock private ProductService productService;
+    @Mock private BrandService brandService;
     @InjectMocks private ProductController controller;
 
     private SpuVO spuVO;
@@ -140,6 +145,31 @@ class ProductControllerTest {
         }
 
         @Test
+        void merchantList_shouldDelegateToMerchantScopedService() {
+            Page<Spu> spuPage = new Page<>(1, 10);
+            spuPage.setRecords(Collections.emptyList());
+            when(productService.spuPageByMerchant(eq(1), eq(10), isNull(), isNull(), isNull(), eq(88L)))
+                    .thenReturn(spuPage);
+
+            Result<Page<SpuVO>> result = controller.merchantList(1, 10, null, null, null, 88L);
+
+            assertThat(result.getCode()).isEqualTo(200);
+            verify(productService).spuPageByMerchant(1, 10, null, null, null, 88L);
+            verify(productService, never()).spuPage(eq(1), eq(10), isNull(), isNull(), isNull());
+        }
+
+        @Test
+        void merchantDetail_shouldRejectCrossTenantAccess() {
+            Spu existing = new Spu();
+            existing.setId(1L);
+            existing.setMerchantId(3002L);
+            when(productService.getSpuById(1L)).thenReturn(existing);
+
+            assertThatThrownBy(() -> controller.merchantDetail(1L, 2001L))
+                    .isInstanceOf(BusinessException.class);
+        }
+
+        @Test
         void create_shouldCreateProduct() {
             CreateProductRequest req = new CreateProductRequest();
             CreateProductRequest.SpuRequest spuReq = new CreateProductRequest.SpuRequest();
@@ -151,7 +181,7 @@ class ProductControllerTest {
             created.setName("新品");
             when(productService.createProduct(any(CreateProductRequest.class))).thenReturn(created);
 
-            Result<Spu> result = controller.create(req, null);
+            Result<Spu> result = controller.create(req, null, "super_admin");
 
             assertThat(result.getCode()).isEqualTo(200);
             assertThat(result.getData().getName()).isEqualTo("新品");
@@ -162,7 +192,7 @@ class ProductControllerTest {
             doNothing().when(productService).updateStatus(eq(1L), eq(0));
 
             Result<Void> result = controller.updateStatus(1L,
-                    new com.ecommerce.product.dto.request.UpdateStatusRequest() {{ setStatus(0); }});
+                    new UpdateStatusRequest() {{ setStatus(0); }}, "super_admin", null);
 
             assertThat(result.getCode()).isEqualTo(200);
             verify(productService).updateStatus(1L, 0);
@@ -172,10 +202,145 @@ class ProductControllerTest {
         void delete_shouldSucceed() {
             doNothing().when(productService).deleteSpu(1L);
 
-            Result<Void> result = controller.delete(1L);
+            Result<Void> result = controller.delete(1L, "super_admin", null);
 
             assertThat(result.getCode()).isEqualTo(200);
             verify(productService).deleteSpu(1L);
+        }
+
+        @Test
+        void create_shouldAssignMerchantIdForMerchantAdmin() {
+            CreateProductRequest req = new CreateProductRequest();
+            CreateProductRequest.SpuRequest spuReq = new CreateProductRequest.SpuRequest();
+            spuReq.setName("新品");
+            req.setSpu(spuReq);
+
+            Spu created = new Spu();
+            created.setId(99L);
+            created.setName("鏂板搧");
+            when(productService.createProduct(any(CreateProductRequest.class))).thenReturn(created);
+            when(productService.updateSpu(any(Spu.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            Result<Spu> result = controller.create(req, 88L, "merchant");
+
+            assertThat(result.getData().getMerchantId()).isEqualTo(88L);
+            verify(productService).updateSpu(argThat(spu -> Long.valueOf(88L).equals(spu.getMerchantId())));
+        }
+
+        @Test
+        void create_shouldValidateMerchantBrandBeforeCreate() {
+            CreateProductRequest req = new CreateProductRequest();
+            CreateProductRequest.SpuRequest spuReq = new CreateProductRequest.SpuRequest();
+            spuReq.setName("品牌商品");
+            spuReq.setBrandId(3001L);
+            req.setSpu(spuReq);
+
+            Spu created = new Spu();
+            created.setId(101L);
+            when(productService.createProduct(any(CreateProductRequest.class))).thenReturn(created);
+            when(productService.updateSpu(any(Spu.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            controller.create(req, 88L, "merchant");
+
+            verify(brandService).validateMerchantBrandSelectable(88L, 3001L);
+        }
+
+        @Test
+        void create_shouldRejectPendingMerchantBrand() {
+            CreateProductRequest req = new CreateProductRequest();
+            CreateProductRequest.SpuRequest spuReq = new CreateProductRequest.SpuRequest();
+            spuReq.setName("待审品牌商品");
+            spuReq.setBrandId(3001L);
+            req.setSpu(spuReq);
+
+            doThrow(new BusinessException(ProductErrorCode.PRODUCT_FORBIDDEN))
+                    .when(brandService).validateMerchantBrandSelectable(88L, 3001L);
+
+            assertThatThrownBy(() -> controller.create(req, 88L, "merchant"))
+                    .isInstanceOf(BusinessException.class);
+
+            verify(productService, never()).createProduct(any(CreateProductRequest.class));
+        }
+
+        @Test
+        void update_shouldRejectMerchantCrossTenantModification() {
+            Spu existing = new Spu();
+            existing.setId(1L);
+            existing.setMerchantId(99L);
+            when(productService.getSpuById(1L)).thenReturn(existing);
+
+            Spu incoming = new Spu();
+            incoming.setName("hack");
+
+            assertThatThrownBy(() -> controller.update(1L, incoming, "merchant", 88L))
+                    .isInstanceOf(BusinessException.class);
+
+            verify(productService, never()).updateSpu(any(Spu.class));
+        }
+
+        @Test
+        void update_shouldPreserveMerchantOwnershipForMerchantAdmin() {
+            Spu existing = new Spu();
+            existing.setId(1L);
+            existing.setMerchantId(88L);
+            when(productService.getSpuById(1L)).thenReturn(existing);
+            when(productService.updateSpu(any(Spu.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            Spu incoming = new Spu();
+            incoming.setMerchantId(999L);
+            incoming.setName("updated");
+
+            Result<Spu> result = controller.update(1L, incoming, "merchant", 88L);
+
+            assertThat(result.getData().getMerchantId()).isEqualTo(88L);
+            verify(productService).updateSpu(argThat(spu -> Long.valueOf(88L).equals(spu.getMerchantId())));
+        }
+
+        @Test
+        void update_shouldValidateMerchantBrandSelectionForMerchantAdmin() {
+            Spu existing = new Spu();
+            existing.setId(1L);
+            existing.setMerchantId(88L);
+            when(productService.getSpuById(1L)).thenReturn(existing);
+
+            Spu incoming = new Spu();
+            incoming.setName("updated");
+            incoming.setBrandId(3001L);
+
+            doThrow(new BusinessException(ProductErrorCode.BRAND_FORBIDDEN))
+                    .when(brandService).validateMerchantBrandSelectable(88L, 3001L);
+
+            assertThatThrownBy(() -> controller.update(1L, incoming, "merchant", 88L))
+                    .isInstanceOf(BusinessException.class);
+
+            verify(productService, never()).updateSpu(any(Spu.class));
+        }
+
+        @Test
+        void updateStatus_shouldRejectMerchantCrossTenantModification() {
+            Spu existing = new Spu();
+            existing.setId(1L);
+            existing.setMerchantId(99L);
+            when(productService.getSpuById(1L)).thenReturn(existing);
+
+            assertThatThrownBy(() -> controller.updateStatus(1L,
+                    new UpdateStatusRequest() {{ setStatus(0); }}, "merchant", 88L))
+                    .isInstanceOf(BusinessException.class);
+
+            verify(productService, never()).updateStatus(anyLong(), anyInt());
+        }
+
+        @Test
+        void delete_shouldRejectMerchantCrossTenantModification() {
+            Spu existing = new Spu();
+            existing.setId(1L);
+            existing.setMerchantId(99L);
+            when(productService.getSpuById(1L)).thenReturn(existing);
+
+            assertThatThrownBy(() -> controller.delete(1L, "merchant", 88L))
+                    .isInstanceOf(BusinessException.class);
+
+            verify(productService, never()).deleteSpu(anyLong());
         }
     }
 }

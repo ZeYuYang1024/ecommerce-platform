@@ -71,19 +71,11 @@ class PaymentControllerTest {
     }
 
     @Test
-    void shouldKeepExistingUnscopedQueryEndpoint() throws Exception {
-        PaymentVO payment = new PaymentVO();
-        payment.setPaymentNo("PAY202605091200000001");
-        payment.setOrderNo("202605091200000001");
-
-        when(paymentService.queryByOrderNo("202605091200000001")).thenReturn(payment);
-
+    void shouldRequireUserIdHeaderForLegacyQueryEndpoint() throws Exception {
         mockMvc.perform(get("/api/v1/payment/202605091200000001"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.paymentNo").value("PAY202605091200000001"));
+                .andExpect(status().isBadRequest());
 
-        verify(paymentService).queryByOrderNo("202605091200000001");
+        verifyNoInteractions(paymentService);
     }
 
     @Test

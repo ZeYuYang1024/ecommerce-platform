@@ -479,6 +479,21 @@ class AuthServiceImplTest {
         }
 
         @Test
+        void adminLogin_shouldExposeMerchantIdInResponse() throws Exception {
+            LoginRequest req = new LoginRequest();
+            req.setUsername("m_2001");
+            req.setPassword(TEST_PASSWORD);
+            admin.setType("merchant");
+            admin.setMerchantId(2001L);
+            when(adminUserMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(admin);
+
+            LoginResponse resp = authService.adminLogin(req);
+
+            Object merchantId = LoginResponse.class.getMethod("getMerchantId").invoke(resp);
+            assertThat(merchantId).isEqualTo(2001L);
+        }
+
+        @Test
         void adminLogin_shouldReturnOpsType() {
             LoginRequest req = new LoginRequest();
             req.setUsername("ops_user"); req.setPassword(TEST_PASSWORD);

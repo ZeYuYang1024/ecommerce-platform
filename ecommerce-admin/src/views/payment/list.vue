@@ -3,10 +3,10 @@
     <div class="toolbar">
       <div>
         <span class="section-label">支付管理</span>
-        <p class="page-desc">查看平台支付记录，处理退款</p>
+        <p class="page-desc">{{ pageDesc }}</p>
       </div>
       <div class="toolbar-right">
-        <el-select v-model="statusFilter" placeholder="支付状态" style="width:140px" clearable @change="statusFilterChange">
+        <el-select v-model="statusFilter" placeholder="支付状态" style="width: 140px" clearable @change="statusFilterChange">
           <el-option label="已支付" :value="1" />
           <el-option label="已退款" :value="3" />
           <el-option label="退款中" :value="2" />
@@ -16,15 +16,15 @@
     </div>
 
     <el-card shadow="never" class="table-card">
-      <el-table :data="tableData" v-loading="loading">
+      <el-table :data="tableData" v-loading="loading" size="small">
         <el-table-column label="支付单号" width="200">
           <template #default="{ row }">
-            <span class="font-mono" style="font-size:12px;color:var(--text-secondary)">{{ row.paymentNo }}</span>
+            <span class="font-mono" style="font-size: 12px; color: var(--text-secondary)">{{ row.paymentNo }}</span>
           </template>
         </el-table-column>
         <el-table-column label="订单号" width="200">
           <template #default="{ row }">
-            <span class="font-mono" style="font-size:12px;color:var(--text-secondary)">{{ row.orderNo }}</span>
+            <span class="font-mono" style="font-size: 12px; color: var(--text-secondary)">{{ row.orderNo }}</span>
           </template>
         </el-table-column>
         <el-table-column label="用户 ID" width="180">
@@ -39,7 +39,7 @@
         </el-table-column>
         <el-table-column label="支付方式" width="100" align="center">
           <template #default="{ row }">
-            <span style="font-size:13px">{{ row.payMethod || '-' }}</span>
+            <span style="font-size: 13px">{{ row.payMethod || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="100" align="center">
@@ -49,39 +49,50 @@
         </el-table-column>
         <el-table-column label="支付时间" width="180">
           <template #default="{ row }">
-            <span class="font-mono time-text">{{ row.paidAt || '-' }}</span>
+            <span class="font-mono time-text">{{ formatDateTime(row.paidAt) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="120" align="center" fixed="right">
           <template #default="{ row }">
             <el-button v-if="row.status === 1" size="small" type="danger" @click="openRefund(row)">退款</el-button>
-            <span v-else style="font-size:12px;color:var(--text-muted)">--</span>
+            <span v-else style="font-size: 12px; color: var(--text-muted)">--</span>
           </template>
         </el-table-column>
-
+        <template #empty>
+          <el-empty :description="emptyDescription" />
+        </template>
       </el-table>
 
       <div class="pagination-row">
-              <el-pagination
-                v-model:current-page="page"
-                v-model:page-size="size"
-                :page-sizes="[10, 20, 50, 100]"
-                :total="total"
-                layout="total, sizes, prev, pager, next, jumper"
-                @size-change="handleSizeChange"
-                @current-change="fetchData"
-              />
-            </div>
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="size"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="total"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="fetchData"
+        />
+      </div>
     </el-card>
 
     <el-dialog v-model="refundVisible" title="退款确认" width="440px">
       <div class="refund-info">
-        <div class="refund-row"><span class="refund-label">支付单号</span><span class="font-mono">{{ refundForm.paymentNo }}</span></div>
-        <div class="refund-row"><span class="refund-label">支付金额</span><span class="amount-text">¥{{ refundForm.amount }}</span></div>
-        <div class="refund-row"><span class="refund-label">退款方式</span><span>全额退款</span></div>
+        <div class="refund-row">
+          <span class="refund-label">支付单号</span>
+          <span class="font-mono">{{ refundForm.paymentNo }}</span>
+        </div>
+        <div class="refund-row">
+          <span class="refund-label">支付金额</span>
+          <span class="amount-text">¥{{ refundForm.amount }}</span>
+        </div>
+        <div class="refund-row">
+          <span class="refund-label">退款方式</span>
+          <span>全额退款</span>
+        </div>
       </div>
-      <div style="margin-top:16px">
-        <label style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;display:block">退款原因</label>
+      <div style="margin-top: 16px">
+        <label style="font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; display: block">退款原因</label>
         <el-input v-model="refundReason" type="textarea" :rows="2" placeholder="选填" />
       </div>
       <template #footer>
@@ -93,20 +104,28 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
+import { formatDateTime } from '@/utils/dateTime'
 
+const route = useRoute()
 const loading = ref(false)
 const tableData = ref([])
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
 const statusFilter = ref(null)
-
 const refundVisible = ref(false)
 const refundForm = ref({})
 const refundReason = ref('')
+
+const isMerchantView = computed(() => route.path.startsWith('/merchant/payments'))
+const listUrl = computed(() => (isMerchantView.value ? '/api/v1/admin/merchant/payment' : '/api/v1/admin/payment'))
+const refundBaseUrl = computed(() => (isMerchantView.value ? '/api/v1/admin/merchant/payment' : '/api/v1/admin/payment'))
+const pageDesc = computed(() => (isMerchantView.value ? '查看本店订单关联的支付记录，并处理退款' : '查看平台支付记录，并处理退款'))
+const emptyDescription = computed(() => (isMerchantView.value ? '暂无本店支付记录' : '暂无支付记录'))
 
 function handleSizeChange() {
   page.value = 1
@@ -121,14 +140,16 @@ function statusType(status) {
 async function fetchData() {
   loading.value = true
   try {
-    const { data } = await axios.get('/api/v1/admin/payment', {
+    const { data } = await axios.get(listUrl.value, {
       params: { status: statusFilter.value ?? undefined, page: page.value, size: size.value }
     })
     if (data.code === 200) {
       tableData.value = data.data?.records || []
       total.value = Number(data.data?.total) || tableData.value.length
     }
-  } finally { loading.value = false }
+  } finally {
+    loading.value = false
+  }
 }
 
 function statusFilterChange() {
@@ -144,13 +165,15 @@ function openRefund(row) {
 
 async function doRefund() {
   try {
-    await axios.post(`/api/v1/admin/payment/${refundForm.value.orderNo}/refund`, {
+    await axios.post(`${refundBaseUrl.value}/${refundForm.value.orderNo}/refund`, {
       reason: refundReason.value
     })
     ElMessage.success('退款成功')
     refundVisible.value = false
     fetchData()
-  } catch { ElMessage.error('退款失败') }
+  } catch {
+    ElMessage.error('退款失败')
+  }
 }
 
 onMounted(fetchData)
@@ -163,14 +186,68 @@ onMounted(fetchData)
   align-items: flex-start;
   margin-bottom: 20px;
 }
-.toolbar-right { display: flex; gap: 12px; }
-.page-desc { font-size: 13.5px; color: var(--text-muted); margin-top: 4px; }
-.table-card { border-radius: var(--radius-lg); }
-.id-text { font-size: 12px; color: var(--text-muted); }
-.amount-text { font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); }
-.time-text { font-size: 12px; color: var(--text-secondary); }
-.refund-info { background: var(--bg-surface); border-radius: var(--radius); padding: 16px 20px; }
-.refund-row { display: flex; padding: 6px 0; justify-content: space-between; align-items: center; }
-.refund-label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
-.pagination-row { padding: 18px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
+
+.toolbar-right {
+  display: flex;
+  gap: 12px;
+}
+
+.page-desc {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.table-card {
+  border-radius: var(--radius-lg);
+}
+
+.id-text {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.amount-text {
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.time-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.refund-info {
+  background: var(--bg-surface);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+}
+
+.refund-row {
+  display: flex;
+  padding: 6px 0;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.refund-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pagination-row {
+  padding: 18px 24px;
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+}
+
+.table-card :deep(.el-table .cell) {
+  line-height: 1.5;
+}
 </style>

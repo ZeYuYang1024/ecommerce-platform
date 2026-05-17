@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/v1/inventory")
 public class StockController {
 
     private final StockService stockService;
@@ -22,12 +21,12 @@ public class StockController {
         this.stockService = stockService;
     }
 
-    @GetMapping("/{skuId}")
+    @GetMapping("/api/v1/inventory/{skuId}")
     public Result<StockVO> get(@PathVariable Long skuId) {
         return Result.ok(stockService.toVO(stockService.getBySkuId(skuId)));
     }
 
-    @PostMapping("/batch-query")
+    @PostMapping("/api/v1/inventory/batch-query")
     public Result<List<StockVO>> batchQuery(@RequestBody List<Long> skuIds) {
         List<StockVO> vos = stockService.batchQuery(skuIds).stream()
                 .map(stockService::toVO)
@@ -35,7 +34,7 @@ public class StockController {
         return Result.ok(vos);
     }
 
-    @GetMapping("/admin/list")
+    @GetMapping({"/api/v1/admin/inventory", "/api/v1/inventory/admin/list"})
     public Result<Page<StockVO>> list(@RequestParam(name = "skuId", required = false) Long skuId,
                                       @RequestParam(name = "stockStatus", required = false) Integer stockStatus,
                                       @RequestParam(name = "page", defaultValue = "1") int page,
@@ -43,21 +42,38 @@ public class StockController {
         return Result.ok(stockService.list(skuId, stockStatus, page, size));
     }
 
-    @PostMapping("/deduct")
+    @GetMapping({"/api/v1/admin/merchant/inventory", "/api/v1/inventory/admin/merchant/list"})
+    public Result<Page<StockVO>> merchantList(@RequestHeader("X-Merchant-Id") Long merchantId,
+                                              @RequestParam(name = "skuId", required = false) Long skuId,
+                                              @RequestParam(name = "stockStatus", required = false) Integer stockStatus,
+                                              @RequestParam(name = "page", defaultValue = "1") int page,
+                                              @RequestParam(name = "size", defaultValue = "10") int size) {
+        return Result.ok(stockService.listForMerchant(merchantId, skuId, stockStatus, page, size));
+    }
+
+    @PostMapping("/api/v1/inventory/deduct")
     public Result<Void> deduct(@Valid @RequestBody StockOperateRequest request) {
         stockService.deduct(request.getSkuId(), request.getQuantity());
         return Result.ok();
     }
 
-    @PostMapping("/release")
+    @PostMapping("/api/v1/inventory/release")
     public Result<Void> release(@Valid @RequestBody StockOperateRequest request) {
         stockService.release(request.getSkuId(), request.getQuantity());
         return Result.ok();
     }
 
-    @PostMapping("/admin/{skuId}")
+    @PostMapping({"/api/v1/admin/inventory/{skuId}", "/api/v1/inventory/admin/{skuId}"})
     public Result<Void> setStock(@PathVariable Long skuId, @Valid @RequestBody StockSetRequest request) {
         stockService.setStock(skuId, request.getTotalStock());
+        return Result.ok();
+    }
+
+    @PostMapping({"/api/v1/admin/merchant/inventory/{skuId}", "/api/v1/inventory/admin/merchant/{skuId}"})
+    public Result<Void> merchantSetStock(@RequestHeader("X-Merchant-Id") Long merchantId,
+                                         @PathVariable Long skuId,
+                                         @Valid @RequestBody StockSetRequest request) {
+        stockService.setStockForMerchant(merchantId, skuId, request.getTotalStock());
         return Result.ok();
     }
 }

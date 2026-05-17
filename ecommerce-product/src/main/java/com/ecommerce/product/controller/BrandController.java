@@ -1,54 +1,51 @@
 package com.ecommerce.product.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.Result;
-import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.product.entity.Brand;
-import com.ecommerce.product.mapper.BrandMapper;
+import com.ecommerce.product.service.BrandService;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/admin")
 public class BrandController {
 
-    private final BrandMapper brandMapper;
+    private final BrandService brandService;
 
-    public BrandController(BrandMapper brandMapper) {
-        this.brandMapper = brandMapper;
+    public BrandController(BrandService brandService) {
+        this.brandService = brandService;
     }
 
     @GetMapping("/brands")
     public Result<Page<Brand>> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Page<Brand> pageReq = new Page<>(page, size);
-        return Result.ok(brandMapper.selectPage(pageReq,
-                new LambdaQueryWrapper<Brand>().orderByAsc(Brand::getName)));
+        return Result.ok(brandService.pageAll(page, size));
     }
 
     @GetMapping("/brands/{id}")
     public Result<Brand> detail(@PathVariable Long id) {
-        return Result.ok(brandMapper.selectById(id));
+        return Result.ok(brandService.getById(id));
     }
 
     @PostMapping("/brands")
     public Result<Brand> create(@RequestBody Brand brand) {
-        brand.setId(SnowflakeUtils.nextId());
-        brandMapper.insert(brand);
-        return Result.ok(brand);
+        return Result.ok(brandService.createPlatformBrand(brand));
     }
 
     @PutMapping("/brands/{id}")
     public Result<Brand> update(@PathVariable Long id, @RequestBody Brand brand) {
-        brand.setId(id);
-        brandMapper.updateById(brand);
-        return Result.ok(brandMapper.selectById(id));
+        return Result.ok(brandService.updatePlatformBrand(id, brand));
+    }
+
+    @PutMapping("/brands/{id}/audit")
+    public Result<Brand> audit(@PathVariable Long id, @RequestParam("status") String status) {
+        return Result.ok(brandService.auditMerchantBrand(id, status));
     }
 
     @DeleteMapping("/brands/{id}")
     public Result<Void> delete(@PathVariable Long id) {
-        brandMapper.deleteById(id);
+        brandService.deletePlatformBrand(id);
         return Result.ok();
     }
 }

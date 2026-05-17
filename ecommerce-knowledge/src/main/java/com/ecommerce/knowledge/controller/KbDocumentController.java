@@ -6,6 +6,7 @@ import com.ecommerce.knowledge.dto.request.CreateDocumentRequest;
 import com.ecommerce.knowledge.dto.request.UpdateDocumentRequest;
 import com.ecommerce.knowledge.dto.response.DocumentVO;
 import com.ecommerce.knowledge.service.KbDocumentService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,23 +19,23 @@ public class KbDocumentController {
 
     @PostMapping
     public Result<DocumentVO> create(@RequestBody CreateDocumentRequest request) {
-        return Result.ok(documentService.create(request));
+        return Result.ok(documentService.createPlatform(request));
     }
 
     @PutMapping("/{id}")
-    public Result<DocumentVO> update(@PathVariable Long id, @RequestBody UpdateDocumentRequest request) {
-        return Result.ok(documentService.update(id, request));
+    public Result<DocumentVO> update(@PathVariable Long id, @Valid @RequestBody UpdateDocumentRequest request) {
+        return Result.ok(documentService.updatePlatform(id, request));
     }
 
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
-        documentService.delete(id);
+        documentService.deletePlatform(id);
         return Result.ok();
     }
 
     @GetMapping("/{id}")
     public Result<DocumentVO> getById(@PathVariable Long id) {
-        return Result.ok(documentService.getById(id));
+        return Result.ok(documentService.getPlatformById(id));
     }
 
     @GetMapping
@@ -42,12 +43,12 @@ public class KbDocumentController {
                                           @RequestParam(name = "size", defaultValue = "20") int pageSize,
                                           @RequestParam(required = false) Long categoryId,
                                           @RequestParam(required = false) String status) {
-        return Result.ok(documentService.page(pageNum, pageSize, categoryId, status));
+        return Result.ok(documentService.pagePlatform(pageNum, pageSize, categoryId, status));
     }
 
     @PostMapping("/{id}/reindex")
     public Result<Void> reindex(@PathVariable Long id) {
-        documentService.reindex(id);
+        documentService.reindexPlatform(id);
         return Result.ok();
     }
 }

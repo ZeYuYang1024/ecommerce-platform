@@ -5,4 +5,5 @@ import com.ecommerce.knowledge.dto.response.ChatResponse;
 
 public interface ChatService {
     ChatResponse chat(ChatRequest request, Long userId, String userType);
+    ChatResponse merchantChat(ChatRequest request, Long userId, String userType, Long merchantId);
 }

@@ -85,7 +85,7 @@ public class AuthServiceImpl implements AuthService {
 
         String adminType = admin.getType() != null ? admin.getType() : "super_admin";
         String token = JwtUtils.generate(admin.getId(), admin.getUsername(), "admin", adminType, admin.getMerchantId());
-        return LoginResponse.of(token, admin.getId(), admin.getUsername(), adminType);
+        return LoginResponse.of(token, admin.getId(), admin.getUsername(), adminType, admin.getMerchantId());
     }
 
     @Override

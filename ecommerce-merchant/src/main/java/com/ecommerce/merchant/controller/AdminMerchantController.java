@@ -1,9 +1,12 @@
 package com.ecommerce.merchant.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.merchant.dto.request.MerchantAuditRequest;
+import com.ecommerce.merchant.dto.request.MerchantUpdateRequest;
 import com.ecommerce.common.dto.MerchantStatsVO;
+import com.ecommerce.merchant.common.MerchantErrorCode;
 import com.ecommerce.merchant.dto.response.MerchantVO;
 import com.ecommerce.merchant.service.MerchantService;
 import jakarta.validation.Valid;
@@ -30,8 +33,20 @@ public class AdminMerchantController {
     }
 
     @GetMapping("/merchants/{id}")
-    public Result<MerchantVO> detail(@PathVariable Long id) {
+    public Result<MerchantVO> detail(@PathVariable Long id,
+                                     @RequestHeader(value = "X-User-Type", required = false) String userType,
+                                     @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+        validateMerchantScope(userType, merchantId, id);
         return Result.ok(merchantService.getById(id));
+    }
+
+    @PutMapping("/merchants/{id}")
+    public Result<MerchantVO> update(@PathVariable Long id,
+                                     @Valid @RequestBody MerchantUpdateRequest request,
+                                     @RequestHeader(value = "X-User-Type", required = false) String userType,
+                                     @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+        validateMerchantScope(userType, merchantId, id);
+        return Result.ok(merchantService.update(id, request));
     }
 
     @PutMapping("/merchants/{id}/audit")
@@ -50,5 +65,14 @@ public class AdminMerchantController {
         stats.setMerchantCount(approved);
         stats.setPendingAuditCount(pending);
         return Result.ok(stats);
+    }
+
+    private void validateMerchantScope(String userType, Long merchantId, Long targetMerchantId) {
+        if (!"merchant".equals(userType)) {
+            return;
+        }
+        if (merchantId == null || !merchantId.equals(targetMerchantId)) {
+            throw new BusinessException(MerchantErrorCode.MERCHANT_PERMISSION_DENIED);
+        }
     }
 }

@@ -23,6 +23,9 @@ public interface OrderClient {
     @GetMapping("/api/v1/internal/orders/no/{orderNo}")
     Result<OrderInternalVO> getOrderByOrderNo(@PathVariable String orderNo, @RequestParam("userId") Long userId);
 
+    @GetMapping("/api/v1/internal/orders/merchant/order-nos")
+    Result<List<String>> listOrderNosByMerchant(@RequestParam("merchantId") Long merchantId);
+
     @GetMapping("/api/v1/admin/orders/recon")
     Result<List<ReconOrderVO>> getOrdersForRecon(@RequestParam("start") String start,
                                                          @RequestParam("end") String end);

@@ -64,7 +64,7 @@ const pendingOrders = ref('--')
 onMounted(async () => {
   try {
     const [pRes, oRes] = await Promise.all([
-      axios.get('/api/v1/admin/products?page=1&size=1'),
+      axios.get('/api/v1/admin/merchant/products?page=1&size=1'),
       axios.get('/api/v1/admin/merchant/orders?page=1&size=1')
     ])
     if (pRes.data.code === 200) productCount.value = pRes.data.data.total || 0

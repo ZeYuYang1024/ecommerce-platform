@@ -20,6 +20,7 @@ public class CreateProductRequest {
     public static class SpuRequest {
         @NotBlank(message = "商品名称不能为空")
         private String name;
+        @NotNull(message = "categoryId is required")
         private Long categoryId;
         private Long brandId;
         private String description;

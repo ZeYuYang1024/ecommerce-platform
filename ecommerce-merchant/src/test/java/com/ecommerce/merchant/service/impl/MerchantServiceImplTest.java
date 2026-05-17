@@ -1,18 +1,17 @@
 package com.ecommerce.merchant.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.ecommerce.common.dto.CreateMerchantAccountRequest;
 import com.ecommerce.common.result.BusinessException;
-import com.ecommerce.merchant.client.AuthClient;
 import com.ecommerce.merchant.common.MerchantErrorCode;
 import com.ecommerce.merchant.dto.request.MerchantAuditRequest;
 import com.ecommerce.merchant.dto.request.MerchantRegisterRequest;
+import com.ecommerce.merchant.dto.request.MerchantUpdateRequest;
 import com.ecommerce.merchant.dto.response.MerchantVO;
 import com.ecommerce.merchant.entity.Merchant;
 import com.ecommerce.merchant.entity.MerchantAudit;
 import com.ecommerce.merchant.mapper.MerchantAuditMapper;
 import com.ecommerce.merchant.mapper.MerchantMapper;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -32,7 +31,7 @@ class MerchantServiceImplTest {
 
     @Mock private MerchantMapper merchantMapper;
     @Mock private MerchantAuditMapper auditMapper;
-    @Mock private AuthClient authClient;
+    @Mock private RocketMQTemplate rocketMQTemplate;
     @InjectMocks private MerchantServiceImpl service;
 
     private Merchant merchant;
@@ -139,7 +138,7 @@ class MerchantServiceImplTest {
         void shouldListAllByStatus() {
             when(merchantMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(java.util.Collections.singletonList(merchant));
-            List<MerchantVO> list = service.list(0);
+            List<MerchantVO> list = service.listAll(0);
             assertThat(list).hasSize(1);
         }
 
@@ -147,8 +146,44 @@ class MerchantServiceImplTest {
         void shouldListAllWhenStatusNull() {
             when(merchantMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(java.util.Collections.singletonList(merchant));
-            List<MerchantVO> list = service.list(null);
+            List<MerchantVO> list = service.listAll(null);
             assertThat(list).hasSize(1);
+        }
+
+        @Test
+        void shouldUpdateMerchantProfileFields() {
+            when(merchantMapper.selectById(1L)).thenReturn(merchant);
+            when(merchantMapper.updateById(any(Merchant.class))).thenReturn(1);
+
+            MerchantUpdateRequest req = new MerchantUpdateRequest();
+            req.setName("updated-shop");
+            req.setContactName("lisi");
+            req.setContactPhone("13900139000");
+
+            MerchantVO vo = service.update(1L, req);
+
+            assertThat(vo.getName()).isEqualTo("updated-shop");
+            assertThat(vo.getContactName()).isEqualTo("lisi");
+            assertThat(merchant.getContactPhone()).isEqualTo("13900139000");
+        }
+
+        @Test
+        void shouldRejectUpdateWhenNameAlreadyBelongsToAnotherMerchant() {
+            when(merchantMapper.selectById(1L)).thenReturn(merchant);
+            when(merchantMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+
+            MerchantUpdateRequest req = new MerchantUpdateRequest();
+            req.setName("existing-shop");
+            req.setContactName("lisi");
+            req.setContactPhone("13900139000");
+            req.setBusinessLicense("url");
+
+            assertThatThrownBy(() -> service.update(1L, req))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(MerchantErrorCode.MERCHANT_NAME_EXISTS.getCode());
+
+            verify(merchantMapper, never()).updateById(any(Merchant.class));
         }
     }
 

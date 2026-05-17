@@ -25,11 +25,8 @@ public class PaymentController {
 
     @GetMapping("/{orderNo}")
     public Result<PaymentVO> query(@PathVariable String orderNo,
-                                   @RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        if (userId != null) {
-            return Result.ok(paymentService.queryByOrderNoForUser(userId, orderNo));
-        }
-        return Result.ok(paymentService.queryByOrderNo(orderNo));
+                                   @RequestHeader("X-User-Id") Long userId) {
+        return Result.ok(paymentService.queryByOrderNoForUser(userId, orderNo));
     }
 
     @GetMapping("/orders/{orderNo}")
