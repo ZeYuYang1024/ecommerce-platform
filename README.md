@@ -1,101 +1,110 @@
 # E-Commerce Platform
 
-微服务电商平台，前后端分离 + 微信小程序，Spring Boot 4.0 + Spring Cloud + Vue 3 + uni-app。
+基于 `Spring Boot 4 + Spring Cloud` 的微服务电商平台，包含：
+
+- PC Web 商城（Nuxt 3）
+- Admin 管理后台（Vue 3 + Element Plus）
+- 微信小程序（uni-app）
+- 独立 AI 知识库 / 智能客服模块（`ecommerce-knowledge`）
+
+当前仓库不仅包含传统电商链路，也已经接入了 `Ollama + Milvus + DeepSeek + LangChain4j`，支持平台知识库、商家私有知识库，以及面向 C 端用户的智能客服问答。
+
+## 项目亮点
+
+- 完整的微服务拆分：认证、用户、商品、库存、订单、支付、购物车、商家、优惠券、通知、文件、搜索、秒杀、监控
+- 三端并行：PC Web、管理后台、微信小程序
+- API Gateway + JWT + RBAC 权限体系
+- RocketMQ 异步事件链路
+- Elasticsearch 商品搜索
+- MinIO 文件存储
+- Spring Boot Admin + Druid 监控
+- AI 知识库模块支持：
+  - 平台知识库
+  - 商家私有知识库
+  - 文档向量化与重建索引
+  - RAG 问答
+  - 联动订单、购物车、优惠券、地址、通知、支付等实时业务数据
 
 ## 技术栈
 
-### 后端
+### 后端主工程
 
 | 技术 | 版本 | 说明 |
-|------|------|------|
-| Java | 21 | 运行环境 |
-| Spring Boot | 4.0.0 | 微服务框架 |
-| Spring Cloud | 2025.1.1 | 服务治理 (Gateway / OpenFeign / LoadBalancer) |
-| Spring Cloud Alibaba Nacos | 2025.1.0.0 (client) / 2.4.0 (server) | 注册中心 & 配置中心 |
+|---|---|---|
+| Java | 21 | 运行时 |
+| Spring Boot | 4.0.0 | 主工程基础框架 |
+| Spring Cloud | 2025.1.1 | 微服务治理 |
+| Spring Cloud Alibaba Nacos | 2025.1.0.0 / 2.4.0 | 注册中心与配置中心 |
 | MyBatis-Plus | 3.5.16 | ORM |
-| MySQL | 8.0.33 (driver) / 8.0 (server) | 关系型数据库 |
-| Druid | 1.2.28 | 数据库连接池 + SQL 监控 |
-| Redis | 7.2 | 缓存 (Lettuce 驱动) |
-| RocketMQ | 5.2.0 (server) / 2.3.0 (starter) | 消息队列 |
-| Elasticsearch | 7.17.28 (server) / 8.16.0 (client) | 搜索引擎 |
-| MinIO | latest (server) / 8.6.0 (SDK) | 对象存储 |
-| JJWT | 0.12.6 | JWT 认证 |
-| Hutool | 5.8.44 | 工具库 |
-| Lombok | 1.18.46 | 代码简化 |
-| Spring Boot Admin | 4.0.4 | 集中监控 |
-| LangChain4j | 1.14.1 | AI 编排框架 (RAG + Agent) |
-| Milvus | 2.4.0 | 向量数据库 (知识库检索) |
-| Ollama | latest (bge-m3) | 本地 Embedding 模型 (1024 维) |
-| DeepSeek | deepseek-chat (V3) | LLM 对话模型 |
+| MySQL | 8.0.33 / 8.0 | 关系型数据库 |
+| Redis | 7.2 | 缓存 |
+| RocketMQ | 5.2.0 / 2.3.0 | 消息队列 |
+| Elasticsearch | 7.17.28 / 8.16.0 | 商品搜索 |
+| MinIO | latest / 8.6.0 | 对象存储 |
+| Druid | 1.2.28 | 数据源与 SQL 监控 |
+| JJWT | 0.12.6 | JWT |
+| Spring Boot Admin | 4.0.4 | 服务监控 |
 
-### 前端 (PC Web)
+### AI 知识库模块（`ecommerce-knowledge`）
+
+> `ecommerce-knowledge` 是独立 POM，不在根 `pom.xml` 的 `<modules>` 中，需要单独编译和启动。
 
 | 技术 | 版本 | 说明 |
-|------|------|------|
-| Nuxt 3 | ^3.15.0 | SSR 框架 |
-| Vue 3 | ^3.5.0 | 组件框架 |
-| Pinia | ^2.2.0 | 状态管理 |
-| Tailwind CSS | ^3.4.0 | CSS 框架 |
-| vue-router | ^4.4.0 | 路由 |
+|---|---|---|
+| Spring Boot | 3.5.13 | 知识库服务基础框架 |
+| Spring Cloud | 2025.0.2 | 微服务能力 |
+| LangChain4j | 1.14.1 | RAG 与 Agent 编排 |
+| Milvus | 2.4.0 | 向量数据库 |
+| Ollama | latest | 本地 Embedding 服务 |
+| BGE-M3 | latest | Embedding 模型，默认 `1024` 维 |
+| DeepSeek Chat | `deepseek-chat` | LLM 对话模型 |
 
-### 前端 (Admin 管理后台)
+### 前端
 
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| Vue 3 | ^3.5.32 | 组件框架 |
-| Vite | ^8.0.10 | 构建工具 |
-| Element Plus | ^2.13.7 | UI 组件库 |
-| Pinia | ^3.0.4 | 状态管理 |
-| Axios | ^1.16.0 | HTTP 客户端 |
-| Sass | ^1.99.0 | CSS 预处理器 |
-
-### 微信小程序
-
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| uni-app | Vue 3 模式 | 跨端框架 |
-| Vue 3 | ^3.4.0 | 组件框架 |
-| Sass | ^1.70.0 | CSS 预处理器 |
-| HBuilderX | 最新版 | IDE / 构建工具 |
+| 端 | 技术栈 |
+|---|---|
+| PC Web | Nuxt 3、Vue 3、Pinia、Tailwind CSS、marked |
+| Admin | Vue 3、Vite、Element Plus、Pinia、Axios |
+| 微信小程序 | uni-app（Vue 3 模式） |
 
 ### 测试
 
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| Playwright | ^1.59.1 | E2E 测试框架 |
-| H2 | 2.3.232 | 测试用内存数据库 |
-| miniprogram-automator | ^0.12.1 | 小程序自动化测试 |
+| 技术 | 说明 |
+|---|---|
+| Playwright | Web E2E |
+| H2 | Java 单测数据库 |
+| miniprogram-automator | 小程序自动化测试 |
 
 ## 项目结构
 
-```
+```text
 ecommerce-platform/
-├── ecommerce-common/          # 公共模块 (DTO / Result / 工具类)
-├── ecommerce-gateway/         # API 网关 (:8080)  WebFlux
-├── ecommerce-monitor/         # SBA 监控 (:8094)
-├── ecommerce-auth/            # 认证服务 (:8091)
-├── ecommerce-user/            # 用户服务 (:8081)
-├── ecommerce-product/         # 商品服务 (:8082)
-├── ecommerce-inventory/       # 库存服务 (:8083)
-├── ecommerce-order/           # 订单服务 (:8084)
-├── ecommerce-payment/         # 支付服务 (:8085)
-├── ecommerce-cart/            # 购物车 (:8086)
-├── ecommerce-merchant/        # 商家服务 (:8087)
-├── ecommerce-coupon/          # 优惠券 (:8088)
-├── ecommerce-notification/    # 通知服务 (:8089)
-├── ecommerce-file/            # 文件服务 (:8090)
-├── ecommerce-knowledge/       # AI 知识库 (:8095)  SB 3.5.13
-├── ecommerce-search/          # 搜索服务 (:8092)
-├── ecommerce-seckill/         # 秒杀服务 (:8093)
-├── ecommerce-web/             # PC 前端 (Nuxt 3)  :3000
-├── ecommerce-admin/           # 管理后台 (Vite)   :5173
-├── ecommerce-miniprogram/     # 微信小程序 (uni-app)
+├── ecommerce-common/          # 公共模块
+├── ecommerce-gateway/         # API 网关 :8080
+├── ecommerce-auth/            # 认证服务 :8091
+├── ecommerce-user/            # 用户服务 :8081
+├── ecommerce-product/         # 商品服务 :8082
+├── ecommerce-inventory/       # 库存服务 :8083
+├── ecommerce-order/           # 订单服务 :8084
+├── ecommerce-payment/         # 支付服务 :8085
+├── ecommerce-cart/            # 购物车服务 :8086
+├── ecommerce-merchant/        # 商家服务 :8087
+├── ecommerce-coupon/          # 优惠券服务 :8088
+├── ecommerce-notification/    # 通知服务 :8089
+├── ecommerce-file/            # 文件服务 :8090
+├── ecommerce-search/          # 搜索服务 :8092
+├── ecommerce-seckill/         # 秒杀服务 :8093
+├── ecommerce-monitor/         # Spring Boot Admin :8094
+├── ecommerce-knowledge/       # AI 知识库服务 :8095（独立 POM）
+├── ecommerce-web/             # PC Web :3000
+├── ecommerce-admin/           # Admin 后台 :5173
+├── ecommerce-miniprogram/     # 微信小程序
 ├── docs/
-│   └── init.sql               # 完整建库建表 + 测试数据
+│   └── init.sql              # 主工程库表与测试数据
 ├── scripts/
-│   ├── start-middleware.sh    # Mac/Linux 一键启动脚本
-│   └── start-middleware.ps1   # Windows PowerShell 一键启动脚本
-└── docker-compose.yml         # 中间件 Docker 编排
+│   ├── start-middleware.sh   # macOS / Linux 中间件启动脚本
+│   └── start-middleware.ps1  # Windows PowerShell 中间件启动脚本
+└── docker-compose.yml         # MySQL / Redis / Nacos / RocketMQ / ES / MinIO / Milvus
 ```
 
 ## 系统架构图
@@ -236,7 +245,7 @@ graph TB
 ### 服务间通信方式
 
 | 通信方式 | 调用方 → 被调用方 | 场景 |
-|---------|-----------------|------|
+|---|---|---|
 | **OpenFeign (同步)** | Order → Cart | 获取购物车选中商品 |
 | **OpenFeign (同步)** | Order → Inventory | 库存扣减/释放 |
 | **OpenFeign (同步)** | Order → Product | 查询 SKU 信息 |
@@ -492,236 +501,403 @@ sequenceDiagram
     GW-->>User: Markdown 格式回答 (前端 marked.js 渲染)
 ```
 
-**知识库服务技术栈 (独立于主项目)：**
-- Spring Boot 3.5.13 + Spring Cloud 2025.0.2（与父 POM SB 4.0 隔离）
-- LangChain4j 1.14.1 — AI 编排（RAG + @AiService Agent）
-- Milvus 2.4.0 — 向量存储，HNSW 索引，毫秒级检索
-- Ollama + BGE-M3 — 本地 Embedding，1024 维，中文优化，零 API 费用
-- DeepSeek Chat (V3) — LLM 对话，兼容 OpenAI 协议
-- MyBatis-Plus 3.5.16 — 文档元数据管理
+## 核心模块说明
 
-**调用链路：**
+| 模块 | 说明 |
+|---|---|
+| `ecommerce-gateway` | 统一入口，转发到各微服务，做鉴权与 Header 注入 |
+| `ecommerce-auth` | 登录、注册、管理员、角色、权限 |
+| `ecommerce-product` | SPU / SKU / 类目 / 品牌 / 评论 |
+| `ecommerce-inventory` | 库存扣减、释放、查询 |
+| `ecommerce-order` | 下单、取消、订单查询 |
+| `ecommerce-payment` | 支付、退款、对账、结算 |
+| `ecommerce-search` | 商品搜索与 ES 索引同步 |
+| `ecommerce-file` | MinIO 文件上传 |
+| `ecommerce-monitor` | Spring Boot Admin 监控中心 |
+| `ecommerce-knowledge` | 平台知识库、商家知识库、RAG 问答、实时业务工具调用 |
 
-| 调用方 | 方式 | 被调用方 | 场景 |
-|--------|------|---------|------|
-| 管理员浏览器 | HTTP → Gateway → Knowledge | Knowledge Controller | 文档 CRUD |
-| 用户浏览器 | HTTP → Nuxt Proxy → Gateway → Knowledge | Knowledge ChatController | 智能问答 |
-| Knowledge Service | HTTP Client | Ollama (localhost:11434) | 文本向量化 (BGE-M3) |
-| Knowledge Service | gRPC | Milvus (localhost:19530) | 向量存储 & HNSW 检索 |
-| Knowledge Service | HTTPS | DeepSeek API | LLM 对话生成 |
-| Knowledge Service | JDBC | MySQL (ecommerce_knowledge) | 文档/分类/会话持久化 |
+## AI 知识库能力
 
-**Admin 管理 API：**
+`ecommerce-knowledge` 当前的运行链路是：
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/admin/knowledge/documents` | 文档分页列表（支持分类/状态筛选） |
-| POST | `/api/v1/admin/knowledge/documents` | 创建文档 → 自动向量化入库 |
-| PUT | `/api/v1/admin/knowledge/documents/{id}` | 更新文档 → 自动重新向量化 |
-| DELETE | `/api/v1/admin/knowledge/documents/{id}` | 删除文档 → 同步清理向量 |
-| POST | `/api/v1/admin/knowledge/documents/{id}/reindex` | 手动重新向量化 |
-| GET | `/api/v1/admin/knowledge/categories` | 分类列表 |
-| POST | `/api/v1/admin/knowledge/categories` | 创建分类 |
+1. 文档写入 MySQL
+2. 文档分块
+3. 调用本地 `Ollama` 的 `bge-m3` 生成 embedding
+4. 写入 `Milvus`
+5. 用户提问时先检索向量，再调用 `DeepSeek Chat`
+6. 对购物车、订单、优惠券、地址、通知、支付等实时问题，优先调用业务工具拿最新数据
 
-**C 端 API：**
+当前默认配置位于 `ecommerce-knowledge/src/main/resources/application.yml`：
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/v1/knowledge/chat` | 智能问答 `{question, sessionId?}` |
+- Ollama 地址：`http://localhost:11434`
+- Ollama 模型：`bge-m3`
+- Milvus：`localhost:19530`
+- DeepSeek 模型：`deepseek-chat`
 
-**用户侧实时查询能力：**
+前端已接入的页面：
 
-- 购物车：是否有商品、商品列表、件数
-- 订单：最近订单列表、指定订单详情
-- 优惠券：我的优惠券、当前可领取优惠券
-- 收货地址：地址列表、默认地址
-- 通知：最近通知消息
-- 支付状态：按订单号查询当前用户支付状态
+| 页面 | 地址 | 说明 |
+|---|---|---|
+| PC 智能客服 | `http://localhost:3000/knowledge` | C 端问答页面 |
+| 平台知识库管理 | `http://localhost:5173/knowledge` | 平台侧文档管理 |
+| 商家知识库管理 | `http://localhost:5173/merchant/knowledge` | 商家私有知识库管理 |
 
-这些能力由 `ecommerce-knowledge` 通过业务工具直接联动 `cart / order / coupon / user / notification / payment` 等服务完成。  
-对于“我的购物车”“我的订单”“我的优惠券”“我的地址”“我的通知”“我的支付”这类个人数据问题，知识库默认按当前登录用户上下文查询，无需用户再次提供 `userId`。
+## 服务端口
 
-**前端页面：**
+### 业务服务
 
-| 页面 | 路径 | 技术栈 |
-|------|------|--------|
-| Admin 知识库管理 | `/knowledge` | Vue 3 + Element Plus (Warm Gold 主题) |
-| PC 智能客服 | `/knowledge` | Nuxt 3 + Tailwind CSS + marked.js (MD 渲染) |
+| 服务 | 端口 |
+|---|---|
+| Gateway | 8080 |
+| User | 8081 |
+| Product | 8082 |
+| Inventory | 8083 |
+| Order | 8084 |
+| Payment | 8085 |
+| Cart | 8086 |
+| Merchant | 8087 |
+| Coupon | 8088 |
+| Notification | 8089 |
+| File | 8090 |
+| Auth | 8091 |
+| Search | 8092 |
+| Seckill | 8093 |
+| Monitor | 8094 |
+| Knowledge | 8095 |
 
-**PC 智能客服页面行为：**
+### 前端
 
-- 登录态下支持用户侧 6 类实时查询：购物车、订单、优惠券、收货地址、通知、支付状态
-- 未登录时如果询问个人数据，页面会直接提示先登录
-- 用户端页面只展示回答正文，不展示知识库 `sources` 调试信息
+| 应用 | 端口 |
+|---|---|
+| PC Web | 3000 |
+| Admin | 5173 |
 
-## 中间件端口
+### 中间件
 
-| 中间件 | 端口 | 账号 / 密码 |
-|--------|------|------------|
-| MySQL | 3306 | root / root |
-| Redis | 6379 | 密码: root |
-| Nacos | 8848 (http) / 9848 (gRPC) | nacos / nacos |
+| 中间件 | 端口 | 默认账号 / 密码 |
+|---|---|---|
+| MySQL | 3306 | `root / root` |
+| Redis | 6379 | 密码 `root` |
+| Nacos | 8848 / 9848 | `nacos / nacos` |
 | RocketMQ NameServer | 9876 | - |
-| RocketMQ Broker | 10911 (remoting) / 10909 (VIP) | - |
-| MinIO | 9000 (API) / 9001 (Console) | minio / minioadmin |
+| RocketMQ Broker | 10911 / 10909 | - |
+| MinIO API | 9000 | `minio / minioadmin` |
+| MinIO Console | 9001 | `minio / minioadmin` |
 | Elasticsearch | 9200 | - |
-| Milvus | 19530 (gRPC) / 9091 (metrics) | - |
+| Milvus | 19530 / 9091 | - |
 | Ollama | 11434 | - |
 
-## 快速启动
+## 快速开始
 
-### 1. 前置条件
+### 1. 环境准备
 
-- **Docker Desktop** (或 Colima / Podman) — 运行中间件容器
-- **JDK 21** — 编译运行后端
-- **Maven 3.9+** — 项目构建
-- **Node.js 22+** — 前端构建
-- **HBuilderX** — 小程序编译 (仅小程序)
+建议先准备以下环境：
+
+- Docker Desktop / Colima / Podman（至少能执行 `docker compose`）
+- JDK 21
+- Maven 3.9+
+- Node.js 22+
+- HBuilderX（仅微信小程序需要）
+- Ollama（仅 AI 知识库功能需要）
+- Python 3（仅导入知识库种子数据时需要）
+
+如果你暂时不使用 AI 知识库，可以先跳过 `Ollama / DeepSeek / ecommerce-knowledge` 相关步骤。
 
 ### 2. 启动中间件
 
-**macOS / Linux:**
+#### 方式一：使用项目脚本
+
+macOS / Linux：
+
 ```bash
 bash scripts/start-middleware.sh
 ```
 
-**Windows (PowerShell):**
+Windows PowerShell：
+
 ```powershell
 .\scripts\start-middleware.ps1
 ```
 
-脚本会自动完成：启动 Docker 容器 → 等待服务就绪 → 初始化 RocketMQ Topics → 执行 `docs/init.sql`。
+脚本会完成这些事情：
 
-**手动启动（按需）：**
+- `docker compose up -d`
+- 等待 MySQL、Redis、Nacos、RocketMQ、Elasticsearch、MinIO 就绪
+- 创建 RocketMQ topics
+- 执行 `docs/init.sql`
+
+#### 方式二：手动启动
+
 ```bash
-# 仅启动特定中间件
-docker compose up -d mysql redis nacos
+docker compose up -d
+```
 
-# 初始化数据库
+然后初始化主工程数据库：
+
+```bash
 docker exec -i ecommerce-mysql mysql -uroot -proot < docs/init.sql
-
-# 初始化 RocketMQ Topics
-docker exec ecommerce-rmq-broker ./mqadmin updateTopic \
-  -n rocketmq-namesrv:9876 -c DefaultCluster \
-  -t order-paid -r 4 -w 4
 ```
 
-### 3. 启动后端服务
+> 注意：`docs/init.sql` 不包含知识库库表，`ecommerce_knowledge` 需要单独初始化。
+
+### 3. 安装并启动 Ollama
+
+> `Ollama` 不在本项目的 `docker-compose.yml` 中，知识库模块依赖本机本地运行的 Ollama 服务。
+
+官方文档：
+
+- 官网文档：https://docs.ollama.com/
+- Windows：https://docs.ollama.com/windows
+- macOS：https://docs.ollama.com/macos
+- Linux：https://docs.ollama.com/linux
+- `bge-m3` 模型页：https://ollama.com/library/bge-m3
+
+#### Windows
+
+按官方文档安装 Ollama Desktop/Installer，安装完成后确认后台服务已启动。
+
+#### macOS
+
+按官方文档安装 Ollama，启动后保持服务在线。
+
+#### Linux
 
 ```bash
-# 每个模块独立启动
-cd ecommerce-auth && mvn spring-boot:run     # :8091
-cd ecommerce-product && mvn spring-boot:run  # :8082
-# ...
-
-# 或者一条命令编译全部
-mvn compile -q
+curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-建议启动顺序：`common → auth → user → product → inventory → order → payment → gateway → knowledge → 其他`
+#### 验证 Ollama 是否可用
 
-**知识库服务 (ecommerce-knowledge) 额外依赖：**
 ```bash
-# 1. 启动 Milvus 向量数据库
-docker compose up -d milvus
+ollama --version
+```
 
-# 2. 启动 Ollama 并下载 BGE-M3 模型
+如果你的系统没有自动拉起 Ollama 服务，再手动启动：
+
+```bash
+ollama serve
+```
+
+#### 拉取本项目所需模型
+
+```bash
 ollama pull bge-m3
+```
 
-# 3. 初始化知识库数据库
+检查模型是否已经下载：
+
+```bash
+ollama list
+```
+
+可选：检查本地 API 是否可访问。
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+### 4. 初始化知识库数据库
+
+知识库使用独立数据库 `ecommerce_knowledge`，需要单独执行：
+
+```bash
 docker exec -i ecommerce-mysql mysql -uroot -proot < ecommerce-knowledge/sql/init.sql
+```
 
-# 4. 设置 API Key 环境变量
-export DEEPSEEK_API_KEY=sk-xxx
+### 5. 配置 DeepSeek API Key
 
-# 5. 编译启动（独立 POM，不参与父项目编译）
+`ecommerce-knowledge` 默认通过 DeepSeek 提供对话模型能力。启动前先设置环境变量。
+
+PowerShell：
+
+```powershell
+$env:DEEPSEEK_API_KEY="sk-xxxxxx"
+```
+
+macOS / Linux：
+
+```bash
+export DEEPSEEK_API_KEY="sk-xxxxxx"
+```
+
+### 6. 编译并启动后端服务
+
+#### 6.1 编译主工程
+
+```bash
+mvn -DskipTests compile
+```
+
+#### 6.2 单独编译知识库模块
+
+```bash
 cd ecommerce-knowledge
 mvn compile
-mvn spring-boot:run   # :8095
+```
 
-# 6. (可选) 批量导入种子数据
+> `ecommerce-knowledge` 是独立 POM，需要单独执行编译和启动命令。
+
+#### 6.3 启动顺序建议
+
+建议顺序：
+
+1. `ecommerce-auth`
+2. `ecommerce-user`
+3. `ecommerce-product`
+4. `ecommerce-inventory`
+5. `ecommerce-order`
+6. `ecommerce-payment`
+7. `ecommerce-cart`
+8. `ecommerce-merchant`
+9. `ecommerce-coupon`
+10. `ecommerce-notification`
+11. `ecommerce-file`
+12. `ecommerce-search`
+13. `ecommerce-seckill`
+14. `ecommerce-monitor`
+15. `ecommerce-knowledge`
+16. `ecommerce-gateway`
+
+各模块都可以用同样方式启动：
+
+```bash
+cd <module>
+mvn spring-boot:run
+```
+
+例如：
+
+```bash
+cd ecommerce-auth && mvn spring-boot:run
+cd ecommerce-product && mvn spring-boot:run
+cd ecommerce-gateway && mvn spring-boot:run
+```
+
+知识库模块启动方式：
+
+```bash
+cd ecommerce-knowledge
+mvn spring-boot:run
+```
+
+### 7. 启动前端
+
+#### PC Web
+
+```bash
+cd ecommerce-web
+npm install
+npm run dev
+```
+
+#### Admin 后台
+
+```bash
+cd ecommerce-admin
+npm install
+npm run dev
+```
+
+### 8. 启动微信小程序
+
+使用 HBuilderX 打开 `ecommerce-miniprogram`，配置 `manifest.json` 中的小程序信息后运行。
+
+### 9. 可选：导入知识库种子数据
+
+在 `ecommerce-knowledge` 已经启动后，可以执行：
+
+```bash
 python ecommerce-knowledge/sql/seed_data.py
 ```
 
-### 4. 启动前端
+这个脚本会通过 `http://localhost:8095` 向知识库服务写入示例文档。
 
-```bash
-# PC Web (ecommerce-web)
-cd ecommerce-web
-npm install
-npm run dev          # http://localhost:3000
+### 10. 访问地址
 
-# 管理后台 (ecommerce-admin)
-cd ecommerce-admin
-npm install
-npm run dev          # http://localhost:5173
-```
-
-### 5. 微信小程序
-
-在 HBuilderX 中打开 `ecommerce-miniprogram` 目录，配置 `manifest.json` 中的微信 AppID，点击「运行 → 运行到小程序模拟器 → 微信开发者工具」。
-
-### 6. 访问地址
-
-| 页面 | 地址 |
-|------|------|
+| 页面 / 服务 | 地址 |
+|---|---|
 | PC Web | http://localhost:3000 |
-| 管理后台 | http://localhost:5173 |
-| API 网关 | http://localhost:8080 |
-| Nacos 控制台 | http://localhost:8848/nacos |
-| MinIO 控制台 | http://localhost:9001 |
-| **知识库管理后台** | http://localhost:5173/knowledge |
-| **PC 智能客服** | http://localhost:3000/knowledge |
-| **Spring Boot Admin** | http://localhost:8094/admin |
-| **Druid SQL 监控** | http://localhost:{服务端口}/druid/sql.html |
-| Druid 登录 | admin / admin |
+| PC 智能客服 | http://localhost:3000/knowledge |
+| Admin 后台 | http://localhost:5173 |
+| 平台知识库管理 | http://localhost:5173/knowledge |
+| 商家知识库管理 | http://localhost:5173/merchant/knowledge |
+| API Gateway | http://localhost:8080 |
+| Nacos | http://localhost:8848/nacos |
+| MinIO Console | http://localhost:9001 |
+| Elasticsearch | http://localhost:9200 |
+| Spring Boot Admin | http://localhost:8094/admin |
+| Druid | `http://localhost:{服务端口}/druid/sql.html` |
+
+## 默认账号
+
+主工程初始化脚本 `docs/init.sql` 默认写入：
+
+| 角色 | 账号 | 密码 |
+|---|---|---|
+| 超级管理员 | `admin` | `admin123` |
+| 测试用户 | `testuser` | `test123` |
 
 ## RocketMQ Topics
 
+项目默认初始化以下 topics：
+
 | Topic | 队列数 | 说明 |
-|-------|--------|------|
+|---|---|---|
 | `order-created` | 4 | 订单创建 |
-| `order-cancelled` | 4 | 订单取消 → 库存释放 |
-| `order-paid` | 4 | 支付成功 → 订单状态更新 |
-| `product-created` | 4 | 商品创建 → 同步 ES |
-| `merchant-approved` | 4 | 商家审核通过 → 创建管理账号 |
+| `order-cancelled` | 4 | 订单取消 |
+| `order-paid` | 4 | 支付成功 |
+| `product-created` | 4 | 商品创建后同步搜索索引 |
+| `merchant-approved` | 4 | 商家审核通过后创建账号 / 发送通知 |
 
-## 数据库
+## 常见问题
 
-### 10 个业务数据库
+### 1. 知识库服务报错，连不上 `localhost:11434`
 
-每个数据服务独享一个数据库：`ecommerce_auth`, `ecommerce_user`, `ecommerce_product`, `ecommerce_inventory`, `ecommerce_merchant`, `ecommerce_order`, `ecommerce_payment`, `ecommerce_coupon`, `ecommerce_notification`, `ecommerce_seckill`, `ecommerce_knowledge`。
+说明本机 Ollama 没启动。
 
-### 执行初始化
+处理方式：
 
 ```bash
-docker exec -i ecommerce-mysql mysql -uroot -proot < docs/init.sql
+ollama serve
 ```
 
-`init.sql` 包含：建库、建表、分类/品牌/商品/库存测试数据、RBAC 角色权限、管理员账号 (admin/admin123)、测试用户 (testuser/test123)。
+如果是 Windows / macOS 图形安装版，确认 Ollama 桌面程序仍在后台运行。
 
-## 监控
+### 2. `model 'bge-m3' not found`
 
-### Spring Boot Admin
+说明模型还没拉下来：
 
-集中监控所有服务：http://localhost:8094/admin
+```bash
+ollama pull bge-m3
+```
 
-- 服务健康状态 / 内存 / 线程 / GC
-- 日志查看 & 运行时修改日志级别
-- 环境变量 / 配置查看
-- Wallboard 大屏模式
+### 3. `DEEPSEEK_API_KEY` 未配置
 
-### Druid SQL 监控
+知识库模块会在调用对话模型时失败。先设置环境变量，再启动 `ecommerce-knowledge`。
 
-各服务独立监控：http://localhost:{port}/druid/sql.html
+### 4. 执行了 `docs/init.sql` 但知识库还是起不来
 
-- SQL 执行统计 & 慢查询
-- 连接池状态
-- 登录账号：admin / admin
+因为 `docs/init.sql` 不包含知识库库表。必须再执行一次：
 
-### Admin 默认账号
+```bash
+docker exec -i ecommerce-mysql mysql -uroot -proot < ecommerce-knowledge/sql/init.sql
+```
 
-| 角色 | 账号 | 密码 |
-|------|------|------|
-| 超级管理员 | admin | admin123 |
-| 测试用户 | testuser | test123 |
+### 5. 根工程里找不到 `ecommerce-knowledge`
+
+这是预期行为。它是独立 POM，不在根 `pom.xml` 的 `<modules>` 里，需要单独 `mvn compile` / `mvn spring-boot:run`。
+
+### 6. 知识库页面返回 401 / 403
+
+说明当前接口需要登录态或管理员权限：
+
+- `/knowledge`：需要管理员登录
+- `/merchant/knowledge`：需要商家管理员登录
+- `/api/v1/knowledge/chat`：需要普通用户登录后使用
+
+## 补充说明
+
+- 中间件脚本已经包含 `Milvus`，所以你只需要额外处理 `Ollama`
+- `Ollama` 在本项目中负责 embedding，不负责大模型对话
+- 当前对话模型默认走 `DeepSeek Chat`
+- 如果你要替换 `Ollama` 地址、模型名或 `DeepSeek` 模型名，可以修改 `ecommerce-knowledge/src/main/resources/application.yml`
