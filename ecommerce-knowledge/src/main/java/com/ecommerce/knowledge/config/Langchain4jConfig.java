@@ -16,11 +16,6 @@ import java.time.Duration;
 @Configuration
 public class Langchain4jConfig {
 
-    static {
-        System.setProperty("langchain4j.http.clientBuilderFactory",
-                "dev.langchain4j.http.client.spring.restclient.SpringRestClientBuilderFactory");
-    }
-
     @Value("${langchain4j.open-ai.chat-model.api-key}")
     private String chatApiKey;
 

@@ -81,8 +81,39 @@ class AddressControllerTest {
     }
 
     @Test
+    void shouldGetCurrentUserDefaultAddressFromHeader() throws Exception {
+        AddressVO address = new AddressVO();
+        address.setId(11L);
+        address.setUserId(1L);
+        address.setReceiverName("Alice");
+        address.setDetail("Road 101");
+        address.setIsDefault(1);
+        when(addressService.getDefaultByUserId(1L)).thenReturn(address);
+
+        mockMvc.perform(get("/api/v1/users/addresses/default").header("X-User-Id", 1L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("success"))
+                .andExpect(jsonPath("$.data.id").value(11))
+                .andExpect(jsonPath("$.data.userId").value(1))
+                .andExpect(jsonPath("$.data.receiverName").value("Alice"))
+                .andExpect(jsonPath("$.data.detail").value("Road 101"))
+                .andExpect(jsonPath("$.data.isDefault").value(1));
+
+        verify(addressService).getDefaultByUserId(1L);
+    }
+
+    @Test
     void shouldRequireUserIdHeaderForCurrentAddresses() throws Exception {
         mockMvc.perform(get("/api/v1/users/addresses/current"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(addressService);
+    }
+
+    @Test
+    void shouldRequireUserIdHeaderForDefaultAddress() throws Exception {
+        mockMvc.perform(get("/api/v1/users/addresses/default"))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(addressService);

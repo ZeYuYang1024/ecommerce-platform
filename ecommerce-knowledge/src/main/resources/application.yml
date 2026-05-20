@@ -32,7 +32,7 @@ mybatis-plus:
 langchain4j:
   open-ai:
     chat-model:
-      api-key: ${DEEPSEEK_API_KEY}
+      api-key: sk-d0c35958519244189a4fe27f5ef6839a
       base-url: https://api.deepseek.com
       model-name: deepseek-chat
       temperature: 0.2
