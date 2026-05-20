@@ -166,6 +166,18 @@ public class CouponServiceImpl implements CouponService {
         return result;
     }
 
+    @Override
+    public List<CouponVO> listCurrentUserCouponSummaries(Long userId) {
+        LambdaQueryWrapper<UserCoupon> query = new LambdaQueryWrapper<UserCoupon>()
+                .eq(UserCoupon::getUserId, userId)
+                .orderByDesc(UserCoupon::getCreatedAt);
+        List<UserCoupon> userCoupons = userCouponMapper.selectList(query);
+        if (userCoupons.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return buildUserCouponVOs(userCoupons);
+    }
+
     private CouponVO toVO(CouponTemplate template) {
         CouponVO vo = new CouponVO();
         vo.setId(template.getId());

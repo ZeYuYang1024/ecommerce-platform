@@ -115,6 +115,26 @@ class AddressServiceImplTest {
 
             assertThat(service.listByToken(token)).isEmpty();
         }
+
+        @Test
+        void shouldReturnDefaultAddressByUserId() {
+            when(addressMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(List.of(address(2L, 1L, 1), address(1L, 1L, 0)));
+
+            AddressVO addressVO = service.getDefaultByUserId(1L);
+
+            assertThat(addressVO).isNotNull();
+            assertThat(addressVO.getId()).isEqualTo(2L);
+            assertThat(addressVO.getIsDefault()).isEqualTo(1);
+        }
+
+        @Test
+        void shouldReturnNullWhenNoDefaultAddressExists() {
+            when(addressMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(Collections.emptyList());
+
+            assertThat(service.getDefaultByUserId(1L)).isNull();
+        }
     }
 
     @Nested

@@ -7,6 +7,7 @@ import java.util.List;
 
 public interface AddressService {
     List<AddressVO> listByUserId(Long userId);
+    AddressVO getDefaultByUserId(Long userId);
     List<AddressVO> listByToken(String token);
     AddressVO create(String token, AddressRequest request);
     AddressVO update(String token, Long id, AddressRequest request);

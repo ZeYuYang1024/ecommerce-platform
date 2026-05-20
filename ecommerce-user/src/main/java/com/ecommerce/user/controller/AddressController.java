@@ -24,6 +24,11 @@ public class AddressController {
         return Result.ok(addressService.listByUserId(userId));
     }
 
+    @GetMapping("/addresses/default")
+    public Result<AddressVO> defaultCurrent(@RequestHeader("X-User-Id") Long userId) {
+        return Result.ok(addressService.getDefaultByUserId(userId));
+    }
+
     @GetMapping("/addresses")
     public Result<List<AddressVO>> list(@RequestHeader("Authorization") String token) {
         return Result.ok(addressService.listByToken(token));

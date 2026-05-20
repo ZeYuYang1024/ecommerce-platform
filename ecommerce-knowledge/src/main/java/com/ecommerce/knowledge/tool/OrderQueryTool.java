@@ -2,6 +2,7 @@ package com.ecommerce.knowledge.tool;
 
 import com.ecommerce.knowledge.agent.AgentUserContextHolder;
 import com.ecommerce.knowledge.client.OrderClient;
+import com.ecommerce.knowledge.client.dto.OrderSummaryVO;
 import com.ecommerce.knowledge.client.dto.OrderVO;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -32,6 +33,23 @@ public class OrderQueryTool {
             }
         } catch (Exception e) {
             log.warn("Failed to query orders for user {}", userId, e);
+        }
+        return Collections.emptyList();
+    }
+
+    @Tool("查询当前登录用户最近订单摘要，返回订单号、状态、金额、商品摘要和下单时间。")
+    public List<OrderSummaryVO> queryCurrentUserOrderSummaries(@P("返回条数上限") int limit) {
+        Long userId = currentUserId();
+        if (userId == null) {
+            return Collections.emptyList();
+        }
+        try {
+            var result = orderClient.listSummaries(userId, limit);
+            if (result != null && result.getData() != null) {
+                return result.getData();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to query order summaries for user {}", userId, e);
         }
         return Collections.emptyList();
     }

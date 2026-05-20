@@ -7,6 +7,7 @@ import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.order.common.OrderErrorCode;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
+import com.ecommerce.order.dto.response.OrderSummaryVO;
 import com.ecommerce.order.dto.response.OrderVO;
 import com.ecommerce.order.entity.Order;
 import com.ecommerce.order.entity.OrderItem;
@@ -137,6 +138,22 @@ public class OrderServiceImpl implements OrderService {
         Page<OrderVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         voPage.setRecords(vos);
         return voPage;
+    }
+
+    @Override
+    public List<OrderSummaryVO> listSummariesByUser(Long userId, int limit) {
+        int size = normalizeSummaryLimit(limit);
+        Page<Order> result = orderMapper.selectPage(new Page<>(1, size),
+                new LambdaQueryWrapper<Order>()
+                        .eq(Order::getUserId, userId)
+                        .orderByDesc(Order::getCreatedAt));
+        if (result.getRecords().isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(result.getRecords());
+        return result.getRecords().stream()
+                .map(order -> toSummaryVO(order, itemsMap.getOrDefault(order.getId(), Collections.emptyList())))
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -299,6 +316,28 @@ public class OrderServiceImpl implements OrderService {
         return vo;
     }
 
+    private OrderSummaryVO toSummaryVO(Order order, List<OrderItem> items) {
+        OrderSummaryVO summary = new OrderSummaryVO();
+        summary.setOrderNo(order.getOrderNo());
+        summary.setTotalAmount(order.getTotalAmount());
+        summary.setStatus(order.getStatus());
+        summary.setStatusText(statusText(order.getStatus()));
+        summary.setCreatedAt(order.getCreatedAt());
+        if (!items.isEmpty()) {
+            OrderItem firstItem = items.getFirst();
+            int itemCount = items.stream()
+                    .map(OrderItem::getQuantity)
+                    .filter(Objects::nonNull)
+                    .mapToInt(Integer::intValue)
+                    .sum();
+            String firstItemName = firstItem.getName();
+            summary.setFirstItemName(firstItemName);
+            summary.setItemCount(itemCount);
+            summary.setItemSummary(buildItemSummary(firstItemName, itemCount));
+        }
+        return summary;
+    }
+
     private List<Long> loadMerchantSpuIds(Long merchantId) {
         try {
             var response = productSpuClient.getSpuIdsByMerchant(merchantId);
@@ -324,6 +363,23 @@ public class OrderServiceImpl implements OrderService {
         List<OrderItem> items = itemMapper.selectList(
                 new LambdaQueryWrapper<OrderItem>().in(OrderItem::getOrderId, orderIds));
         return items.stream().collect(Collectors.groupingBy(OrderItem::getOrderId));
+    }
+
+    private int normalizeSummaryLimit(int limit) {
+        if (limit <= 0) {
+            return 5;
+        }
+        return Math.min(limit, 20);
+    }
+
+    private String buildItemSummary(String firstItemName, int itemCount) {
+        if (firstItemName == null || firstItemName.isBlank()) {
+            return null;
+        }
+        if (itemCount <= 1) {
+            return firstItemName;
+        }
+        return firstItemName + " 等" + itemCount + "件";
     }
 
     private String generateOrderNo() {

@@ -5,10 +5,12 @@ import com.ecommerce.knowledge.dto.request.ChatRequest;
 import com.ecommerce.knowledge.dto.response.ChatResponse;
 import com.ecommerce.knowledge.service.ChatService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequiredArgsConstructor
@@ -21,6 +23,13 @@ public class ChatController {
                                      @RequestHeader(value = "X-User-Type", required = false) String userType,
                                      @RequestBody ChatRequest request) {
         return Result.ok(chatService.chat(request, userId, userType));
+    }
+
+    @PostMapping(path = "/api/v1/knowledge/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamChat(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                 @RequestHeader(value = "X-User-Type", required = false) String userType,
+                                 @RequestBody ChatRequest request) {
+        return chatService.stream(request, userId, userType);
     }
 
     @PostMapping("/api/v1/admin/knowledge/chat")

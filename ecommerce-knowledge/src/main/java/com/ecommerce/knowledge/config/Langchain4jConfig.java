@@ -30,10 +30,10 @@ public class Langchain4jConfig {
     @Value("${langchain4j.open-ai.chat-model.model-name:deepseek-chat}")
     private String chatModelName;
 
-    @Value("${langchain4j.open-ai.chat-model.temperature:0.7}")
+    @Value("${langchain4j.open-ai.chat-model.temperature:0.2}")
     private double temperature;
 
-    @Value("${langchain4j.open-ai.chat-model.max-tokens:2000}")
+    @Value("${langchain4j.open-ai.chat-model.max-tokens:512}")
     private int maxTokens;
 
     @Value("${langchain4j.ollama.embedding-model.base-url:http://localhost:11434}")

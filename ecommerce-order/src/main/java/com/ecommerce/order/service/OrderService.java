@@ -2,10 +2,9 @@ package com.ecommerce.order.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
+import com.ecommerce.order.dto.response.OrderSummaryVO;
 import com.ecommerce.order.dto.response.OrderVO;
 import com.ecommerce.order.entity.Order;
-
-import com.ecommerce.order.dto.response.OrderVO;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -15,6 +14,7 @@ public interface OrderService {
     OrderVO getOrder(Long id);
     OrderVO getOrderByOrderNo(Long userId, String orderNo);
     Page<OrderVO> listByUser(Long userId, int page, int size);
+    List<OrderSummaryVO> listSummariesByUser(Long userId, int limit);
     void cancelOrder(Long userId, Long id);
     Page<OrderVO> listAll(int page, int size, Integer status);
     Page<OrderVO> listByMerchant(Long merchantId, int page, int size, Integer status);

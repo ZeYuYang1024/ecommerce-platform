@@ -2,6 +2,7 @@ package com.ecommerce.order.controller;
 
 import com.ecommerce.common.exception.GlobalExceptionHandler;
 import com.ecommerce.order.mapper.OrderMapper;
+import com.ecommerce.order.dto.response.OrderSummaryVO;
 import com.ecommerce.order.service.OrderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.mockito.Mockito.verify;
@@ -49,5 +52,31 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data[1]").value("ORD002"));
 
         verify(orderService).listOrderNosByMerchant(100L);
+    }
+
+    @Test
+    void shouldListCurrentUserOrderSummaries() throws Exception {
+        OrderSummaryVO summary = new OrderSummaryVO();
+        summary.setOrderNo("ORD-SUM-001");
+        summary.setStatus(1);
+        summary.setStatusText("PAID");
+        summary.setTotalAmount(new BigDecimal("88.50"));
+        summary.setCreatedAt(LocalDateTime.of(2026, 5, 20, 9, 30));
+        summary.setFirstItemName("Phone");
+        summary.setItemCount(2);
+        when(orderService.listSummariesByUser(88L, 3)).thenReturn(List.of(summary));
+
+        mockMvc.perform(get("/api/v1/orders/summaries")
+                        .header("X-User-Id", "88")
+                        .param("limit", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].orderNo").value("ORD-SUM-001"))
+                .andExpect(jsonPath("$.data[0].status").value(1))
+                .andExpect(jsonPath("$.data[0].statusText").value("PAID"))
+                .andExpect(jsonPath("$.data[0].itemCount").value(2))
+                .andExpect(jsonPath("$.data[0].firstItemName").value("Phone"));
+
+        verify(orderService).listSummariesByUser(88L, 3);
     }
 }

@@ -36,6 +36,19 @@ public class AddressServiceImpl implements AddressService {
     }
 
     @Override
+    public AddressVO getDefaultByUserId(Long userId) {
+        List<Address> addresses = addressMapper.selectList(
+                new LambdaQueryWrapper<Address>()
+                        .eq(Address::getUserId, userId)
+                        .orderByDesc(Address::getIsDefault)
+                        .last("limit 1"));
+        if (addresses == null || addresses.isEmpty()) {
+            return null;
+        }
+        return toVO(addresses.getFirst());
+    }
+
+    @Override
     public List<AddressVO> listByToken(String token) {
         return listByUserId(extractUserId(token));
     }

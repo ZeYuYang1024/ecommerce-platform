@@ -27,6 +27,8 @@ public interface CouponService {
 
     Page<CouponVO> listAvailableCoupons(int page, int size);
 
+    List<CouponVO> listCurrentUserCouponSummaries(Long userId);
+
     List<CouponVO> listUserCoupons(Long userId, Integer status);
 
     Page<CouponVO> listUserCoupons(Long userId, Integer status, int page, int size);

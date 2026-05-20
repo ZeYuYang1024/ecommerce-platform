@@ -42,12 +42,9 @@ public class AddressQueryTool {
             return null;
         }
         try {
-            var result = addressClient.getCurrentUserAddresses(userId);
-            if (result != null && result.getData() != null) {
-                return result.getData().stream()
-                        .filter(address -> Integer.valueOf(1).equals(address.getIsDefault()))
-                        .findFirst()
-                        .orElse(null);
+            var result = addressClient.getCurrentUserDefaultAddress(userId);
+            if (result != null) {
+                return result.getData();
             }
         } catch (Exception e) {
             log.warn("Failed to query default address for user {}", userId, e);

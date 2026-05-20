@@ -7,6 +7,7 @@ import com.ecommerce.common.result.Result;
 import com.ecommerce.order.client.ProductSpuClient;
 import com.ecommerce.order.common.OrderErrorCode;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
+import com.ecommerce.order.dto.response.OrderSummaryVO;
 import com.ecommerce.order.dto.response.OrderVO;
 import com.ecommerce.order.entity.Order;
 import com.ecommerce.order.entity.OrderItem;
@@ -107,6 +108,46 @@ class OrderServiceImplTest {
             Page<OrderVO> result = service.listByUser(1L, 1, 10);
             assertThat(result.getRecords()).hasSize(1);
             assertThat(result.getTotal()).isEqualTo(1);
+        }
+
+        @Test
+        void shouldListUserOrderSummariesWithCompactItemPreview() {
+            order.setCreatedAt(LocalDateTime.of(2026, 5, 20, 10, 15));
+            Page<Order> mockPage = new Page<>(1, 2, 1);
+            mockPage.setRecords(Collections.singletonList(order));
+            OrderItem firstItem = new OrderItem();
+            firstItem.setOrderId(1L);
+            firstItem.setName("Phone");
+            firstItem.setQuantity(1);
+            OrderItem secondItem = new OrderItem();
+            secondItem.setOrderId(1L);
+            secondItem.setName("Case");
+            secondItem.setQuantity(2);
+            when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(mockPage);
+            when(itemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(firstItem, secondItem));
+
+            List<OrderSummaryVO> result = service.listSummariesByUser(1L, 2);
+
+            assertThat(result).hasSize(1);
+            assertThat(result.get(0).getOrderNo()).isEqualTo("202605091200000001");
+            assertThat(result.get(0).getStatus()).isEqualTo(0);
+            assertThat(result.get(0).getStatusText()).isNotBlank();
+            assertThat(result.get(0).getTotalAmount()).isEqualByComparingTo("6999.00");
+            assertThat(result.get(0).getCreatedAt()).isEqualTo(LocalDateTime.of(2026, 5, 20, 10, 15));
+            assertThat(result.get(0).getFirstItemName()).isEqualTo("Phone");
+            assertThat(result.get(0).getItemCount()).isEqualTo(3);
+        }
+
+        @Test
+        void shouldSkipItemLookupWhenListingEmptyUserOrderSummaries() {
+            Page<Order> mockPage = new Page<>(1, 5, 0);
+            mockPage.setRecords(Collections.emptyList());
+            when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(mockPage);
+
+            List<OrderSummaryVO> result = service.listSummariesByUser(1L, 5);
+
+            assertThat(result).isEmpty();
+            verify(itemMapper, never()).selectList(any(LambdaQueryWrapper.class));
         }
     }
 

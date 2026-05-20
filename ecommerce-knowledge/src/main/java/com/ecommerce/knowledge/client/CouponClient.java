@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import java.util.List;
+
 @FeignClient(name = "ecommerce-coupon", path = "/api/v1")
 public interface CouponClient {
 
@@ -20,4 +22,7 @@ public interface CouponClient {
                                     @RequestParam(required = false) Integer status,
                                     @RequestParam(defaultValue = "1") int page,
                                     @RequestParam(defaultValue = "10") int size);
+
+    @GetMapping("/coupons/mine/summaries")
+    Result<List<CouponVO>> listMySummaries(@RequestHeader("X-User-Id") Long userId);
 }

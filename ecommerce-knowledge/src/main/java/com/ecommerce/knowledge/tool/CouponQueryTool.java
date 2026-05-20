@@ -39,9 +39,9 @@ public class CouponQueryTool {
             return Collections.emptyList();
         }
         try {
-            var result = couponClient.listMine(userId, null, 1, 10);
+            var result = couponClient.listMySummaries(userId);
             if (result != null && result.getData() != null) {
-                return result.getData().getRecords();
+                return result.getData();
             }
         } catch (Exception e) {
             log.warn("Failed to query coupons for user {}", userId, e);

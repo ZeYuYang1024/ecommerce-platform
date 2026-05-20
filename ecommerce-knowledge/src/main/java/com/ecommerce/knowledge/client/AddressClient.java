@@ -13,4 +13,7 @@ public interface AddressClient {
 
     @GetMapping("/users/addresses/current")
     Result<List<AddressVO>> getCurrentUserAddresses(@RequestHeader("X-User-Id") Long userId);
+
+    @GetMapping("/users/addresses/default")
+    Result<AddressVO> getCurrentUserDefaultAddress(@RequestHeader("X-User-Id") Long userId);
 }

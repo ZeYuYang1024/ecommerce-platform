@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.OrderInternalVO;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
+import com.ecommerce.order.dto.response.OrderSummaryVO;
 import com.ecommerce.order.mapper.OrderMapper;
 import com.ecommerce.order.entity.Order;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -38,6 +39,12 @@ public class OrderController {
                                              @RequestParam(defaultValue = "1") int page,
                                              @RequestParam(defaultValue = "10") int size) {
         return Result.ok(orderService.listByUser(userId, page, size));
+    }
+
+    @GetMapping("/orders/summaries")
+    public Result<List<OrderSummaryVO>> listSummariesByUser(@RequestHeader("X-User-Id") Long userId,
+                                                            @RequestParam(defaultValue = "5") int limit) {
+        return Result.ok(orderService.listSummariesByUser(userId, limit));
     }
 
     @GetMapping("/internal/orders/no/{orderNo}")

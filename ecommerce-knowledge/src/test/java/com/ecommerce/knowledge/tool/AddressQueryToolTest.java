@@ -17,6 +17,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,24 +56,22 @@ class AddressQueryToolTest {
         List<AddressVO> result = addressQueryTool.queryCurrentUserAddresses();
 
         assertTrue(result.isEmpty());
-        verify(addressClient, never()).getCurrentUserAddresses(org.mockito.ArgumentMatchers.anyLong());
+        verify(addressClient, never()).getCurrentUserAddresses(anyLong());
     }
 
     @Test
-    void queryCurrentUserDefaultAddressReturnsDefaultAddress() {
+    void queryCurrentUserDefaultAddressUsesDedicatedDefaultEndpoint() {
         AgentUserContextHolder.set(new AgentUserContext(1002L, "USER"));
         AddressVO defaultAddress = new AddressVO();
         defaultAddress.setReceiverName("Alice");
         defaultAddress.setIsDefault(1);
-        AddressVO secondaryAddress = new AddressVO();
-        secondaryAddress.setReceiverName("Bob");
-        secondaryAddress.setIsDefault(0);
-        when(addressClient.getCurrentUserAddresses(1002L))
-                .thenReturn(Result.ok(List.of(secondaryAddress, defaultAddress)));
+        when(addressClient.getCurrentUserDefaultAddress(1002L)).thenReturn(Result.ok(defaultAddress));
 
         AddressVO result = addressQueryTool.queryCurrentUserDefaultAddress();
 
         assertEquals("Alice", result.getReceiverName());
+        verify(addressClient).getCurrentUserDefaultAddress(1002L);
+        verify(addressClient, never()).getCurrentUserAddresses(anyLong());
     }
 
     @Test
@@ -80,6 +79,6 @@ class AddressQueryToolTest {
         AddressVO result = addressQueryTool.queryCurrentUserDefaultAddress();
 
         assertNull(result);
-        verify(addressClient, never()).getCurrentUserAddresses(org.mockito.ArgumentMatchers.anyLong());
+        verify(addressClient, never()).getCurrentUserDefaultAddress(anyLong());
     }
 }

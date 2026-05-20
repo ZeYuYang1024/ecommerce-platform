@@ -32,4 +32,13 @@ public class CouponController {
         }
         return Result.ok(couponService.listAvailableCoupons(page, size));
     }
+
+    @GetMapping("/coupons/mine/summaries")
+    public Result<java.util.List<CouponVO>> mineSummaries(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) {
+            return Result.fail(401, "unauthorized");
+        }
+        return Result.ok(couponService.listCurrentUserCouponSummaries(userId));
+    }
 }
