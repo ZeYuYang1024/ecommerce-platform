@@ -13,7 +13,10 @@
       "Bash(rm -f ui_*.png)",
       "Bash(rm -rf mp_screenshots/)",
       "Bash(git -C D:/ecommerce-platform log --all --oneline -- manifest.json)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "WebFetch(domain:central.sonatype.com)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs"
     ]
   }
 }

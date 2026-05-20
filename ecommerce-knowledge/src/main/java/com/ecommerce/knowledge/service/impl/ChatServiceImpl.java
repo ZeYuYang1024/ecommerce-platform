@@ -62,6 +62,11 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.time.format.DateTimeFormatter;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -73,6 +78,11 @@ public class ChatServiceImpl implements ChatService {
     private static final int MAX_SOURCE_LENGTH = 180;
     private static final int PAID_ORDER_STATUS = 1;
     private static final long DEFAULT_STREAM_TIMEOUT_MS = 60_000L;
+    private static final int RETRIEVAL_MAX_RESULTS = 3;
+    private static final double RETRIEVAL_MIN_SCORE = 0.60;
+    private static final int DEFAULT_FAST_PATH_LIMIT = 3;
+    private static final int MAX_FAST_PATH_LIMIT = 10;
+    private static final DateTimeFormatter DISPLAY_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String OWNER_PLATFORM = "platform";
     private static final String OWNER_MERCHANT = "merchant";
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -205,6 +215,19 @@ public class ChatServiceImpl implements ChatService {
         try {
             AgentUserContextHolder.set(new AgentUserContext(userId, userType));
 
+            String fastPathAnswer = tryHandleFastPath(request.getQuestion(), userId);
+            if (fastPathAnswer != null) {
+                upsertSession(sessionId, request.getQuestion(), userId);
+                log.info("Knowledge fast path finished, sessionId={}, ownerType={}", sessionId, ownerType);
+                return buildResponse(sessionId, fastPathAnswer, Collections.emptyList());
+            }
+
+            String promptInput = buildPromptInput(request.getQuestion(), userId, userType, ownerType, merchantId);
+            long agentStart = System.nanoTime();
+            dev.langchain4j.service.Result<String> result = agent.chat(memoryId, promptInput);
+            long agentCostMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - agentStart);
+            log.info("Knowledge chat finished in {} ms, sessionId={}, ownerType={}, promptChars={}",
+                    agentCostMs, sessionId, ownerType, promptInput.length());
             long routeSelectionStart = System.nanoTime();
             KnowledgeQueryRoute route = knowledgeQueryClassifier.classify(request.getQuestion());
             log.info("Chat stage=routeSelection route={} structured={} sessionId={} elapsedMs={}",
@@ -231,7 +254,6 @@ public class ChatServiceImpl implements ChatService {
                     route, selectedAgent == toolOnlyAgent ? "toolOnly" : "rag", sessionId);
 
             long agentExecutionStart = System.nanoTime();
-            dev.langchain4j.service.Result<String> result;
             try {
                 result = selectedAgent.chat(memoryId, buildPromptInput(request.getQuestion(), userId, userType, ownerType, merchantId));
             } finally {
@@ -257,12 +279,72 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
+    private String tryHandleFastPath(String question, Long userId) {
+        if (userId == null || StrUtil.isBlank(question)) {
+            return null;
+        }
+
+        String normalized = question.trim();
+        String orderNo = extractOrderNo(normalized);
+
+        if (orderNo != null && StrUtil.containsAny(normalized, "支付")) {
+            return formatPayment(paymentQueryTool.queryCurrentUserPaymentByOrderNo(orderNo));
+        }
+
+        if (orderNo != null && StrUtil.containsAny(normalized, "订单")) {
+            var order = orderQueryTool.queryOrderByNo(orderNo);
+            if (order == null) {
+                return "当前未查到该订单。";
+            }
+            return formatOrderDetail(order);
+        }
+
+        if (StrUtil.containsAny(normalized, "购物车")) {
+            if (StrUtil.containsAny(normalized, "多少", "几件", "数量", "总数")) {
+                Integer count = cartQueryTool.queryCurrentUserCartCount();
+                return count == null ? "当前未查到购物车商品数量。" : "你当前购物车有 " + count + " 件商品。";
+            }
+            return formatCartItems(cartQueryTool.queryCurrentUserCart());
+        }
+
+        if (StrUtil.containsAny(normalized, "订单")) {
+            if (StrUtil.containsAny(normalized, "多少", "最近", "列表", "有哪些", "查看")) {
+                int limit = extractRequestedLimit(normalized, DEFAULT_FAST_PATH_LIMIT, MAX_FAST_PATH_LIMIT);
+                return formatOrders(orderQueryTool.queryCurrentUserOrders(), limit);
+            }
+        }
+
+        if (StrUtil.containsAny(normalized, "地址", "收货")) {
+            if (StrUtil.containsAny(normalized, "默认")) {
+                return formatDefaultAddress(addressQueryTool.queryCurrentUserDefaultAddress());
+            }
+            return formatAddresses(addressQueryTool.queryCurrentUserAddresses());
+        }
+
+        if (StrUtil.containsAny(normalized, "优惠券", "优惠卷", "券")) {
+            if (StrUtil.containsAny(normalized, "我的", "已领", "可用", "能用")) {
+                return formatCoupons(couponQueryTool.queryCurrentUserCoupons());
+            }
+            if (StrUtil.containsAny(normalized, "领取", "浏览", "查看")) {
+                return formatCoupons(couponQueryTool.queryAvailableCoupons());
+            }
+        }
+
+        if (StrUtil.containsAny(normalized, "通知", "消息")) {
+            return formatNotifications(notificationQueryTool.queryCurrentUserNotifications());
+        }
+
+        return null;
+    }
+
     private KnowledgeAgent buildRagAgent(Filter filter) {
         ContentRetriever contentRetriever = EmbeddingStoreContentRetriever.builder()
                 .embeddingStore(embeddingStore)
                 .embeddingModel(embeddingModel)
                 .maxResults(3)
                 .minScore(0.60)
+                .maxResults(RETRIEVAL_MAX_RESULTS)
+                .minScore(RETRIEVAL_MIN_SCORE)
                 .filter(filter)
                 .build();
 
@@ -316,33 +398,171 @@ public class ChatServiceImpl implements ChatService {
     private String buildPromptInput(String question, Long userId, String userType, String ownerType, Long merchantId) {
         StringBuilder builder = new StringBuilder();
         builder.append("用户问题：").append(question.trim());
-
-        builder.append("\n\n[知识库范围]");
+        builder.append("\n知识库范围：");
         if (OWNER_MERCHANT.equals(ownerType)) {
-            builder.append("\n当前只能检索当前商家的私有知识库")
-                    .append("\n商家ID=").append(merchantId)
-                    .append("\n不要引用平台知识库，也不要回答其他商家的知识文档内容。");
+            builder.append("merchant");
+            if (merchantId != null) {
+                builder.append("，merchantId=").append(merchantId);
+            }
         } else {
-            builder.append("\n当前只能检索平台知识库。");
+            builder.append("platform");
         }
 
         if (userId != null) {
-            builder.append("\n\n[会话上下文]")
-                    .append("\n当前用户已登录")
-                    .append("\n用户ID=").append(userId);
+            builder.append("\n登录用户：是");
+            builder.append("\nuserId=").append(userId);
             if (StrUtil.isNotBlank(userType)) {
-                builder.append("\n用户类型=").append(userType);
+                builder.append("\nuserType=").append(userType);
             }
-            builder.append("\n如果用户询问的是他/她的购物车、订单、优惠券、收货地址、通知或支付状态，直接使用工具查询当前会话用户的数据。")
-                    .append("\n不要要求用户再次提供自己的 userId。")
-                    .append("\n如果工具没有查到数据或调用失败，只回答该问题本身，不要展开无关的订单规则、优惠券说明或平台百科。");
+            builder.append("\n涉及我的订单、购物车、优惠券、地址、通知、支付时，优先使用工具查询当前用户数据。");
+            builder.append("\n查不到就直接说未查到，不要编造。");
         } else {
-            builder.append("\n\n[会话上下文]")
-                    .append("\n当前用户未登录。")
-                    .append("\n如果用户询问“我的购物车”“我的订单”“我的优惠券”“我的地址”“我的通知”“我的支付”这类个人数据，先明确说明登录后才能查询，不要编造结果。");
+            builder.append("\n登录用户：否");
+            builder.append("\n涉及个人数据时，先提示登录后再查询，不要猜测结果。");
         }
 
         return builder.toString();
+    }
+
+    private ChatResponse buildResponse(String sessionId, String answer, List<ChatResponse.Source> sources) {
+        ChatResponse response = new ChatResponse();
+        response.setAnswer(answer);
+        response.setSessionId(sessionId);
+        response.setSources(sources);
+        return response;
+    }
+
+    private String formatOrderDetail(com.ecommerce.knowledge.client.dto.OrderVO order) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("**订单详情**\n\n");
+        builder.append("- 订单号：").append(StrUtil.blankToDefault(order.getOrderNo(), "-")).append('\n');
+        builder.append("- 状态：").append(StrUtil.blankToDefault(order.getStatusText(), String.valueOf(order.getStatus()))).append('\n');
+        builder.append("- 金额：").append(order.getTotalAmount() == null ? "-" : order.getTotalAmount()).append('\n');
+        builder.append("- 下单时间：").append(formatDateTime(order.getCreatedAt())).append('\n');
+        if (StrUtil.isNotBlank(order.getReceiverAddress())) {
+            builder.append("- 收货地址：").append(order.getReceiverAddress()).append('\n');
+        }
+        return builder.toString();
+    }
+
+    private String formatOrders(List<com.ecommerce.knowledge.client.dto.OrderVO> orders, int limit) {
+        if (orders == null || orders.isEmpty()) {
+            return "当前未查到订单。";
+        }
+        String body = orders.stream()
+                .limit(limit)
+                .map(order -> "- 订单号：" + StrUtil.blankToDefault(order.getOrderNo(), "-")
+                        + " | 状态：" + StrUtil.blankToDefault(order.getStatusText(), String.valueOf(order.getStatus()))
+                        + " | 金额：" + (order.getTotalAmount() == null ? "-" : order.getTotalAmount())
+                        + " | 时间：" + formatDateTime(order.getCreatedAt()))
+                .collect(Collectors.joining("\n"));
+        return "最近" + Math.min(limit, orders.size()) + "条订单如下：\n\n" + body;
+    }
+
+    private String formatCartItems(List<com.ecommerce.knowledge.client.dto.CartItemVO> items) {
+        if (items == null || items.isEmpty()) {
+            return "当前购物车为空。";
+        }
+        return "购物车商品如下：\n\n" + items.stream()
+                .limit(5)
+                .map(item -> "- 商品：" + StrUtil.blankToDefault(item.getName(), "-")
+                        + " | 数量：" + (item.getQuantity() == null ? "-" : item.getQuantity())
+                        + " | 价格：" + (item.getPrice() == null ? "-" : item.getPrice()))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private String formatAddresses(List<com.ecommerce.knowledge.client.dto.AddressVO> addresses) {
+        if (addresses == null || addresses.isEmpty()) {
+            return "当前未查到收货地址。";
+        }
+        return "收货地址如下：\n\n" + addresses.stream()
+                .limit(3)
+                .map(address -> "- 收货人：" + StrUtil.blankToDefault(address.getReceiverName(), "-")
+                        + " | 电话：" + StrUtil.blankToDefault(address.getReceiverPhone(), "-")
+                        + " | 地址：" + joinAddress(address))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private String formatDefaultAddress(com.ecommerce.knowledge.client.dto.AddressVO address) {
+        if (address == null) {
+            return "当前未查到默认收货地址。";
+        }
+        return "**默认收货地址**\n\n"
+                + "- 收货人：" + StrUtil.blankToDefault(address.getReceiverName(), "-") + '\n'
+                + "- 电话：" + StrUtil.blankToDefault(address.getReceiverPhone(), "-") + '\n'
+                + "- 地址：" + joinAddress(address);
+    }
+
+    private String formatCoupons(List<com.ecommerce.knowledge.client.dto.CouponVO> coupons) {
+        if (coupons == null || coupons.isEmpty()) {
+            return "当前未查到优惠券。";
+        }
+        return "优惠券如下：\n\n" + coupons.stream()
+                .limit(5)
+                .map(coupon -> "- 优惠券：" + StrUtil.blankToDefault(coupon.getName(), "-")
+                        + " | 状态：" + coupon.getStatus()
+                        + " | 门槛：" + (coupon.getMinAmount() == null ? "-" : coupon.getMinAmount()))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private String formatNotifications(List<com.ecommerce.knowledge.client.dto.NotificationVO> notifications) {
+        if (notifications == null || notifications.isEmpty()) {
+            return "当前未查到通知消息。";
+        }
+        return "通知消息如下：\n\n" + notifications.stream()
+                .limit(5)
+                .map(notification -> "- 通知：" + StrUtil.blankToDefault(notification.getTitle(), "-")
+                        + " | 状态：" + notification.getStatus()
+                        + " | 时间：" + formatDateTime(notification.getCreatedAt()))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private String formatPayment(com.ecommerce.knowledge.client.dto.PaymentVO payment) {
+        if (payment == null) {
+            return "当前未查到支付信息。";
+        }
+        return "**支付信息**\n\n"
+                + "- 订单号：" + StrUtil.blankToDefault(payment.getOrderNo(), "-") + '\n'
+                + "- 支付单号：" + StrUtil.blankToDefault(payment.getPaymentNo(), "-") + '\n'
+                + "- 支付方式：" + StrUtil.blankToDefault(payment.getPayMethod(), "-") + '\n'
+                + "- 支付状态：" + StrUtil.blankToDefault(payment.getStatusText(), String.valueOf(payment.getStatus())) + '\n'
+                + "- 支付金额：" + (payment.getAmount() == null ? "-" : payment.getAmount()) + '\n'
+                + "- 支付时间：" + formatDateTime(payment.getPaidAt()) + '\n';
+    }
+
+    private String extractOrderNo(String question) {
+        Matcher matcher = Pattern.compile("\\b\\d{18}\\b").matcher(question);
+        if (matcher.find()) {
+            return matcher.group();
+        }
+        return null;
+    }
+
+    private int extractRequestedLimit(String question, int defaultLimit, int maxLimit) {
+        Matcher matcher = Pattern.compile("(?:最近|前|最新)?(\\d{1,2})条").matcher(question);
+        if (matcher.find()) {
+            try {
+                int requested = Integer.parseInt(matcher.group(1));
+                if (requested < 1) {
+                    return defaultLimit;
+                }
+                return Math.min(requested, maxLimit);
+            } catch (NumberFormatException ignored) {
+                return defaultLimit;
+            }
+        }
+        return defaultLimit;
+    }
+
+    private String formatDateTime(java.time.temporal.TemporalAccessor dateTime) {
+        return dateTime == null ? "-" : DISPLAY_TIME_FORMAT.format(dateTime);
+    }
+
+    private String joinAddress(com.ecommerce.knowledge.client.dto.AddressVO address) {
+        return StrUtil.blankToDefault(address.getProvince(), "")
+                + StrUtil.blankToDefault(address.getCity(), "")
+                + StrUtil.blankToDefault(address.getDistrict(), "")
+                + StrUtil.blankToDefault(address.getDetail(), "");
     }
 
     private List<ChatResponse.Source> toSources(List<dev.langchain4j.rag.content.Content> sources) {
@@ -700,14 +920,6 @@ public class ChatServiceImpl implements ChatService {
 
     private <T> List<T> safeList(List<T> values) {
         return values == null ? Collections.emptyList() : values;
-    }
-
-    private String extractOrderNo(String question) {
-        if (StrUtil.isBlank(question)) {
-            return null;
-        }
-        var matcher = ORDER_NO_PATTERN.matcher(question);
-        return matcher.find() ? matcher.group() : null;
     }
 
     private record FastPathDecision(boolean candidate, boolean available, boolean executed, String answer) {
