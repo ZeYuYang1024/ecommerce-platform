@@ -40,7 +40,6 @@ docs/superpowers/
 
 # Local dev config (contains secrets)
 **/application-local.yml
-ecommerce-knowledge/src/main/resources/application.yml
 
 # Seed data scripts (dev only)
 **/seed_data.sh
