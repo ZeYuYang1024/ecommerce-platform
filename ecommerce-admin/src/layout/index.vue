@@ -57,10 +57,15 @@
             <span>评论管理</span>
             <span v-if="$route.path.startsWith('/merchant/reviews')" class="active-dot"></span>
           </router-link>
-          <router-link to="/merchant/knowledge" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/knowledge') }">
+          <router-link to="/merchant/knowledge" class="nav-item" :class="{ active: $route.path === '/merchant/knowledge' }">
             <el-icon><Notebook /></el-icon>
             <span>知识库</span>
-            <span v-if="$route.path.startsWith('/merchant/knowledge')" class="active-dot"></span>
+            <span v-if="$route.path === '/merchant/knowledge'" class="active-dot"></span>
+          </router-link>
+          <router-link to="/merchant/knowledge/chat" class="nav-item sub-item" :class="{ active: $route.path === '/merchant/knowledge/chat' }">
+            <el-icon><ChatLineRound /></el-icon>
+            <span>知识问答</span>
+            <span v-if="$route.path === '/merchant/knowledge/chat'" class="active-dot"></span>
           </router-link>
           <router-link to="/merchant/inventory" class="nav-item" :class="{ active: $route.path.startsWith('/merchant/inventory') }">
             <el-icon><Box /></el-icon>
@@ -153,6 +158,11 @@
             <el-icon><Notebook /></el-icon>
             <span>知识库</span>
             <span v-if="$route.path === '/knowledge'" class="active-dot"></span>
+          </router-link>
+          <router-link to="/knowledge/chat" class="nav-item sub-item" :class="{ active: $route.path === '/knowledge/chat' }">
+            <el-icon><ChatLineRound /></el-icon>
+            <span>知识问答</span>
+            <span v-if="$route.path === '/knowledge/chat'" class="active-dot"></span>
           </router-link>
           <router-link to="/inventory" class="nav-item" :class="{ active: $route.path === '/inventory' }">
             <el-icon><Box /></el-icon>

@@ -50,4 +50,41 @@ class ChatControllerTest {
 
         verify(chatService).stream(any(ChatRequest.class), eq(1001L), eq("USER"));
     }
+
+    @Test
+    void shouldExposeAdminStreamingChatEndpoint() throws Exception {
+        SseEmitter emitter = new SseEmitter();
+        when(chatService.stream(any(ChatRequest.class), eq(2001L), eq("ops"))).thenReturn(emitter);
+
+        mockMvc.perform(post("/api/v1/admin/knowledge/chat/stream")
+                        .header("X-User-Id", "2001")
+                        .header("X-User-Type", "ops")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"question":"平台知识库调试","sessionId":"admin-stream-session"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted());
+
+        verify(chatService).stream(any(ChatRequest.class), eq(2001L), eq("ops"));
+    }
+
+    @Test
+    void shouldExposeMerchantStreamingChatEndpoint() throws Exception {
+        SseEmitter emitter = new SseEmitter();
+        when(chatService.merchantStream(any(ChatRequest.class), eq(3001L), eq("merchant"), eq(9001L))).thenReturn(emitter);
+
+        mockMvc.perform(post("/api/v1/admin/merchant/knowledge/chat/stream")
+                        .header("X-User-Id", "3001")
+                        .header("X-User-Type", "merchant")
+                        .header("X-Merchant-Id", "9001")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"question":"商家发货规则是什么","sessionId":"merchant-stream-session"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted());
+
+        verify(chatService).merchantStream(any(ChatRequest.class), eq(3001L), eq("merchant"), eq(9001L));
+    }
 }

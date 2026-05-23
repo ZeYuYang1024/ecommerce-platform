@@ -9,6 +9,19 @@ class KnowledgeQueryClassifierTest {
     private final KnowledgeQueryClassifier classifier = new KnowledgeQueryClassifier();
 
     @Test
+    void extractFeatures_shouldRecognizeRealtimeAndPolicyTraits() {
+        KnowledgeQueryFeatures realtime = classifier.extractFeatures("show my order status");
+        KnowledgeQueryFeatures faq = classifier.extractFeatures("what is the return policy");
+
+        assertThat(realtime.userScoped()).isTrue();
+        assertThat(realtime.realtimeIntent()).isTrue();
+        assertThat(realtime.policyFaq()).isFalse();
+
+        assertThat(faq.policyFaq()).isTrue();
+        assertThat(faq.realtimeIntent()).isFalse();
+    }
+
+    @Test
     void classify_shouldReturnRagFaqForBlankInput() {
         KnowledgeQueryRoute route = classifier.classify("   ");
 
@@ -89,5 +102,14 @@ class KnowledgeQueryClassifierTest {
 
         assertThat(route).isEqualTo(KnowledgeQueryRoute.RAG_FAQ);
         assertThat(route.isStructured()).isFalse();
+    }
+
+    @Test
+    void classify_shouldSupportSharedFeaturesEntryPoint() {
+        KnowledgeQueryFeatures features = classifier.extractFeatures("check payment for order ORD-1001");
+
+        KnowledgeQueryRoute route = classifier.classify(features);
+
+        assertThat(route).isEqualTo(KnowledgeQueryRoute.PAYMENT_BY_ORDER_NO);
     }
 }

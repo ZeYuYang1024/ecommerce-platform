@@ -1,13 +1,26 @@
 import { expect, test } from '@playwright/test'
 
+function makeJwt(payload) {
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
+  return `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode(payload)}.signature`
+}
+
 test.describe('Merchant product follow-ups', () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      localStorage.setItem('token', 'mock-token')
+    const merchantToken = makeJwt({
+      sub: '2001',
+      username: 'merchant-a',
+      role: 'admin',
+      type: 'merchant',
+      merchantId: 2001
+    })
+
+    await page.addInitScript((token) => {
+      localStorage.setItem('token', token)
       localStorage.setItem('username', 'merchant-a')
       localStorage.setItem('type', 'merchant')
       localStorage.setItem('merchantId', '2001')
-    })
+    }, merchantToken)
 
     await page.route('**/api/v1/categories', async (route) => {
       await route.fulfill({
@@ -60,7 +73,19 @@ test.describe('Merchant product follow-ups', () => {
     let merchantCreateHit = 0
     let platformCreateHit = 0
 
-    await page.route('**/api/v1/admin/merchant/products', async (route) => {
+    await page.route('**/api/v1/admin/merchant/products*', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            code: 200,
+            data: { records: [], total: 0, current: 1, size: 10 }
+          })
+        })
+        return
+      }
+
       merchantCreateHit += 1
       await route.fulfill({
         status: 200,
@@ -72,7 +97,7 @@ test.describe('Merchant product follow-ups', () => {
       })
     })
 
-    await page.route('**/api/v1/admin/products', async (route) => {
+    await page.route('**/api/v1/admin/products*', async (route) => {
       platformCreateHit += 1
       await route.fulfill({
         status: 200,

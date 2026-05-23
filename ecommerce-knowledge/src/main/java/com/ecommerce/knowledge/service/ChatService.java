@@ -8,4 +8,5 @@ public interface ChatService {
     ChatResponse chat(ChatRequest request, Long userId, String userType);
     ChatResponse merchantChat(ChatRequest request, Long userId, String userType, Long merchantId);
     SseEmitter stream(ChatRequest request, Long userId, String userType);
+    SseEmitter merchantStream(ChatRequest request, Long userId, String userType, Long merchantId);
 }

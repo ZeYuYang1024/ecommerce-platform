@@ -32,6 +32,13 @@ public class ChatController {
         return chatService.stream(request, userId, userType);
     }
 
+    @PostMapping(path = "/api/v1/admin/knowledge/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter adminStreamChat(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                      @RequestHeader(value = "X-User-Type", required = false) String userType,
+                                      @RequestBody ChatRequest request) {
+        return chatService.stream(request, userId, userType);
+    }
+
     @PostMapping("/api/v1/admin/knowledge/chat")
     public Result<ChatResponse> adminChat(@RequestHeader(value = "X-User-Id", required = false) Long userId,
                                           @RequestHeader(value = "X-User-Type", required = false) String userType,
@@ -45,5 +52,13 @@ public class ChatController {
                                              @RequestHeader("X-Merchant-Id") Long merchantId,
                                              @RequestBody ChatRequest request) {
         return Result.ok(chatService.merchantChat(request, userId, userType, merchantId));
+    }
+
+    @PostMapping(path = "/api/v1/admin/merchant/knowledge/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter merchantStreamChat(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                         @RequestHeader(value = "X-User-Type", required = false) String userType,
+                                         @RequestHeader("X-Merchant-Id") Long merchantId,
+                                         @RequestBody ChatRequest request) {
+        return chatService.merchantStream(request, userId, userType, merchantId);
     }
 }

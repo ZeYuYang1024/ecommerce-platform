@@ -8,15 +8,16 @@ test.describe('PC User Orders', () => {
       { name: 'token', value: 'mock-token', domain: 'localhost', path: '/' },
       { name: 'username', value: 'testuser', domain: 'localhost', path: '/' }
     ])
-    await page.route('**/api/v1/orders', async (route) => {
+    await page.route('**/api/v1/orders**', async (route) => {
       if (route.request().method() === 'GET') {
         await route.fulfill({
           status: 200, contentType: 'application/json',
-          body: JSON.stringify({ code: 200, data: MOCK_ORDERS })
+          body: JSON.stringify({ code: 200, data: { records: MOCK_ORDERS, total: MOCK_ORDERS.length } })
         })
-      } else {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 200 }) })
       }
+    })
+    await page.route('**/api/v1/orders/*/cancel', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 200 }) })
     })
     await page.goto('/user/orders')
     await page.waitForTimeout(500)

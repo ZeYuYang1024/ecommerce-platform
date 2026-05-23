@@ -2,9 +2,11 @@ package com.ecommerce.knowledge.config;
 
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.ollama.OllamaEmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.milvus.MilvusEmbeddingStore;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,6 +51,18 @@ public class Langchain4jConfig {
     @Bean
     public ChatModel chatModel() {
         return OpenAiChatModel.builder()
+                .apiKey(chatApiKey)
+                .baseUrl(chatBaseUrl)
+                .modelName(chatModelName)
+                .temperature(temperature)
+                .maxTokens(maxTokens)
+                .timeout(Duration.ofSeconds(120))
+                .build();
+    }
+
+    @Bean
+    public StreamingChatModel streamingChatModel() {
+        return OpenAiStreamingChatModel.builder()
                 .apiKey(chatApiKey)
                 .baseUrl(chatBaseUrl)
                 .modelName(chatModelName)

@@ -59,6 +59,20 @@
           </div>
         </div>
 
+        <div v-if="showDebugMeta && (lastLightRoute || lastRoute)" class="shrink-0 border-t border-dashed border-amber-200 bg-amber-50/70 px-4 py-3 text-xs text-amber-900 lg:px-6">
+          <div class="mb-2 font-semibold">调试信息</div>
+          <div class="flex flex-wrap gap-x-5 gap-y-1">
+            <div v-if="lastLightRoute">
+              <span class="mr-2 text-amber-700">轻量路由</span>
+              <span class="font-medium">{{ lastLightRoute }}</span>
+            </div>
+            <div v-if="lastRoute">
+              <span class="mr-2 text-amber-700">业务路由</span>
+              <span class="font-medium">{{ lastRoute }}</span>
+            </div>
+          </div>
+        </div>
+
         <div class="shrink-0 border-t border-gray-100 bg-white p-4 lg:p-5">
           <div class="flex gap-2">
             <input
@@ -100,12 +114,16 @@ const input = ref('')
 const sending = ref(false)
 const sessionId = ref('')
 const msgList = ref<HTMLElement>()
-const api = useApi()
+const lastLightRoute = ref('')
+const lastRoute = ref('')
+const showDebugMeta = ref(false)
+const { streamKnowledgeChat } = useChatStream()
 
 const quickQuestions = ['如何退换货？', '优惠券怎么用？', '支付方式有哪些？', '订单多久发货？']
 
 onMounted(() => {
   sessionId.value = localStorage.getItem('kb_session') || ''
+  showDebugMeta.value = localStorage.getItem('kb_debug') === '1'
 })
 
 function goBack() {
@@ -132,6 +150,8 @@ async function send(quick?: string) {
   }
 
   input.value = ''
+  lastLightRoute.value = ''
+  lastRoute.value = ''
   messages.value.push({ role: 'user', content: text })
   const aiMsg: ChatMessage = { role: 'assistant', content: '', loading: true }
   messages.value.push(aiMsg)
@@ -139,21 +159,58 @@ async function send(quick?: string) {
 
   sending.value = true
   try {
-    const res: any = await api.post('/knowledge/chat', {
-      question: text,
-      sessionId: sessionId.value || undefined,
-    })
+    await streamKnowledgeChat(
+      {
+        question: text,
+        sessionId: sessionId.value || undefined,
+      },
+      {
+        onEvent: ({ event, data }) => {
+          if (event === 'start' && typeof data === 'string') {
+            sessionId.value = data
+            localStorage.setItem('kb_session', data)
+            return
+          }
 
-    aiMsg.loading = false
-    if (res.code === 0 && res.data) {
-      aiMsg.content = res.data.answer || '抱歉，我暂时无法回答这个问题。'
-      if (res.data.sessionId) {
-        sessionId.value = res.data.sessionId
-        localStorage.setItem('kb_session', res.data.sessionId)
+          if (event === 'lightRoute') {
+            lastLightRoute.value = typeof data === 'string' ? data : String(data ?? '')
+            return
+          }
+
+          if (event === 'route') {
+            lastRoute.value = typeof data === 'string' ? data : String(data ?? '')
+            return
+          }
+
+          if (event === 'chunk') {
+            aiMsg.loading = false
+            aiMsg.content += typeof data === 'string' ? data : String(data ?? '')
+            scrollBottom()
+            return
+          }
+
+          if (event === 'answer') {
+            aiMsg.loading = false
+            const answer = typeof data === 'object' && data ? data.answer : data
+            aiMsg.content = answer || aiMsg.content || '抱歉，我暂时无法回答这个问题。'
+            if (typeof data === 'object' && data?.sessionId) {
+              sessionId.value = data.sessionId
+              localStorage.setItem('kb_session', data.sessionId)
+            }
+            scrollBottom()
+            return
+          }
+
+          if (event === 'error') {
+            aiMsg.loading = false
+            aiMsg.content = typeof data === 'string' ? data : '抱歉，服务暂时不可用，请稍后再试。'
+            scrollBottom()
+          }
+        },
       }
-    } else {
-      aiMsg.content = '抱歉，服务暂时不可用，请稍后再试。'
-    }
+    )
+    aiMsg.loading = false
+    aiMsg.content = aiMsg.content || '抱歉，我暂时无法回答这个问题。'
   } catch (e: any) {
     aiMsg.loading = false
     if (e?.status === 401) {

@@ -9,7 +9,7 @@ test.describe('Category Management', () => {
       localStorage.setItem('username', 'admin')
     })
 
-    // mock admin categories (flat list)
+    // 模拟后台分类接口（平铺列表） / mock admin categories (flat list)
     await page.route('**/api/v1/admin/categories', async (route) => {
       if (route.request().method() === 'GET') {
         await route.fulfill({
@@ -28,7 +28,7 @@ test.describe('Category Management', () => {
       }
     })
 
-    // mock admin categories by ID (PUT/DELETE)
+    // 模拟后台分类按 ID 接口（PUT/DELETE） / mock admin categories by ID (PUT/DELETE)
     await page.route('**/api/v1/admin/categories/*', async (route) => {
       if (route.request().method() === 'PUT') {
         await route.fulfill({
@@ -47,7 +47,7 @@ test.describe('Category Management', () => {
       }
     })
 
-    // mock public categories (tree)
+    // 模拟前台分类接口（树结构） / mock public categories (tree)
     await page.route('**/api/v1/categories', async (route) => {
       await route.fulfill({
         status: 200,
@@ -57,10 +57,10 @@ test.describe('Category Management', () => {
     })
 
     await page.goto('/categories')
-    await page.waitForResponse('**/api/v1/categories')
+    await expect(page.locator('.el-tree')).toBeVisible()
   })
 
-  // ---- P1: Core features ----
+  // P1 核心能力 / P1 core features
 
   test('P1: category tree loads with nodes', async ({ page }) => {
     await expect(page.locator('.el-tree')).toBeVisible()
@@ -68,14 +68,14 @@ test.describe('Category Management', () => {
   })
 
   test('P1: level badges are shown on tree nodes', async ({ page }) => {
-    // first-level nodes should have "一级" badge
-    await expect(page.locator('.level-badge.l1').first()).toBeVisible()
+    // 一级节点应该显示“一级”标签 / first-level nodes should have "一级" badge
+    await expect(page.locator('.level-tag').first()).toContainText('一级')
   })
 
   test('P1: "新增分类" opens dialog', async ({ page }) => {
     await page.click('button:has-text("新增分类")')
     await expect(page.locator('.el-dialog')).toBeVisible()
-    // dialog title should be "新增分类"
+    // 弹窗标题应该是“新增分类” / dialog title should be "新增分类"
     await expect(page.locator('.el-dialog__title')).toContainText('新增分类')
   })
 
@@ -85,16 +85,16 @@ test.describe('Category Management', () => {
     await page.click('.el-dialog button:has-text("保存")')
 
     await page.waitForTimeout(500)
-    // dialog should close
+    // 弹窗应该关闭 / dialog should close
     await expect(page.locator('.el-dialog')).not.toBeVisible()
   })
 
   test('P1: "编辑" opens dialog with data', async ({ page }) => {
-    // click edit on first node
+    // 点击第一个节点的编辑按钮 / click edit on first node
     await page.locator('button:has-text("编辑")').first().click()
     await expect(page.locator('.el-dialog')).toBeVisible()
     await expect(page.locator('.el-dialog__title')).toContainText('编辑')
-    // name should be pre-filled
+    // 名称应该被预填充 / name should be pre-filled
     await expect(page.locator('input[placeholder="请输入分类名称"]')).not.toHaveValue('')
   })
 
@@ -124,7 +124,7 @@ test.describe('Category Management', () => {
     await page.waitForTimeout(500)
   })
 
-  // ---- P2: Edge cases ----
+  // P2 边界场景 / P2 edge cases
 
   test('P2: cancel dialog button closes without saving', async ({ page }) => {
     await page.click('button:has-text("新增分类")')
@@ -141,7 +141,7 @@ test.describe('Category Management', () => {
   })
 
   test('P2: tree-node has icon for adding sub-category', async ({ page }) => {
-    // each node should have a "+ 子分类" button
+    // 每个节点都应该有“子分类”按钮 / each node should have a "+ 子分类" button
     const addChildBtns = page.locator('button:has-text("子分类")')
     expect(await addChildBtns.count()).toBeGreaterThan(0)
   })

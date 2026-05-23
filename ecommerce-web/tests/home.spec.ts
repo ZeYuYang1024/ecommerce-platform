@@ -20,7 +20,7 @@ test.describe('PC Home', () => {
   test('P0: search box exists and works', async ({ page }) => {
     await page.fill('input[placeholder="搜索商品..."]', 'iPhone')
     await page.click('button:has-text("搜索")')
-    await page.waitForURL('**/products?keyword=iPhone**')
+    await page.waitForURL('**/search?keyword=iPhone**')
   })
 
   test('P1: product cards are clickable', async ({ page }) => {

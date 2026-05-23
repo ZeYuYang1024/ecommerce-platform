@@ -12,8 +12,12 @@ public class KnowledgeQueryClassifier {
     private static final Pattern ORDER_NO_PATTERN = Pattern.compile("(?i)\\b(?:ord-?\\d+|\\d{12,32})\\b");
 
     public KnowledgeQueryRoute classify(String question) {
+        return classify(extractFeatures(question));
+    }
+
+    public KnowledgeQueryFeatures extractFeatures(String question) {
         if (StrUtil.isBlank(question)) {
-            return KnowledgeQueryRoute.RAG_FAQ;
+            return new KnowledgeQueryFeatures("", false, false, false, false, false, false);
         }
 
         String normalized = question.trim().toLowerCase(Locale.ROOT);
@@ -22,6 +26,28 @@ public class KnowledgeQueryClassifier {
                 "my ", " my", "show ", "list ", "check ", "view ", "current ", "latest ", "recent ");
         boolean hasOrderNo = ORDER_NO_PATTERN.matcher(question).find();
         boolean policyFaq = isPolicyFaq(normalized);
+        boolean realtimeIntent = containsAny(normalized,
+                "售后", "退货", "退款", "换货",
+                "订单", "order", "orders",
+                "购物车", "cart",
+                "地址", "收货地址", "address", "shipping address",
+                "通知", "站内信", "notification",
+                "支付", "付款", "pay", "payment",
+                "优惠券", "coupon");
+        boolean productIntent = containsAny(normalized, "商品", "产品", "product");
+        boolean inventoryIntent = containsAny(normalized, "库存", "inventory", "stock");
+        return new KnowledgeQueryFeatures(normalized, userScoped, hasOrderNo, policyFaq, realtimeIntent, productIntent, inventoryIntent);
+    }
+
+    public KnowledgeQueryRoute classify(KnowledgeQueryFeatures features) {
+        if (features == null || StrUtil.isBlank(features.normalizedQuestion())) {
+            return KnowledgeQueryRoute.RAG_FAQ;
+        }
+
+        String normalized = features.normalizedQuestion();
+        boolean userScoped = features.userScoped();
+        boolean hasOrderNo = features.hasOrderNo();
+        boolean policyFaq = features.policyFaq();
         boolean afterSaleIntent = containsAny(normalized,
                 "售后", "退货", "退款", "换货", "refund", "return", "exchange", "after-sale", "after sale");
         boolean orderIntent = containsAny(normalized, "订单", "order", "orders");
@@ -53,10 +79,10 @@ public class KnowledgeQueryClassifier {
         if (couponIntent && !policyFaq && !couponDiscoveryIntent && userScoped) {
             return KnowledgeQueryRoute.COUPON;
         }
-        if (containsAny(normalized, "库存", "inventory", "stock")) {
+        if (features.inventoryIntent()) {
             return KnowledgeQueryRoute.INVENTORY;
         }
-        if (containsAny(normalized, "商品", "产品", "product")) {
+        if (features.productIntent()) {
             return KnowledgeQueryRoute.PRODUCT;
         }
         return KnowledgeQueryRoute.RAG_FAQ;

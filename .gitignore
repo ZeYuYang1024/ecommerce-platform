@@ -11,6 +11,9 @@ target/
 node_modules/
 dist/
 .worktrees/
+.build-*/
+.m2repo-*/
+.planning/
 
 # OS
 .DS_Store

@@ -23,7 +23,10 @@ test.describe('Merchant List', () => {
       }
       await route.fulfill({
         status: 200, contentType: 'application/json',
-        body: JSON.stringify({ code: 200, data: filtered })
+        body: JSON.stringify({
+          code: 200,
+          data: { records: filtered, total: filtered.length, current: 1, size: 10 }
+        })
       })
     })
 
@@ -50,7 +53,7 @@ test.describe('Merchant List', () => {
     await page.waitForTimeout(500)
   })
 
-  // ---- P0 ----
+  // P0 核心场景 / P0 core scenarios
   test('P0: merchant list loads with data', async ({ page }) => {
     await expect(page.locator('.el-table__body tr')).not.toHaveCount(0)
   })
@@ -74,7 +77,7 @@ test.describe('Merchant List', () => {
     await page.locator('button:has-text("审核")').first().click()
     await page.locator('.el-dialog button:has-text("通过")').click()
     await page.waitForTimeout(300)
-    // dialog should close
+    // 弹窗应该关闭 / dialog should close
     await expect(page.locator('.el-dialog')).not.toBeVisible({ timeout: 3000 })
   })
 
@@ -85,14 +88,14 @@ test.describe('Merchant List', () => {
     await expect(page.locator('.el-dialog')).not.toBeVisible({ timeout: 3000 })
   })
 
-  // ---- P1 ----
+  // P1 主要交互 / P1 main interactions
   test('P1: "查看" navigates to detail', async ({ page }) => {
     await page.locator('button:has-text("查看")').first().click()
     await page.waitForURL('**/merchants/*')
   })
 
   test('P1: ban merchant shows confirm', async ({ page }) => {
-    // Switch to approved tab first
+    // 先切到已通过标签 / switch to approved tab first
     await page.click('.el-select')
     await page.locator('.el-select-dropdown__item:has-text("已通过")').click()
     await page.waitForTimeout(300)
@@ -108,7 +111,7 @@ test.describe('Merchant List', () => {
     await expect(page.locator('.el-dialog')).not.toBeVisible({ timeout: 3000 })
   })
 
-  // ---- P2 ----
+  // P2 边界场景 / P2 edge scenarios
   test('P2: status tags show correct colors', async ({ page }) => {
     await expect(page.locator('.el-tag--warning').first()).toBeVisible()
   })

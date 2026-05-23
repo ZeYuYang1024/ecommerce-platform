@@ -1,12 +1,12 @@
 package com.ecommerce.knowledge.agent;
 
 import dev.langchain4j.service.MemoryId;
-import dev.langchain4j.service.Result;
 import dev.langchain4j.service.SystemMessage;
+import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.service.UserMessage;
 
-public interface KnowledgeAgent {
+public interface StreamingKnowledgeAgent {
 
     @SystemMessage(KnowledgeAgentSystemPrompt.PROMPT)
-    Result<String> chat(@MemoryId String sessionId, @UserMessage String userMessage);
+    TokenStream chat(@MemoryId String sessionId, @UserMessage String userMessage);
 }
