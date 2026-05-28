@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reliability Ops</title>
+  <link rel="stylesheet" href="/reliability/styles.css">
+</head>
+<body>
+  <main class="ops-shell">
+    <header class="topbar">
+      <div>
+        <h1>Reliability Ops</h1>
+        <p class="subtitle">Outbox, retry, and inventory event health</p>
+      </div>
+      <button id="refresh-overview" class="action-button">Refresh</button>
+    </header>
+
+    <section class="summary-grid" id="summary-grid">
+      <article class="summary-panel">
+        <span class="label">Order Failed</span>
+        <strong id="order-failed-count">0</strong>
+      </article>
+      <article class="summary-panel">
+        <span class="label">Payment Failed</span>
+        <strong id="payment-failed-count">0</strong>
+      </article>
+      <article class="summary-panel">
+        <span class="label">Exhausted Retry</span>
+        <strong id="exhausted-count">0</strong>
+      </article>
+      <article class="summary-panel">
+        <span class="label">Inventory Processing</span>
+        <strong id="inventory-processing-count">0</strong>
+      </article>
+    </section>
+
+    <section class="warning-band">
+      <div class="section-title-row">
+        <h2>Warnings</h2>
+        <span id="degraded-sections" class="muted"></span>
+      </div>
+      <div id="warnings" class="warning-list"></div>
+    </section>
+
+    <section class="view-toggle" role="tablist" aria-label="Views">
+      <button class="toggle-button active" data-view="order">Order Outbox</button>
+      <button class="toggle-button" data-view="payment">Payment Outbox</button>
+      <button class="toggle-button" data-view="inventory">Inventory Events</button>
+    </section>
+
+    <section class="workspace">
+      <div id="order-view" class="view active">
+        <div class="controls">
+          <input id="order-topic" placeholder="topic">
+          <input id="order-aggregateId" placeholder="aggregateId">
+          <input id="order-status" type="number" placeholder="status">
+          <input id="order-limit" type="number" value="20" min="1">
+          <button id="order-filter" class="action-button">Query</button>
+          <button id="order-retry-batch" class="action-button secondary">Retry Batch</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>ID</th><th>Aggregate</th><th>Topic</th><th>Status</th><th>Retry</th><th>Created</th><th></th></tr>
+            </thead>
+            <tbody id="order-rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="payment-view" class="view">
+        <div class="controls">
+          <input id="payment-topic" placeholder="topic">
+          <input id="payment-aggregateId" placeholder="aggregateId">
+          <input id="payment-status" type="number" placeholder="status">
+          <input id="payment-limit" type="number" value="20" min="1">
+          <button id="payment-filter" class="action-button">Query</button>
+          <button id="payment-retry-batch" class="action-button secondary">Retry Batch</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>ID</th><th>Aggregate</th><th>Topic</th><th>Status</th><th>Retry</th><th>Created</th><th></th></tr>
+            </thead>
+            <tbody id="payment-rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="inventory-view" class="view">
+        <div class="controls">
+          <input id="inventory-topic" placeholder="topic">
+          <input id="inventory-orderNo" placeholder="orderNo">
+          <input id="inventory-status" type="number" placeholder="status">
+          <button id="inventory-filter" class="action-button">Query</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>ID</th><th>OrderNo</th><th>Topic</th><th>Status</th><th>Created</th></tr>
+            </thead>
+            <tbody id="inventory-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="/reliability/app.js"></script>
+</body>
+</html>

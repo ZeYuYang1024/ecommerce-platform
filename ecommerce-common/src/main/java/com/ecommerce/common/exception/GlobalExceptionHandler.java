@@ -41,6 +41,12 @@ public class GlobalExceptionHandler {
                 .body(Result.fail(400, "Malformed JSON request body"));
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleIllegalArgument(IllegalArgumentException e) {
+        return Result.fail(400, e.getMessage());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Result<Void>> handleException(Exception e) {
         if (e instanceof ErrorResponse errorResponse) {

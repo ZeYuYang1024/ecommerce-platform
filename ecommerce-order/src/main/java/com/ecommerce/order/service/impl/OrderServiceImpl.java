@@ -3,23 +3,28 @@ package com.ecommerce.order.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.dto.OrderInventoryMessage;
+import com.ecommerce.common.dto.OrderItemMessage;
+import com.ecommerce.common.dto.SkuBatchVO;
+import com.ecommerce.common.outbox.OutboxMessage;
+import com.ecommerce.common.outbox.OutboxQuery;
+import com.ecommerce.common.outbox.OutboxSummary;
+import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.util.SnowflakeUtils;
+import com.ecommerce.order.client.CartClient;
+import com.ecommerce.order.client.ProductSpuClient;
 import com.ecommerce.order.common.OrderErrorCode;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
+import com.ecommerce.order.dto.response.OutboxMessageVO;
 import com.ecommerce.order.dto.response.OrderSummaryVO;
 import com.ecommerce.order.dto.response.OrderVO;
 import com.ecommerce.order.entity.Order;
 import com.ecommerce.order.entity.OrderItem;
 import com.ecommerce.order.mapper.OrderItemMapper;
 import com.ecommerce.order.mapper.OrderMapper;
-import com.ecommerce.order.client.CartClient;
-import com.ecommerce.common.dto.OrderInventoryMessage;
-import com.ecommerce.common.dto.OrderItemMessage;
-import com.ecommerce.order.client.ProductSpuClient;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import com.ecommerce.order.service.OrderService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +33,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -41,15 +47,15 @@ public class OrderServiceImpl implements OrderService {
     private final OrderItemMapper itemMapper;
     private final CartClient cartClient;
     private final ProductSpuClient productSpuClient;
-    private final RocketMQTemplate rocketMQTemplate;
+    private final OutboxService outboxService;
 
     public OrderServiceImpl(OrderMapper orderMapper, OrderItemMapper itemMapper, ProductSpuClient productSpuClient,
-                            CartClient cartClient, RocketMQTemplate rocketMQTemplate) {
+                            CartClient cartClient, OutboxService outboxService) {
         this.orderMapper = orderMapper;
         this.itemMapper = itemMapper;
         this.cartClient = cartClient;
         this.productSpuClient = productSpuClient;
-        this.rocketMQTemplate = rocketMQTemplate;
+        this.outboxService = outboxService;
     }
 
     @Override
@@ -59,10 +65,12 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(OrderErrorCode.ORDER_ITEMS_EMPTY);
         }
 
-        // Calculate total
+        Map<Long, SkuBatchVO> skuMap = loadSkuSnapshots(request);
+
         BigDecimal total = BigDecimal.ZERO;
         for (CreateOrderRequest.OrderItemRequest item : request.getItems()) {
-            BigDecimal price = new BigDecimal(item.getPrice());
+            SkuBatchVO sku = skuMap.get(item.getSkuId());
+            BigDecimal price = sku.getPrice();
             total = total.add(price.multiply(BigDecimal.valueOf(item.getQuantity())));
         }
 
@@ -79,29 +87,35 @@ public class OrderServiceImpl implements OrderService {
         orderMapper.insert(order);
 
         // Create order items
+        List<OrderItemMessage> lockItems = new ArrayList<>();
         for (CreateOrderRequest.OrderItemRequest i : request.getItems()) {
+            SkuBatchVO sku = skuMap.get(i.getSkuId());
             OrderItem item = new OrderItem();
             item.setId(SnowflakeUtils.nextId());
             item.setOrderId(order.getId());
             item.setOrderNo(order.getOrderNo());
             item.setSkuId(i.getSkuId());
-            item.setSpuId(i.getSpuId());
-            item.setName(i.getName());
-            item.setImage(i.getImage());
-            BigDecimal price = new BigDecimal(i.getPrice());
+            item.setSpuId(sku.getSpuId());
+            item.setName(sku.getSkuName());
+            item.setImage(sku.getImage());
+            BigDecimal price = sku.getPrice();
             item.setPrice(price);
             item.setQuantity(i.getQuantity());
             item.setTotalPrice(price.multiply(BigDecimal.valueOf(i.getQuantity())));
             itemMapper.insert(item);
 
-            // 发送MQ异步扣减库存
-            OrderItemMessage oim = new OrderItemMessage(i.getSkuId(), i.getQuantity());
-            try { rocketMQTemplate.syncSend("order-created",
-                new OrderInventoryMessage(order.getOrderNo(), java.util.Collections.singletonList(oim))); } catch (Exception e) { log.error("MQ deduct failed", e); }
+            lockItems.add(new OrderItemMessage(i.getSkuId(), i.getQuantity()));
         }
 
+        outboxService.enqueue("order", order.getOrderNo(), "order-created",
+                new OrderInventoryMessage(order.getOrderNo(), lockItems));
+
         // 清空购物车已购商品（best-effort）
-        try { cartClient.getCart(userId); } catch (Exception ignored) {}
+        try {
+            cartClient.getCart(userId);
+        } catch (Exception e) {
+            log.warn("cart refresh failed for userId={}", userId, e);
+        }
 
         return toVO(order, java.util.Collections.emptyMap());
     }
@@ -113,14 +127,17 @@ public class OrderServiceImpl implements OrderService {
                         .eq(Order::getOrderNo, orderNo)
                         .eq(Order::getUserId, userId));
         if (order == null) throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
-        return getOrder(order.getId());
+        return getOrder(userId, order.getId());
     }
 
     @Override
-    public OrderVO getOrder(Long id) {
+    public OrderVO getOrder(Long userId, Long id) {
         Order order = orderMapper.selectById(id);
         if (order == null) {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
+        }
+        if (!Objects.equals(order.getUserId(), userId)) {
+            throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
         }
         Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(Collections.singletonList(order));
         return toVO(order, itemsMap);
@@ -163,6 +180,9 @@ public class OrderServiceImpl implements OrderService {
         if (order == null) {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
         }
+        if (!Objects.equals(order.getUserId(), userId)) {
+            throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
+        }
         if (order.getStatus() != 0) {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_PENDING);
         }
@@ -174,8 +194,8 @@ public class OrderServiceImpl implements OrderService {
         List<OrderItemMessage> releaseItems = items.stream()
             .map(i -> new OrderItemMessage(i.getSkuId(), i.getQuantity()))
             .collect(Collectors.toList());
-        try { rocketMQTemplate.syncSend("order-cancelled",
-            new OrderInventoryMessage(order.getOrderNo(), releaseItems)); } catch (Exception e) { log.error("MQ release failed", e); }
+        outboxService.enqueue("order", order.getOrderNo(), "order-cancelled",
+                new OrderInventoryMessage(order.getOrderNo(), releaseItems));
     }
 
     @Override
@@ -261,8 +281,32 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
         }
         ensureMerchantOwnsOrder(order, userType, merchantId);
+        validateStatusTransition(order.getStatus(), status);
         order.setStatus(status);
         orderMapper.updateById(order);
+    }
+
+    @Override
+    public Page<OutboxMessageVO> listOutbox(OutboxQuery query, int page, int size) {
+        Page<OutboxMessage> result = outboxService.queryMessages(query, page, size);
+        Page<OutboxMessageVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
+        voPage.setRecords(result.getRecords().stream().map(this::toOutboxVO).toList());
+        return voPage;
+    }
+
+    @Override
+    public OutboxSummary getOutboxSummary(OutboxQuery query) {
+        return outboxService.summarize(query);
+    }
+
+    @Override
+    public int retryOutboxMessage(Long messageId) {
+        return outboxService.retryMessage(messageId) ? 1 : 0;
+    }
+
+    @Override
+    public int retryOutboxBatch(OutboxQuery query, int limit) {
+        return outboxService.retryBatch(query, limit);
     }
 
     private void ensureMerchantOwnsOrder(Order order, String userType, Long merchantId) {
@@ -365,6 +409,55 @@ public class OrderServiceImpl implements OrderService {
         return items.stream().collect(Collectors.groupingBy(OrderItem::getOrderId));
     }
 
+    private Map<Long, SkuBatchVO> loadSkuSnapshots(CreateOrderRequest request) {
+        List<Long> skuIds = request.getItems().stream()
+                .map(CreateOrderRequest.OrderItemRequest::getSkuId)
+                .toList();
+        if (skuIds.stream().anyMatch(Objects::isNull)) {
+            throw new BusinessException(OrderErrorCode.ORDER_ITEMS_EMPTY);
+        }
+        List<SkuBatchVO> skuSnapshots;
+        try {
+            var response = productSpuClient.batchQuerySkus(skuIds);
+            skuSnapshots = response.getData();
+        } catch (Exception e) {
+            throw new BusinessException(OrderErrorCode.ORDER_ITEMS_EMPTY);
+        }
+        if (skuSnapshots == null || skuSnapshots.size() != skuIds.size()) {
+            throw new BusinessException(OrderErrorCode.ORDER_ITEMS_EMPTY);
+        }
+        Map<Long, SkuBatchVO> skuMap = new HashMap<>();
+        for (SkuBatchVO snapshot : skuSnapshots) {
+            if (snapshot == null || snapshot.getSkuId() == null || snapshot.getSpuId() == null || snapshot.getPrice() == null) {
+                throw new BusinessException(OrderErrorCode.ORDER_ITEMS_EMPTY);
+            }
+            skuMap.put(snapshot.getSkuId(), snapshot);
+        }
+        if (!skuMap.keySet().containsAll(skuIds)) {
+            throw new BusinessException(OrderErrorCode.ORDER_ITEMS_EMPTY);
+        }
+        return skuMap;
+    }
+
+    private void validateStatusTransition(Integer currentStatus, Integer targetStatus) {
+        if (Objects.equals(currentStatus, targetStatus)) {
+            return;
+        }
+        if (currentStatus == null || targetStatus == null) {
+            throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
+        }
+        if (currentStatus == 0 && targetStatus == 4) {
+            return;
+        }
+        if (currentStatus == 1 && (targetStatus == 2 || targetStatus == 5)) {
+            return;
+        }
+        if (currentStatus == 2 && targetStatus == 3) {
+            return;
+        }
+        throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
+    }
+
     private int normalizeSummaryLimit(int limit) {
         if (limit <= 0) {
             return 5;
@@ -388,7 +481,21 @@ public class OrderServiceImpl implements OrderService {
         return timestamp + seq;
     }
 
+    private OutboxMessageVO toOutboxVO(OutboxMessage message) {
+        OutboxMessageVO vo = new OutboxMessageVO();
+        vo.setId(message.getId());
+        vo.setAggregateId(message.getAggregateId());
+        vo.setTopic(message.getTopic());
+        vo.setStatus(message.getStatus());
+        vo.setRetryCount(message.getRetryCount());
+        vo.setLastError(message.getLastError());
+        vo.setNextRetryAt(message.getNextRetryAt());
+        vo.setCreatedAt(message.getCreatedAt());
+        return vo;
+    }
+
     private String statusText(Integer status) {
+        if (status != null && status == 5) return "已退款";
         if (status == null) return "未知";
         if (status == 0) return "待支付";
         if (status == 1) return "已支付";

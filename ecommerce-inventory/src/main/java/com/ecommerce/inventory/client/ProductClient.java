@@ -14,7 +14,7 @@ import java.util.List;
 @FeignClient(name = "ecommerce-product", fallbackFactory = ProductClient.ProductClientFallback.class)
 public interface ProductClient {
 
-    @GetMapping("/api/v1/products/skus/batch")
+    @GetMapping("/api/v1/internal/products/skus/batch")
     Result<List<SkuBatchVO>> batchQuerySkus(@RequestParam("ids") List<Long> ids);
 
     @GetMapping("/api/v1/internal/sku-ids")

@@ -32,12 +32,30 @@ public class OrderPaidConsumer implements RocketMQListener<OrderPaidMessage> {
             log.warn("Order not found: {}", message.getOrderNo());
             return;
         }
-        if (order.getStatus() != null && order.getStatus() == 1) {
-            log.info("Order already paid: {}", message.getOrderNo());
+        if (order.getStatus() != null && order.getStatus() == message.getStatus()) {
+            log.info("Order already in status {}: {}", message.getStatus(), message.getOrderNo());
+            return;
+        }
+        if (!shouldApply(order.getStatus(), message.getStatus())) {
+            log.warn("Ignore incompatible order status update: orderNo={}, currentStatus={}, incomingStatus={}",
+                    message.getOrderNo(), order.getStatus(), message.getStatus());
             return;
         }
         order.setStatus(message.getStatus());
         orderMapper.updateById(order);
-        log.info("Order status updated: {} -> paid", message.getOrderNo());
+        log.info("Order status updated: {} -> {}", message.getOrderNo(), message.getStatus());
+    }
+
+    private boolean shouldApply(Integer currentStatus, Integer incomingStatus) {
+        if (currentStatus == null || incomingStatus == null) {
+            return false;
+        }
+        if (incomingStatus == 1) {
+            return currentStatus == 0;
+        }
+        if (incomingStatus == 5) {
+            return currentStatus == 1;
+        }
+        return false;
     }
 }

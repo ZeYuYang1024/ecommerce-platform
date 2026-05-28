@@ -1,6 +1,7 @@
 package com.ecommerce.product.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.product.common.ProductErrorCode;
@@ -9,6 +10,7 @@ import com.ecommerce.product.dto.request.UpdateStatusRequest;
 import com.ecommerce.product.dto.response.ProductDetailVO;
 import com.ecommerce.product.dto.response.SkuVO;
 import com.ecommerce.product.dto.response.SpuVO;
+import com.ecommerce.product.entity.Sku;
 import com.ecommerce.product.entity.Spu;
 import com.ecommerce.product.service.BrandService;
 import com.ecommerce.product.service.ProductService;
@@ -23,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -106,6 +109,42 @@ class ProductControllerTest {
             assertThat(result.getCode()).isEqualTo(200);
             assertThat(result.getData().getSpu().getName()).isEqualTo("测试商品");
             assertThat(result.getData().getSkus()).hasSize(1);
+        }
+
+        @Test
+        void batchQuerySkus_shouldReturnImageAndMerchantDataForInternalConsumers() {
+            Sku sku = new Sku();
+            sku.setId(100L);
+            sku.setSpuId(1L);
+            sku.setName("SKU1");
+            sku.setPrice(new BigDecimal("99.00"));
+            sku.setImage("sku-1.jpg");
+
+            Spu spu = new Spu();
+            spu.setId(1L);
+            spu.setName("Test SPU");
+            spu.setMerchantId(2001L);
+
+            when(productService.getSkusByIds(List.of(100L))).thenReturn(List.of(sku));
+            when(productService.getSpusByIds(List.of(1L))).thenReturn(List.of(spu));
+
+            Result<List<SkuBatchVO>> result = controller.batchQuerySkus(List.of(100L));
+
+            assertThat(result.getCode()).isEqualTo(200);
+            assertThat(result.getData()).hasSize(1);
+            assertThat(result.getData().get(0).getSkuId()).isEqualTo(100L);
+            assertThat(result.getData().get(0).getSpuId()).isEqualTo(1L);
+            assertThat(result.getData().get(0).getSpuName()).isEqualTo("Test SPU");
+            assertThat(result.getData().get(0).getImage()).isEqualTo("sku-1.jpg");
+            assertThat(result.getData().get(0).getMerchantId()).isEqualTo(2001L);
+        }
+
+        @Test
+        void batchQuerySkus_shouldUseInternalRouteContract() throws Exception {
+            assertThat(ProductController.class.getDeclaredMethod("batchQuerySkus", java.util.List.class)
+                    .getAnnotation(org.springframework.web.bind.annotation.GetMapping.class)
+                    .value())
+                    .containsExactly("/internal/products/skus/batch");
         }
     }
 

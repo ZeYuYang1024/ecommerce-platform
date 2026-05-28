@@ -54,6 +54,8 @@ public class OrderController {
         OrderInternalVO vo = new OrderInternalVO();
         vo.setId(order.getId());
         vo.setOrderNo(order.getOrderNo());
+        vo.setTotalAmount(order.getTotalAmount());
+        vo.setStatus(order.getStatus());
         return Result.ok(vo);
     }
 
@@ -68,8 +70,9 @@ public class OrderController {
     }
 
     @GetMapping("/orders/{id}")
-    public Result<OrderVO> detail(@PathVariable Long id) {
-        return Result.ok(orderService.getOrder(id));
+    public Result<OrderVO> detail(@RequestHeader("X-User-Id") Long userId,
+                                  @PathVariable Long id) {
+        return Result.ok(orderService.getOrder(userId, id));
     }
 
     @PutMapping("/orders/{id}/cancel")

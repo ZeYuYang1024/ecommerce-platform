@@ -1,7 +1,10 @@
 package com.ecommerce.order.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.outbox.OutboxQuery;
+import com.ecommerce.common.outbox.OutboxSummary;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
+import com.ecommerce.order.dto.response.OutboxMessageVO;
 import com.ecommerce.order.dto.response.OrderSummaryVO;
 import com.ecommerce.order.dto.response.OrderVO;
 import com.ecommerce.order.entity.Order;
@@ -11,7 +14,7 @@ import java.util.List;
 
 public interface OrderService {
     OrderVO createOrder(Long userId, CreateOrderRequest request);
-    OrderVO getOrder(Long id);
+    OrderVO getOrder(Long userId, Long id);
     OrderVO getOrderByOrderNo(Long userId, String orderNo);
     Page<OrderVO> listByUser(Long userId, int page, int size);
     List<OrderSummaryVO> listSummariesByUser(Long userId, int limit);
@@ -22,4 +25,8 @@ public interface OrderService {
     List<Order> listForRecon(LocalDateTime start, LocalDateTime end);
     void markShipped(Long id, String userType, Long merchantId);
     void updateStatus(Long id, Integer status, String userType, Long merchantId);
+    Page<OutboxMessageVO> listOutbox(OutboxQuery query, int page, int size);
+    OutboxSummary getOutboxSummary(OutboxQuery query);
+    int retryOutboxMessage(Long messageId);
+    int retryOutboxBatch(OutboxQuery query, int limit);
 }

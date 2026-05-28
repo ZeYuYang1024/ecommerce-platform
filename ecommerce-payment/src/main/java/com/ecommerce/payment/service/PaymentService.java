@@ -1,8 +1,11 @@
 package com.ecommerce.payment.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.outbox.OutboxQuery;
+import com.ecommerce.common.outbox.OutboxSummary;
 import com.ecommerce.payment.dto.request.PayRequest;
 import com.ecommerce.payment.dto.request.RefundRequest;
+import com.ecommerce.payment.dto.response.OutboxMessageVO;
 import com.ecommerce.payment.dto.response.PaymentVO;
 
 public interface PaymentService {
@@ -13,4 +16,8 @@ public interface PaymentService {
     Page<PaymentVO> listAll(Integer status, int page, int size);
     Page<PaymentVO> listByMerchant(Long merchantId, Integer status, int page, int size);
     PaymentVO refundByMerchant(Long merchantId, String orderNo, RefundRequest request);
+    Page<OutboxMessageVO> listOutbox(OutboxQuery query, int page, int size);
+    OutboxSummary getOutboxSummary(OutboxQuery query);
+    int retryOutboxMessage(Long messageId);
+    int retryOutboxBatch(OutboxQuery query, int limit);
 }

@@ -1,7 +1,9 @@
 package com.ecommerce.order.controller;
 
+import com.ecommerce.common.dto.OrderInternalVO;
 import com.ecommerce.common.exception.GlobalExceptionHandler;
 import com.ecommerce.order.mapper.OrderMapper;
+import com.ecommerce.order.entity.Order;
 import com.ecommerce.order.dto.response.OrderSummaryVO;
 import com.ecommerce.order.service.OrderService;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,5 +80,31 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data[0].firstItemName").value("Phone"));
 
         verify(orderService).listSummariesByUser(88L, 3);
+    }
+
+    @Test
+    void shouldReturnFullInternalOrderPayloadByOrderNo() throws Exception {
+        Order order = new Order();
+        order.setId(101L);
+        order.setOrderNo("ORD-INT-001");
+        order.setUserId(88L);
+        order.setTotalAmount(new BigDecimal("256.80"));
+        order.setStatus(1);
+        when(orderMapper.selectOne(org.mockito.ArgumentMatchers.any())).thenReturn(order);
+
+        mockMvc.perform(get("/api/v1/internal/orders/no/ORD-INT-001")
+                        .param("userId", "88"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value(101))
+                .andExpect(jsonPath("$.data.orderNo").value("ORD-INT-001"))
+                .andExpect(jsonPath("$.data.totalAmount").value(256.80))
+                .andExpect(jsonPath("$.data.status").value(1));
+    }
+
+    @Test
+    void shouldRequireUserIdHeaderForOrderDetail() throws Exception {
+        mockMvc.perform(get("/api/v1/orders/123"))
+                .andExpect(status().isBadRequest());
     }
 }

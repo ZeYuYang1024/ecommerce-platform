@@ -27,7 +27,7 @@ spring:
             - id: product
               uri: lb://ecommerce-product
               predicates:
-                - Path=/api/v1/products/**,/api/v1/categories/**,/api/v1/reviews/**,/api/v1/admin/products/**,/api/v1/admin/merchant/products/**,/api/v1/admin/categories/**,/api/v1/admin/brands/**,/api/v1/admin/merchant/brands/**,/api/v1/admin/reviews/**,/api/v1/admin/merchant/reviews/**,/api/v1/internal/spu-ids
+                - Path=/api/v1/products/**,/api/v1/categories/**,/api/v1/reviews/**,/api/v1/admin/products/**,/api/v1/admin/merchant/products/**,/api/v1/admin/categories/**,/api/v1/admin/brands/**,/api/v1/admin/merchant/brands/**,/api/v1/admin/reviews/**,/api/v1/admin/merchant/reviews/**
             - id: inventory
               uri: lb://ecommerce-inventory
               predicates:
@@ -43,7 +43,7 @@ spring:
             - id: order
               uri: lb://ecommerce-order
               predicates:
-                - Path=/api/v1/orders/**,/api/v1/internal/orders/**,/api/v1/orders/no/**,/api/v1/admin/orders/**,/api/v1/admin/merchant/orders/**
+                - Path=/api/v1/orders/**,/api/v1/orders/no/**,/api/v1/admin/orders/**,/api/v1/admin/merchant/orders/**
             - id: payment
               uri: lb://ecommerce-payment
               predicates:

@@ -11,7 +11,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -58,6 +60,68 @@ class AdminOrderControllerValidationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("status")));
+
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    void updateStatusShouldAllowRefundedStatus() throws Exception {
+        mockMvc.perform(put("/api/v1/admin/orders/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": 5
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(orderService).updateStatus(1L, 5, "super_admin", null);
+    }
+
+    @Test
+    void retryOutboxShouldRejectMissingMessageId() throws Exception {
+        mockMvc.perform(post("/api/v1/admin/orders/outbox/retry")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("messageId is required"));
+
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    void retryOutboxBatchShouldRejectMissingLimit() throws Exception {
+        mockMvc.perform(post("/api/v1/admin/orders/outbox/retry-batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "topic": "order-created"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("limit is required"));
+
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    void retryOutboxBatchShouldRejectMissingFilter() throws Exception {
+        mockMvc.perform(post("/api/v1/admin/orders/outbox/retry-batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "limit": 20
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("retry batch requires a filter"));
 
         verifyNoInteractions(orderService);
     }

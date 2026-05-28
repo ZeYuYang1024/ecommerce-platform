@@ -1,5 +1,6 @@
 package com.ecommerce.order.client;
 
+import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.common.result.Result;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,4 +13,7 @@ public interface ProductSpuClient {
 
     @GetMapping("/api/v1/internal/spu-ids")
     Result<List<Long>> getSpuIdsByMerchant(@RequestParam("merchantId") Long merchantId);
+
+    @GetMapping("/api/v1/internal/products/skus/batch")
+    Result<List<SkuBatchVO>> batchQuerySkus(@RequestParam("ids") List<Long> ids);
 }

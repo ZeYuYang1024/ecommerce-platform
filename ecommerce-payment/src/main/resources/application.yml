@@ -41,6 +41,12 @@ rocketmq:
   producer:
     group: ${spring.application.name}-producer
 
+outbox:
+  enabled: true
+  publisher:
+    fixed-delay-ms: 5000
+    batch-size: 20
+
 management:
   endpoints:
     web:

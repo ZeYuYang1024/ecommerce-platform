@@ -1,6 +1,7 @@
 package com.ecommerce.payment.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.payment.client.OrderClient;
 import com.ecommerce.payment.common.PaymentErrorCode;
@@ -9,7 +10,6 @@ import com.ecommerce.payment.entity.Payment;
 import com.ecommerce.payment.entity.Refund;
 import com.ecommerce.payment.mapper.PaymentMapper;
 import com.ecommerce.payment.mapper.RefundMapper;
-import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -37,7 +37,7 @@ class PaymentServiceRefundValidationTest {
     private OrderClient orderClient;
 
     @Mock
-    private RocketMQTemplate rocketMQTemplate;
+    private OutboxService outboxService;
 
     @InjectMocks
     private PaymentServiceImpl service;

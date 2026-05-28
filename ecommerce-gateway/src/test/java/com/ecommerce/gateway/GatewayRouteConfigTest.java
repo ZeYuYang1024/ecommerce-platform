@@ -30,4 +30,17 @@ class GatewayRouteConfigTest {
                 .contains("/api/v1/admin/merchant/settlement/**")
                 .contains("/api/v1/admin/merchant/knowledge/**");
     }
+
+    @Test
+    void applicationYamlShouldNotExposeInternalServiceRoutes() throws IOException {
+        String yaml = new String(
+                new ClassPathResource("application.yml").getInputStream().readAllBytes(),
+                StandardCharsets.UTF_8
+        );
+
+        assertThat(yaml)
+                .doesNotContain("/api/v1/internal/inventory/**")
+                .doesNotContain("/api/v1/internal/orders/**")
+                .doesNotContain("/api/v1/internal/spu-ids");
+    }
 }

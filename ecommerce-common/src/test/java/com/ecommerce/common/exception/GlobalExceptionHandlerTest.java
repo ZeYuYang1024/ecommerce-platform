@@ -30,6 +30,14 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().getMessage()).isEqualTo("Malformed JSON request body");
     }
 
+    @Test
+    void illegalArgumentShouldReturnBadRequest() {
+        Result<Void> result = handler.handleIllegalArgument(new IllegalArgumentException("retry batch requires a filter"));
+
+        assertThat(result.getCode()).isEqualTo(400);
+        assertThat(result.getMessage()).isEqualTo("retry batch requires a filter");
+    }
+
     private static final class StubHttpInputMessage implements HttpInputMessage {
 
         @Override

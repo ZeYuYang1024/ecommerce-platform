@@ -8,9 +8,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 @FeignClient(name = "ecommerce-inventory", fallbackFactory = InventoryClientFallback.class)
 public interface InventoryClient {
 
-    @PostMapping("/api/v1/inventory/deduct")
+    @PostMapping("/api/v1/internal/inventory/deduct")
     Result<Void> deduct(@RequestBody StockOperateRequest request);
 
-    @PostMapping("/api/v1/inventory/release")
+    @PostMapping("/api/v1/internal/inventory/release")
     Result<Void> release(@RequestBody StockOperateRequest request);
 }

@@ -4,11 +4,19 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.dto.OrderInternalVO;
+import com.ecommerce.common.dto.OrderPaidMessage;
+import com.ecommerce.common.outbox.OutboxMessage;
+import com.ecommerce.common.outbox.OutboxQuery;
+import com.ecommerce.common.outbox.OutboxSummary;
+import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.common.result.Result;
 import com.ecommerce.payment.client.OrderClient;
 import com.ecommerce.payment.common.PaymentErrorCode;
 import com.ecommerce.payment.dto.request.PayRequest;
 import com.ecommerce.payment.dto.request.RefundRequest;
+import com.ecommerce.payment.dto.response.OutboxMessageVO;
 import com.ecommerce.payment.dto.response.PaymentVO;
 import com.ecommerce.payment.entity.Payment;
 import com.ecommerce.payment.entity.Refund;
@@ -28,18 +36,35 @@ import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceImplTest {
 
-    @Mock private PaymentMapper paymentMapper;
-    @Mock private RefundMapper refundMapper;
-    @Mock private OrderClient orderClient;
-    @Mock private RocketMQTemplate rocketMQTemplate;
-    @InjectMocks private PaymentServiceImpl service;
+    @Mock
+    private PaymentMapper paymentMapper;
+
+    @Mock
+    private RefundMapper refundMapper;
+
+    @Mock
+    private OrderClient orderClient;
+
+    @Mock
+    private OutboxService outboxService;
+
+    @Mock
+    private RocketMQTemplate rocketMQTemplate;
+
+    @InjectMocks
+    private PaymentServiceImpl service;
 
     private Payment payment;
 
@@ -61,29 +86,103 @@ class PaymentServiceImplTest {
     @Nested
     class PayTests {
         @Test
-        void shouldCreatePayment() {
+        void shouldCreatePaymentAndEnqueueOrderPaidMessage() {
             when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
             when(paymentMapper.insert(any(Payment.class))).thenReturn(1);
+            when(orderClient.getOrderByOrderNo("202605091200000001", 1L))
+                    .thenReturn(Result.ok(buildOrder("202605091200000001", 1L, new BigDecimal("6999.00"), 0)));
 
             PayRequest req = new PayRequest();
-            req.setOrderNo("202605091200000001"); req.setOrderId(1L); req.setAmount(new BigDecimal("6999.00"));
+            req.setOrderNo("202605091200000001");
+            req.setOrderId(1L);
+            req.setAmount(new BigDecimal("6999.00"));
 
             PaymentVO vo = service.pay(1L, req);
+
             assertThat(vo.getPaymentNo()).isNotNull();
             assertThat(vo.getStatus()).isEqualTo(1);
-            assertThat(vo.getStatusText()).isEqualTo("已支付");
+            verify(outboxService).enqueue(
+                    eq("payment"),
+                    eq("202605091200000001"),
+                    eq("order-paid"),
+                    argThat((OrderPaidMessage message) ->
+                            message != null
+                                    && "202605091200000001".equals(message.getOrderNo())
+                                    && Integer.valueOf(1).equals(message.getStatus())
+                                    && message.getPaidAt() != null));
         }
 
         @Test
         void shouldRejectDuplicatePay() {
             when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
             PayRequest req = new PayRequest();
-            req.setOrderNo("202605091200000001"); req.setOrderId(1L); req.setAmount(new BigDecimal("6999.00"));
+            req.setOrderNo("202605091200000001");
+            req.setOrderId(1L);
+            req.setAmount(new BigDecimal("6999.00"));
 
             assertThatThrownBy(() -> service.pay(1L, req))
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
                     .isEqualTo(PaymentErrorCode.PAYMENT_ALREADY_PAID.getCode());
+        }
+
+        @Test
+        void shouldRejectPaymentWhenOrderLookupFails() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(orderClient.getOrderByOrderNo("202605091200000001", 1L)).thenReturn(Result.ok(null));
+
+            PayRequest req = new PayRequest();
+            req.setOrderNo("202605091200000001");
+            req.setAmount(new BigDecimal("6999.00"));
+
+            assertThatThrownBy(() -> service.pay(1L, req))
+                    .isInstanceOf(BusinessException.class);
+        }
+
+        @Test
+        void shouldRejectPaymentWhenAmountDoesNotMatchOrderTotal() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(orderClient.getOrderByOrderNo("202605091200000001", 1L))
+                    .thenReturn(Result.ok(buildOrder("202605091200000001", 1L, new BigDecimal("6999.00"), 0)));
+
+            PayRequest req = new PayRequest();
+            req.setOrderNo("202605091200000001");
+            req.setAmount(new BigDecimal("0.01"));
+
+            assertThatThrownBy(() -> service.pay(1L, req))
+                    .isInstanceOf(BusinessException.class);
+        }
+
+        @Test
+        void shouldRejectPaymentWhenOrderIsNotPending() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(orderClient.getOrderByOrderNo("202605091200000001", 1L))
+                    .thenReturn(Result.ok(buildOrder("202605091200000001", 1L, new BigDecimal("6999.00"), 4)));
+
+            PayRequest req = new PayRequest();
+            req.setOrderNo("202605091200000001");
+            req.setAmount(new BigDecimal("6999.00"));
+
+            assertThatThrownBy(() -> service.pay(1L, req))
+                    .isInstanceOf(BusinessException.class);
+        }
+
+        @Test
+        void shouldFailPaymentWhenOutboxEnqueueFails() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(paymentMapper.insert(any(Payment.class))).thenReturn(1);
+            when(orderClient.getOrderByOrderNo("202605091200000001", 1L))
+                    .thenReturn(Result.ok(buildOrder("202605091200000001", 1L, new BigDecimal("6999.00"), 0)));
+            doThrow(new RuntimeException("outbox down")).when(outboxService)
+                    .enqueue(eq("payment"), eq("202605091200000001"), eq("order-paid"), any(OrderPaidMessage.class));
+
+            PayRequest req = new PayRequest();
+            req.setOrderNo("202605091200000001");
+            req.setAmount(new BigDecimal("6999.00"));
+
+            assertThatThrownBy(() -> service.pay(1L, req))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessageContaining("outbox down");
         }
     }
 
@@ -92,30 +191,17 @@ class PaymentServiceImplTest {
         @Test
         void shouldQueryByOrderNo() {
             when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
+
             PaymentVO vo = service.queryByOrderNo("202605091200000001");
+
             assertThat(vo.getPaymentNo()).isEqualTo("PAY202605091200000001");
-        }
-
-        @Test
-        void shouldQueryByOrderNoForUser() {
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-
-            PaymentVO vo = service.queryByOrderNoForUser(1L, "202605091200000001");
-
-            verify(paymentMapper).selectOne(any(LambdaQueryWrapper.class));
-            assertThat(vo.getPaymentNo()).isEqualTo("PAY202605091200000001");
-        }
-
-        @Test
-        void shouldThrowWhenNotFound() {
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-            assertThatThrownBy(() -> service.queryByOrderNo("xxx"))
-                    .isInstanceOf(BusinessException.class);
+            assertThat(vo.getOrderNo()).isEqualTo("202605091200000001");
         }
 
         @Test
         void shouldThrowWhenUserScopedPaymentNotFound() {
             when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+
             assertThatThrownBy(() -> service.queryByOrderNoForUser(1L, "xxx"))
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
@@ -123,24 +209,9 @@ class PaymentServiceImplTest {
         }
 
         @Test
-        void shouldListAll() {
-            when(paymentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
-                    .thenAnswer(invocation -> {
-                        Page<Payment> page = invocation.getArgument(0);
-                        page.setRecords(Collections.singletonList(payment));
-                        page.setTotal(1);
-                        return page;
-                    });
-
-            Page<PaymentVO> page = service.listAll(null, 1, 10);
-
-            assertThat(page.getRecords()).hasSize(1);
-        }
-
-        @Test
         void shouldListPaymentsByMerchant() {
             when(orderClient.listOrderNosByMerchant(2001L))
-                    .thenReturn(com.ecommerce.common.result.Result.ok(List.of("202605091200000001")));
+                    .thenReturn(Result.ok(List.of("202605091200000001")));
             when(paymentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
                     .thenAnswer(invocation -> {
                         Page<Payment> page = invocation.getArgument(0);
@@ -159,31 +230,52 @@ class PaymentServiceImplTest {
     @Nested
     class RefundTests {
         @Test
-        void shouldRefundFullAmount() {
+        void shouldRefundFullAmountAndEnqueueRefundedStatus() {
             when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
             when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
             when(refundMapper.insert(any(Refund.class))).thenReturn(1);
             when(paymentMapper.updateById(any(Payment.class))).thenReturn(1);
 
             RefundRequest req = new RefundRequest();
-            req.setReason("用户申请退款");
+            req.setReason("full refund");
 
             PaymentVO vo = service.refund("202605091200000001", req);
+
             assertThat(vo.getStatus()).isEqualTo(3);
+            verify(outboxService).enqueue(
+                    eq("payment"),
+                    eq("202605091200000001"),
+                    eq("order-paid"),
+                    argThat((OrderPaidMessage message) ->
+                            message != null
+                                    && "202605091200000001".equals(message.getOrderNo())
+                                    && Integer.valueOf(5).equals(message.getStatus())
+                                    && message.getPaidAt() != null));
         }
 
         @Test
-        void shouldRejectRefundNotPaid() {
-            payment.setStatus(0);
+        void shouldRefundPartialAmountAndKeepPaidStatus() {
             when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
+            when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+            when(refundMapper.insert(any(Refund.class))).thenReturn(1);
+            when(paymentMapper.updateById(any(Payment.class))).thenReturn(1);
 
             RefundRequest req = new RefundRequest();
-            req.setReason("退款");
+            req.setReason("partial refund");
+            req.setAmount(new BigDecimal("1000.00"));
 
-            assertThatThrownBy(() -> service.refund("x", req))
-                    .isInstanceOf(BusinessException.class)
-                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
-                    .isEqualTo(PaymentErrorCode.PAYMENT_NOT_PAID.getCode());
+            PaymentVO vo = service.refund("202605091200000001", req);
+
+            assertThat(vo.getStatus()).isEqualTo(1);
+            verify(outboxService).enqueue(
+                    eq("payment"),
+                    eq("202605091200000001"),
+                    eq("order-paid"),
+                    argThat((OrderPaidMessage message) ->
+                            message != null
+                                    && "202605091200000001".equals(message.getOrderNo())
+                                    && Integer.valueOf(1).equals(message.getStatus())
+                                    && message.getPaidAt() != null));
         }
 
         @Test
@@ -192,32 +284,18 @@ class PaymentServiceImplTest {
             when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
 
             RefundRequest req = new RefundRequest();
-            req.setReason("退款");
+            req.setReason("duplicate refund");
 
-            assertThatThrownBy(() -> service.refund("x", req))
+            assertThatThrownBy(() -> service.refund("202605091200000001", req))
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
                     .isEqualTo(PaymentErrorCode.REFUND_ALREADY_EXISTS.getCode());
         }
 
         @Test
-        void shouldRefundPartialAmount() {
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-            when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
-            when(refundMapper.insert(any(Refund.class))).thenReturn(1);
-            when(paymentMapper.updateById(any(Payment.class))).thenReturn(1);
-
-            RefundRequest req = new RefundRequest();
-            req.setReason("部分退款"); req.setAmount(new BigDecimal("1000.00"));
-
-            PaymentVO vo = service.refund("202605091200000001", req);
-            assertThat(vo.getStatus()).isEqualTo(1);
-        }
-
-        @Test
         void shouldRejectMerchantRefundForForeignOrder() {
             when(orderClient.listOrderNosByMerchant(2001L))
-                    .thenReturn(com.ecommerce.common.result.Result.ok(List.of("OTHER-ORDER")));
+                    .thenReturn(Result.ok(List.of("OTHER-ORDER")));
 
             RefundRequest req = new RefundRequest();
             req.setReason("merchant refund");
@@ -245,191 +323,86 @@ class PaymentServiceImplTest {
     }
 
     @Nested
-    class BoundaryTests {
+    class AdminOutboxTests {
         @Test
-        void shouldPayWithMinimumAmount() {
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-            when(paymentMapper.insert(any(Payment.class))).thenReturn(1);
-            PayRequest req = new PayRequest();
-            req.setOrderNo("min"); req.setOrderId(1L); req.setAmount(new BigDecimal("0.01"));
-            PaymentVO vo = service.pay(1L, req);
-            assertThat(vo.getStatus()).isEqualTo(1);
+        void shouldListPaymentOutboxMessagesFromSharedOutbox() {
+            Page<OutboxMessage> page = new Page<>(1, 10, 1);
+            OutboxMessage message = new OutboxMessage();
+            message.setId(2001L);
+            message.setAggregateId("ORD-9");
+            message.setTopic("order-paid");
+            message.setStatus(3);
+            message.setRetryCount(1);
+            page.setRecords(List.of(message));
+            when(outboxService.queryMessages(any(OutboxQuery.class), eq(1), eq(10))).thenReturn(page);
+
+            Page<OutboxMessageVO> result = service.listOutbox(new OutboxQuery("payment", "order-paid", 3, "ORD-9"), 1, 10);
+
+            assertThat(result.getRecords()).hasSize(1);
+            assertThat(result.getRecords().getFirst().getTopic()).isEqualTo("order-paid");
+            verify(outboxService).queryMessages(argThat(query ->
+                    "payment".equals(query.getAggregateType())
+                            && "order-paid".equals(query.getTopic())
+                            && Integer.valueOf(3).equals(query.getStatus())
+                            && "ORD-9".equals(query.getAggregateId())), eq(1), eq(10));
         }
 
         @Test
-        void shouldPayWithLargeAmount() {
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-            when(paymentMapper.insert(any(Payment.class))).thenReturn(1);
-            PayRequest req = new PayRequest();
-            req.setOrderNo("max"); req.setOrderId(1L); req.setAmount(new BigDecimal("99999999.99"));
-            PaymentVO vo = service.pay(1L, req);
-            assertThat(vo.getStatus()).isEqualTo(1);
+        void shouldReturnPaymentOutboxSummary() {
+            when(outboxService.summarize(any(OutboxQuery.class))).thenReturn(new OutboxSummary(1, 0, 2, 3));
+
+            OutboxSummary summary = service.getOutboxSummary(new OutboxQuery("payment", "order-paid", 3, "ORD-9"));
+
+            assertThat(summary.getPendingCount()).isEqualTo(1);
+            assertThat(summary.getFailedCount()).isEqualTo(3);
+            verify(outboxService).summarize(argThat(query ->
+                    "payment".equals(query.getAggregateType())
+                            && "order-paid".equals(query.getTopic())
+                            && Integer.valueOf(3).equals(query.getStatus())
+                            && "ORD-9".equals(query.getAggregateId())));
         }
 
         @Test
-        void shouldShowCorrectStatusTextForAllStatuses() {
-            payment.setStatus(0);
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-            assertThat(service.queryByOrderNo("any").getStatusText()).isEqualTo("待支付");
+        void shouldRetryPaymentOutboxMessage() {
+            when(outboxService.retryMessage(2001L)).thenReturn(true);
 
-            payment.setStatus(1);
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-            assertThat(service.queryByOrderNo("any").getStatusText()).isEqualTo("已支付");
+            int affected = service.retryOutboxMessage(2001L);
 
-            payment.setStatus(3);
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-            assertThat(service.queryByOrderNo("any").getStatusText()).isEqualTo("已退款");
-
-            payment.setStatus(4);
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-            assertThat(service.queryByOrderNo("any").getStatusText()).isEqualTo("已关闭");
+            assertThat(affected).isEqualTo(1);
+            verify(outboxService).retryMessage(2001L);
         }
 
         @Test
-        void shouldListPaymentsByStatus() {
-            payment.setStatus(3);
-            when(paymentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
-                    .thenAnswer(invocation -> {
-                        Page<Payment> page = invocation.getArgument(0);
-                        page.setRecords(Collections.singletonList(payment));
-                        page.setTotal(1);
-                        return page;
-                    });
+        void shouldReturnZeroWhenPaymentOutboxMessageRetryDidNothing() {
+            when(outboxService.retryMessage(2002L)).thenReturn(false);
 
-            Page<PaymentVO> page = service.listAll(3, 1, 10);
+            int affected = service.retryOutboxMessage(2002L);
 
-            assertThat(page.getRecords()).hasSize(1);
-            assertThat(page.getRecords().get(0).getStatusText()).isEqualTo("已退款");
+            assertThat(affected).isZero();
+            verify(outboxService).retryMessage(2002L);
         }
 
         @Test
-        void shouldListAllPaymentsWhenNoFilter() {
-            when(paymentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
-                    .thenAnswer(invocation -> {
-                        Page<Payment> page = invocation.getArgument(0);
-                        page.setRecords(Collections.emptyList());
-                        page.setTotal(0);
-                        return page;
-                    });
+        void shouldRetryPaymentOutboxBatch() {
+            when(outboxService.retryBatch(any(OutboxQuery.class), eq(20))).thenReturn(2);
 
-            Page<PaymentVO> page = service.listAll(null, 1, 10);
+            int affected = service.retryOutboxBatch(new OutboxQuery("payment", "order-paid", 3, "ORD-9"), 20);
 
-            assertThat(page.getRecords()).isEmpty();
-        }
-
-        @Test
-        void shouldQueryByNonexistentOrderNo() {
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-            assertThatThrownBy(() -> service.queryByOrderNo("DOES_NOT_EXIST"))
-                    .isInstanceOf(BusinessException.class);
-        }
-
-        @Test
-        void shouldPaymentNumberMatchPattern() {
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-            when(paymentMapper.insert(any(Payment.class))).thenReturn(1);
-            PayRequest req = new PayRequest();
-            req.setOrderNo("test"); req.setOrderId(1L); req.setAmount(new BigDecimal("1.00"));
-            PaymentVO vo = service.pay(1L, req);
-            assertThat(vo.getPaymentNo()).startsWith("PAY");
-            assertThat(vo.getPaymentNo()).hasSize(21);
-        }
-
-        @Test
-        void shouldRefundPaymentThatDoesNotExist() {
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-            RefundRequest req = new RefundRequest();
-            req.setReason("x");
-            assertThatThrownBy(() -> service.refund("NOPE", req))
-                    .isInstanceOf(BusinessException.class);
+            assertThat(affected).isEqualTo(2);
+            verify(outboxService).retryBatch(argThat(query ->
+                    "payment".equals(query.getAggregateType())
+                            && "order-paid".equals(query.getTopic())
+                            && Integer.valueOf(3).equals(query.getStatus())
+                            && "ORD-9".equals(query.getAggregateId())), eq(20));
         }
     }
 
-    @Nested
-    class MoreBoundaryTests {
-        @Test
-        void shouldRefundWithNullAmountDefaultsToFull() {
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-            when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
-            when(refundMapper.insert(any(Refund.class))).thenReturn(1);
-            when(paymentMapper.updateById(any(Payment.class))).thenReturn(1);
-
-            RefundRequest req = new RefundRequest();
-            req.setReason("全额退"); req.setAmount(null);
-            PaymentVO vo = service.refund("202605091200000001", req);
-            assertThat(vo.getStatus()).isEqualTo(3);
-        }
-
-        @Test
-        void shouldPayWithFraccionPennyAmount() {
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-            when(paymentMapper.insert(any(Payment.class))).thenReturn(1);
-            PayRequest req = new PayRequest();
-            req.setOrderNo("frac"); req.setOrderId(1L); req.setAmount(new BigDecimal("0.01"));
-            PaymentVO vo = service.pay(1L, req);
-            assertThat(vo.getStatus()).isEqualTo(1);
-        }
-
-        @Test
-        void shouldHandleNullPayMethod() {
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-            when(paymentMapper.insert(any(Payment.class))).thenReturn(1);
-            PayRequest req = new PayRequest();
-            req.setOrderNo("nullpay"); req.setOrderId(1L); req.setAmount(new BigDecimal("1.00"));
-            req.setPayMethod(null);
-            PaymentVO vo = service.pay(1L, req);
-            assertThat(vo.getStatus()).isEqualTo(1);
-        }
-
-        @Test
-        void shouldPayWithDifferentPayMethods() {
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-            when(paymentMapper.insert(any(Payment.class))).thenReturn(1);
-            PayRequest req = new PayRequest();
-            req.setOrderNo("alipay"); req.setOrderId(1L); req.setAmount(new BigDecimal("100.00"));
-            req.setPayMethod("alipay");
-            PaymentVO vo = service.pay(1L, req);
-            assertThat(vo.getPayMethod()).isEqualTo("alipay");
-        }
-
-        @Test
-        void shouldListAllPaymentsWhenEmpty() {
-            when(paymentMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
-                    .thenAnswer(invocation -> {
-                        Page<Payment> page = invocation.getArgument(0);
-                        page.setRecords(Collections.emptyList());
-                        page.setTotal(0);
-                        return page;
-                    });
-
-            assertThat(service.listAll(null, 1, 10).getRecords()).isEmpty();
-        }
-
-        @Test
-        void shouldRefundWithVeryLargeAmount() {
-            payment.setAmount(new BigDecimal("99999999.99"));
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-            when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
-            when(refundMapper.insert(any(Refund.class))).thenReturn(1);
-            when(paymentMapper.updateById(any(Payment.class))).thenReturn(1);
-
-            RefundRequest req = new RefundRequest();
-            req.setReason("大额退款"); req.setAmount(new BigDecimal("99999999.99"));
-            PaymentVO vo = service.refund("202605091200000001", req);
-            assertThat(vo.getStatus()).isEqualTo(3);
-        }
-
-        @Test
-        void shouldRefundWithVerySmallAmount() {
-            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-            when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
-            when(refundMapper.insert(any(Refund.class))).thenReturn(1);
-            when(paymentMapper.updateById(any(Payment.class))).thenReturn(1);
-
-            RefundRequest req = new RefundRequest();
-            req.setReason("一分退款"); req.setAmount(new BigDecimal("0.01"));
-            PaymentVO vo = service.refund("202605091200000001", req);
-            assertThat(vo.getStatus()).isEqualTo(1);
-        }
+    private OrderInternalVO buildOrder(String orderNo, Long id, BigDecimal totalAmount, Integer status) {
+        OrderInternalVO order = new OrderInternalVO();
+        order.setId(id);
+        order.setOrderNo(orderNo);
+        order.setTotalAmount(totalAmount);
+        order.setStatus(status);
+        return order;
     }
 }

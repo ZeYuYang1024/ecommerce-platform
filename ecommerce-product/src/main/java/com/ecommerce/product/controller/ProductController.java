@@ -197,7 +197,7 @@ public class ProductController {
         return Result.ok(owner);
     }
 
-    @GetMapping("/products/skus/batch")
+    @GetMapping("/internal/products/skus/batch")
     public Result<List<SkuBatchVO>> batchQuerySkus(@RequestParam("ids") List<Long> ids) {
         List<Sku> skus = productService.getSkusByIds(ids);
         if (skus.isEmpty()) return Result.ok(List.of());
@@ -213,8 +213,12 @@ public class ProductController {
             vo.setSkuName(sku.getName());
             vo.setSpuId(sku.getSpuId());
             vo.setPrice(sku.getPrice());
+            vo.setImage(sku.getImage());
             Spu spu = spuMap.get(sku.getSpuId());
-            if (spu != null) vo.setSpuName(spu.getName());
+            if (spu != null) {
+                vo.setSpuName(spu.getName());
+                vo.setMerchantId(spu.getMerchantId());
+            }
             result.add(vo);
         }
         return Result.ok(result);

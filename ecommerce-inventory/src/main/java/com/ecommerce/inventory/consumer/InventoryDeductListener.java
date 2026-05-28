@@ -1,8 +1,7 @@
 package com.ecommerce.inventory.consumer;
 
 import com.ecommerce.common.dto.OrderInventoryMessage;
-import com.ecommerce.common.dto.OrderItemMessage;
-import com.ecommerce.inventory.service.StockService;
+import com.ecommerce.inventory.service.InventoryMessageService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
@@ -13,18 +12,15 @@ import org.springframework.stereotype.Component;
 @RocketMQMessageListener(topic = "order-created", consumerGroup = "${spring.application.name}-deduct")
 public class InventoryDeductListener implements RocketMQListener<OrderInventoryMessage> {
 
-    private final StockService stockService;
+    private final InventoryMessageService inventoryMessageService;
 
-    public InventoryDeductListener(StockService stockService) {
-        this.stockService = stockService;
+    public InventoryDeductListener(InventoryMessageService inventoryMessageService) {
+        this.inventoryMessageService = inventoryMessageService;
     }
 
     @Override
     public void onMessage(OrderInventoryMessage msg) {
         log.info("MQ deduct: orderNo={} items={}", msg.getOrderNo(), msg.getItems().size());
-        for (OrderItemMessage item : msg.getItems()) {
-            stockService.deduct(item.getSkuId(), item.getQuantity());
-            log.info("Deducted: skuId={} qty={}", item.getSkuId(), item.getQuantity());
-        }
+        inventoryMessageService.handleDeduct(msg);
     }
 }

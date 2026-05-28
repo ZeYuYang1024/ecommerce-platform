@@ -1,8 +1,11 @@
 package com.ecommerce.inventory.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.inventory.dto.response.InventoryEventLogVO;
+import com.ecommerce.inventory.dto.response.InventoryEventSummaryVO;
 import com.ecommerce.inventory.dto.request.StockSetRequest;
 import com.ecommerce.inventory.dto.response.StockVO;
+import com.ecommerce.inventory.service.InventoryEventAdminService;
 import com.ecommerce.inventory.service.StockService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,11 +30,14 @@ class StockControllerTest {
     @Mock
     private StockService stockService;
 
+    @Mock
+    private InventoryEventAdminService inventoryEventAdminService;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new StockController(stockService)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new StockController(stockService, inventoryEventAdminService)).build();
     }
 
     @Test
@@ -88,5 +94,79 @@ class StockControllerTest {
                 .andExpect(jsonPath("$.code").value(200));
 
         verify(stockService).setStock(100L, 66);
+    }
+
+    @Test
+    void legacyAdminInventoryAliasShouldNotBeMapped() throws Exception {
+        mockMvc.perform(get("/api/v1/inventory/admin/list"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void publicDeductRouteShouldNotBeMapped() throws Exception {
+        mockMvc.perform(post("/api/v1/inventory/deduct")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "skuId": 100,
+                                  "quantity": 2
+                                }
+                                """))
+                .andExpect(status().is4xxClientError());
+    }
+
+    @Test
+    void internalDeductRouteShouldBeMapped() throws Exception {
+        mockMvc.perform(post("/api/v1/internal/inventory/deduct")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "skuId": 100,
+                                  "quantity": 2
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(stockService).deduct(100L, 2);
+    }
+
+    @Test
+    void inventoryEventsShouldUseCanonicalAdminRoute() throws Exception {
+        Page<InventoryEventLogVO> page = new Page<>(1, 10, 1);
+        InventoryEventLogVO vo = new InventoryEventLogVO();
+        vo.setId(3001L);
+        vo.setTopic("order-created");
+        vo.setOrderNo("ORD-1");
+        vo.setStatus(1);
+        page.setRecords(java.util.List.of(vo));
+        when(inventoryEventAdminService.listEvents("order-created", "ORD-1", 1, 1, 10)).thenReturn(page);
+
+        mockMvc.perform(get("/api/v1/admin/inventory/events")
+                        .param("topic", "order-created")
+                        .param("orderNo", "ORD-1")
+                        .param("status", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.records[0].orderNo").value("ORD-1"));
+
+        verify(inventoryEventAdminService).listEvents("order-created", "ORD-1", 1, 1, 10);
+    }
+
+    @Test
+    void inventoryEventSummaryShouldUseCanonicalAdminRoute() throws Exception {
+        when(inventoryEventAdminService.summarize("order-created", "ORD-1", 1))
+                .thenReturn(new InventoryEventSummaryVO(1, 2));
+
+        mockMvc.perform(get("/api/v1/admin/inventory/events/summary")
+                        .param("topic", "order-created")
+                        .param("orderNo", "ORD-1")
+                        .param("status", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.processingCount").value(1))
+                .andExpect(jsonPath("$.data.processedCount").value(2));
+
+        verify(inventoryEventAdminService).summarize("order-created", "ORD-1", 1);
     }
 }

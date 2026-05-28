@@ -20,3 +20,9 @@ management:
   endpoint:
     health:
       show-details: ALWAYS
+
+reliability:
+  thresholds:
+    failed-backlog: 20
+    exhausted-retries: 1
+    oldest-retryable-age-minutes: 30

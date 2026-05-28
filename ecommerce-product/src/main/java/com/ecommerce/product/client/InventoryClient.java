@@ -9,6 +9,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 @FeignClient(name = "ecommerce-inventory", fallbackFactory = InventoryClientFallback.class)
 public interface InventoryClient {
 
-    @PostMapping("/api/v1/inventory/admin/{skuId}")
+    @PostMapping("/api/v1/internal/inventory/{skuId}")
     Result<Void> initStock(@PathVariable Long skuId, @RequestBody StockSetRequest request);
 }
