@@ -130,8 +130,8 @@ public class StockServiceImpl implements StockService {
                     new LambdaUpdateWrapper<Stock>()
                             .eq(Stock::getSkuId, skuId)
                             .eq(Stock::getVersion, stock.getVersion())
-                            .apply("locked_stock = locked_stock + {0}", quantity)
-                            .apply("available_stock = available_stock - {0}", quantity)
+                            .setSql("locked_stock = locked_stock + " + quantity)
+                            .setSql("available_stock = available_stock - " + quantity)
                             .setSql("version = version + 1"));
             if (updated > 0) {
                 return;
@@ -155,8 +155,8 @@ public class StockServiceImpl implements StockService {
                     new LambdaUpdateWrapper<Stock>()
                             .eq(Stock::getSkuId, skuId)
                             .eq(Stock::getVersion, stock.getVersion())
-                            .apply("locked_stock = locked_stock - {0}", quantity)
-                            .apply("available_stock = available_stock + {0}", quantity)
+                            .setSql("locked_stock = locked_stock - " + quantity)
+                            .setSql("available_stock = available_stock + " + quantity)
                             .setSql("version = version + 1"));
             if (updated > 0) {
                 return;
@@ -182,8 +182,8 @@ public class StockServiceImpl implements StockService {
                         new LambdaUpdateWrapper<Stock>()
                                 .eq(Stock::getSkuId, skuId)
                                 .eq(Stock::getVersion, existing.getVersion())
-                                .apply("total_stock = {0}", totalStock)
-                                .apply("available_stock = available_stock + {0}", diff)
+                                .setSql("total_stock = " + totalStock)
+                                .setSql("available_stock = available_stock + " + diff)
                                 .setSql("version = version + 1"));
                 if (updated > 0) {
                     return;

@@ -1,6 +1,7 @@
 package com.ecommerce.order.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.ecommerce.common.dto.OrderPaidMessage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.SkuBatchVO;
@@ -181,6 +182,26 @@ class OrderServiceImplTest {
         }
 
         @Test
+        void shouldAttachTransactionMetadataToInventoryMessage() {
+            when(orderMapper.insert(any(Order.class))).thenReturn(1);
+            when(itemMapper.insert(any(OrderItem.class))).thenReturn(1);
+            when(productSpuClient.batchQuerySkus(anyList()))
+                    .thenReturn(Result.ok(List.of(buildSku(1L, 11L, "A", "a.png", "10.00"))));
+
+            CreateOrderRequest req = buildRequest(List.of(buildRequestItem(1L, 2, "0.01")));
+
+            service.createOrder(1L, req);
+
+            verify(outboxService).enqueue(eq("order"), anyString(), eq("order-created"),
+                    argThat((OrderInventoryMessage message) ->
+                            message != null
+                                    && message.getTransactionId() != null
+                                    && !message.getTransactionId().isBlank()
+                                    && message.getIdempotencyKey() != null
+                                    && !message.getIdempotencyKey().isBlank()));
+        }
+
+        @Test
         void shouldNotSendMqDirectlyFromCreateOrder() {
             when(orderMapper.insert(any(Order.class))).thenReturn(1);
             when(itemMapper.insert(any(OrderItem.class))).thenReturn(1);
@@ -313,6 +334,31 @@ class OrderServiceImplTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(OrderErrorCode.ORDER_FORBIDDEN);
+        }
+    }
+
+    @Nested
+    class TransactionTests {
+        @Test
+        void shouldCancelPendingOrderWhenInventoryCompensationMessageArrives() {
+            order.setStatus(0);
+            when(orderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(order);
+            when(orderMapper.updateById(any(Order.class))).thenReturn(1);
+
+            service.applyInventoryCompensation(new OrderPaidMessage("202605091200000001", 4, LocalDateTime.now()));
+
+            assertThat(order.getStatus()).isEqualTo(4);
+            verify(orderMapper).updateById(order);
+        }
+
+        @Test
+        void shouldIgnoreInventoryCompensationWhenOrderAlreadyPaid() {
+            order.setStatus(1);
+            when(orderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(order);
+
+            service.applyInventoryCompensation(new OrderPaidMessage("202605091200000001", 4, LocalDateTime.now()));
+
+            verify(orderMapper, never()).updateById(order);
         }
     }
 

@@ -37,12 +37,19 @@ function warningMarkup(warning) {
 
 function rowStatus(status) {
   const mapping = {
+    0: "pending",
+    1: "sending",
+    2: "sent",
+    3: "failed"
+  };
+  return mapping[status] || String(status ?? "");
+}
+
+function inventoryStatus(status) {
+  const mapping = {
     0: "processing",
     1: "processed",
-    2: "sending",
-    3: "failed",
-    4: "cancelled",
-    5: "refunded"
+    2: "failed"
   };
   return mapping[status] || String(status ?? "");
 }
@@ -63,6 +70,7 @@ async function loadOverview() {
   setText("payment-failed-count", overview.failedPaymentOutboxCount);
   setText("exhausted-count", overview.exhaustedRetryCount);
   setText("inventory-processing-count", overview.inventoryProcessingCount);
+  setText("inventory-failed-count", overview.inventoryFailedCount);
   setText("degraded-sections", (overview.degradedSections || []).join(", "));
 
   const warnings = document.getElementById("warnings");
@@ -115,7 +123,7 @@ async function loadInventory() {
       <td>${record.id ?? ""}</td>
       <td>${record.orderNo ?? ""}</td>
       <td>${record.topic ?? ""}</td>
-      <td>${rowStatus(record.status)}</td>
+      <td>${inventoryStatus(record.status)}</td>
       <td>${record.createdAt ?? ""}</td>
     </tr>
   `).join("");

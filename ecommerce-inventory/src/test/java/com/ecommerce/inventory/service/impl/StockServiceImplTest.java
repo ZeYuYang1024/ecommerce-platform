@@ -1,6 +1,7 @@
 package com.ecommerce.inventory.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.inventory.common.InventoryErrorCode;
 import com.ecommerce.inventory.dto.response.StockVO;
@@ -101,6 +102,23 @@ class StockServiceImplTest {
         }
 
         @Test
+        void deduct_shouldBuildExecutableUpdateSql() {
+            when(stockMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(stock);
+            LambdaUpdateWrapper<Stock>[] wrapperHolder = new LambdaUpdateWrapper[1];
+            when(stockMapper.update(eq(null), any())).thenAnswer(invocation -> {
+                wrapperHolder[0] = invocation.getArgument(1);
+                return 1;
+            });
+
+            stockService.deduct(100L, 10);
+
+            assertThat(wrapperHolder[0].getSqlSet())
+                    .contains("locked_stock = locked_stock + 10")
+                    .contains("available_stock = available_stock - 10")
+                    .contains("version = version + 1");
+        }
+
+        @Test
         void deduct_shouldThrow_whenInsufficient() {
             stock = new Stock();
             stock.setSkuId(100L);
@@ -129,6 +147,23 @@ class StockServiceImplTest {
 
             verify(stockMapper).update(isNull(), any());
         }
+
+        @Test
+        void release_shouldBuildExecutableUpdateSql() {
+            when(stockMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(stock);
+            LambdaUpdateWrapper<Stock>[] wrapperHolder = new LambdaUpdateWrapper[1];
+            when(stockMapper.update(eq(null), any())).thenAnswer(invocation -> {
+                wrapperHolder[0] = invocation.getArgument(1);
+                return 1;
+            });
+
+            stockService.release(100L, 10);
+
+            assertThat(wrapperHolder[0].getSqlSet())
+                    .contains("locked_stock = locked_stock - 10")
+                    .contains("available_stock = available_stock + 10")
+                    .contains("version = version + 1");
+        }
     }
 
     @Nested
@@ -152,6 +187,23 @@ class StockServiceImplTest {
             stockService.setStock(100L, 600);
 
             verify(stockMapper).update(isNull(), any());
+        }
+
+        @Test
+        void setStock_shouldBuildExecutableUpdateSql() {
+            when(stockMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(stock);
+            LambdaUpdateWrapper<Stock>[] wrapperHolder = new LambdaUpdateWrapper[1];
+            when(stockMapper.update(eq(null), any())).thenAnswer(invocation -> {
+                wrapperHolder[0] = invocation.getArgument(1);
+                return 1;
+            });
+
+            stockService.setStock(100L, 600);
+
+            assertThat(wrapperHolder[0].getSqlSet())
+                    .contains("total_stock = 600")
+                    .contains("available_stock = available_stock + 100")
+                    .contains("version = version + 1");
         }
 
         @Test

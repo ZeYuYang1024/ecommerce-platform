@@ -31,6 +31,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.math.BigDecimal;
 import java.util.Collections;
@@ -42,6 +44,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -109,7 +112,11 @@ class PaymentServiceImplTest {
                             message != null
                                     && "202605091200000001".equals(message.getOrderNo())
                                     && Integer.valueOf(1).equals(message.getStatus())
-                                    && message.getPaidAt() != null));
+                                    && message.getPaidAt() != null
+                                    && message.getTransactionId() != null
+                                    && !message.getTransactionId().isBlank()
+                                    && message.getIdempotencyKey() != null
+                                    && message.getIdempotencyKey().startsWith("payment-paid:")));
         }
 
         @Test
@@ -184,6 +191,45 @@ class PaymentServiceImplTest {
                     .isInstanceOf(RuntimeException.class)
                     .hasMessageContaining("outbox down");
         }
+
+        @Test
+        void shouldTranslateDuplicateOrderInsertIntoAlreadyPaid() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null, payment);
+            when(paymentMapper.insert(any(Payment.class)))
+                    .thenThrow(new DuplicateKeyException("Duplicate entry '202605091200000001' for key 'uk_payment_order_no'"));
+            when(orderClient.getOrderByOrderNo("202605091200000001", 1L))
+                    .thenReturn(Result.ok(buildOrder("202605091200000001", 1L, new BigDecimal("6999.00"), 0)));
+
+            PayRequest req = new PayRequest();
+            req.setOrderNo("202605091200000001");
+            req.setAmount(new BigDecimal("6999.00"));
+
+            assertThatThrownBy(() -> service.pay(1L, req))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(PaymentErrorCode.PAYMENT_ALREADY_PAID.getCode());
+            verify(outboxService, never()).enqueue(any(), any(), any(), any(OrderPaidMessage.class));
+        }
+
+        @Test
+        void shouldRethrowUnexpectedInsertIntegrityViolation() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class)))
+                    .thenReturn((Payment) null)
+                    .thenReturn((Payment) null);
+            when(paymentMapper.insert(any(Payment.class)))
+                    .thenThrow(new DataIntegrityViolationException("payment insert failed"));
+            when(orderClient.getOrderByOrderNo("202605091200000001", 1L))
+                    .thenReturn(Result.ok(buildOrder("202605091200000001", 1L, new BigDecimal("6999.00"), 0)));
+
+            PayRequest req = new PayRequest();
+            req.setOrderNo("202605091200000001");
+            req.setAmount(new BigDecimal("6999.00"));
+
+            assertThatThrownBy(() -> service.pay(1L, req))
+                    .isInstanceOf(DataIntegrityViolationException.class)
+                    .hasMessageContaining("payment insert failed");
+            verify(outboxService, never()).enqueue(any(), any(), any(), any(OrderPaidMessage.class));
+        }
     }
 
     @Nested
@@ -250,7 +296,11 @@ class PaymentServiceImplTest {
                             message != null
                                     && "202605091200000001".equals(message.getOrderNo())
                                     && Integer.valueOf(5).equals(message.getStatus())
-                                    && message.getPaidAt() != null));
+                                    && message.getPaidAt() != null
+                                    && message.getTransactionId() != null
+                                    && !message.getTransactionId().isBlank()
+                                    && message.getIdempotencyKey() != null
+                                    && message.getIdempotencyKey().startsWith("payment-refund:")));
         }
 
         @Test

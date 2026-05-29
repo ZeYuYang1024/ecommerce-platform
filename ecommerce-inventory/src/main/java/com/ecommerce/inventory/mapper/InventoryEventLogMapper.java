@@ -15,4 +15,11 @@ public interface InventoryEventLogMapper extends BaseMapper<InventoryEventLog> {
             WHERE id = #{id}
             """)
     int markProcessed(@Param("id") Long id);
+
+    @Update("""
+            UPDATE inventory_event_log
+            SET status = 2
+            WHERE id = #{id}
+            """)
+    int markFailed(@Param("id") Long id);
 }

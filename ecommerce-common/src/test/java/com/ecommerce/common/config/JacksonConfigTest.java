@@ -1,5 +1,4 @@
 package com.ecommerce.common.config;
-
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.json.JsonMapper;

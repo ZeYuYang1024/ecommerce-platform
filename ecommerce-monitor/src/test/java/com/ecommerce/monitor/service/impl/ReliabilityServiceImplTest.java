@@ -54,7 +54,7 @@ class ReliabilityServiceImplTest {
         when(paymentReliabilityClient.getOutboxSummary(null, null, null))
                 .thenReturn(Result.ok(new OutboxSummary(2, 0, 1, 2, 1, LocalDateTime.of(2026, 5, 28, 19, 50))));
         when(inventoryReliabilityClient.getEventSummary(null, null, null))
-                .thenReturn(Result.ok(new InventoryEventSummaryVO(3, 18)));
+                .thenReturn(Result.ok(new InventoryEventSummaryVO(3, 18, 2)));
 
         ReliabilityOverviewVO overview = service.getOverview();
 
@@ -63,6 +63,7 @@ class ReliabilityServiceImplTest {
         assertThat(overview.getExhaustedRetryCount()).isEqualTo(1);
         assertThat(overview.getInventoryProcessingCount()).isEqualTo(3);
         assertThat(overview.getInventoryProcessedCount()).isEqualTo(18);
+        assertThat(overview.getInventoryFailedCount()).isEqualTo(2);
     }
 
     @Test
@@ -80,7 +81,7 @@ class ReliabilityServiceImplTest {
         when(paymentReliabilityClient.getOutboxSummary(null, null, null))
                 .thenReturn(Result.ok(new OutboxSummary(0, 0, 1, 0, 0, null)));
         when(inventoryReliabilityClient.getEventSummary(null, null, null))
-                .thenReturn(Result.ok(new InventoryEventSummaryVO(0, 10)));
+                .thenReturn(Result.ok(new InventoryEventSummaryVO(0, 10, 1)));
 
         ReliabilityOverviewVO overview = service.getOverview();
 
@@ -102,7 +103,7 @@ class ReliabilityServiceImplTest {
         when(paymentReliabilityClient.getOutboxSummary(null, null, null))
                 .thenReturn(Result.ok(new OutboxSummary(0, 0, 1, 2, 0, null)));
         when(inventoryReliabilityClient.getEventSummary(null, null, null))
-                .thenReturn(Result.ok(new InventoryEventSummaryVO(1, 9)));
+                .thenReturn(Result.ok(new InventoryEventSummaryVO(1, 9, 0)));
 
         ReliabilityOverviewVO overview = service.getOverview();
 

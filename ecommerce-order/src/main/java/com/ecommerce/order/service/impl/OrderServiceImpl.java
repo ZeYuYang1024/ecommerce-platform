@@ -5,12 +5,14 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.OrderItemMessage;
+import com.ecommerce.common.dto.OrderPaidMessage;
 import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.common.outbox.OutboxMessage;
 import com.ecommerce.common.outbox.OutboxQuery;
 import com.ecommerce.common.outbox.OutboxSummary;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.common.transaction.DistributedTransactionContext;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.order.client.CartClient;
 import com.ecommerce.order.client.ProductSpuClient;
@@ -24,6 +26,7 @@ import com.ecommerce.order.entity.OrderItem;
 import com.ecommerce.order.mapper.OrderItemMapper;
 import com.ecommerce.order.mapper.OrderMapper;
 import com.ecommerce.order.service.OrderService;
+import com.ecommerce.order.transaction.OrderTransactionCoordinator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -74,19 +77,19 @@ public class OrderServiceImpl implements OrderService {
             total = total.add(price.multiply(BigDecimal.valueOf(item.getQuantity())));
         }
 
-        // Create order
+        // Create order / 创建订单
         Order order = new Order();
         order.setId(SnowflakeUtils.nextId());
         order.setOrderNo(generateOrderNo());
         order.setUserId(userId);
         order.setTotalAmount(total);
-        order.setStatus(0); // 待支付
+        order.setStatus(0); // Pending payment / 待支付
         order.setReceiverName(request.getReceiverName());
         order.setReceiverPhone(request.getReceiverPhone());
         order.setReceiverAddress(request.getReceiverAddress());
         orderMapper.insert(order);
 
-        // Create order items
+        // Create order items / 创建订单项
         List<OrderItemMessage> lockItems = new ArrayList<>();
         for (CreateOrderRequest.OrderItemRequest i : request.getItems()) {
             SkuBatchVO sku = skuMap.get(i.getSkuId());
@@ -107,10 +110,12 @@ public class OrderServiceImpl implements OrderService {
             lockItems.add(new OrderItemMessage(i.getSkuId(), i.getQuantity()));
         }
 
-        outboxService.enqueue("order", order.getOrderNo(), "order-created",
-                new OrderInventoryMessage(order.getOrderNo(), lockItems));
+        DistributedTransactionContext transaction = OrderTransactionCoordinator.startOrderCreated(order.getOrderNo());
 
-        // 清空购物车已购商品（best-effort）
+        outboxService.enqueue("order", order.getOrderNo(), "order-created",
+                OrderTransactionCoordinator.buildInventoryMessage(transaction, lockItems));
+
+        // Best-effort cart refresh after checkout / 下单后尽力刷新购物车
         try {
             cartClient.getCart(userId);
         } catch (Exception e) {
@@ -283,6 +288,27 @@ public class OrderServiceImpl implements OrderService {
         ensureMerchantOwnsOrder(order, userType, merchantId);
         validateStatusTransition(order.getStatus(), status);
         order.setStatus(status);
+        orderMapper.updateById(order);
+    }
+
+    @Override
+    @Transactional
+    public void applyInventoryCompensation(OrderPaidMessage message) {
+        if (message == null || message.getOrderNo() == null || message.getStatus() == null) {
+            return;
+        }
+        Order order = orderMapper.selectOne(
+                new LambdaQueryWrapper<Order>().eq(Order::getOrderNo, message.getOrderNo()));
+        if (order == null) {
+            log.warn("Ignore inventory compensation for missing order: {}", message.getOrderNo());
+            return;
+        }
+        if (!OrderTransactionCoordinator.shouldApplyInventoryCompensation(order.getStatus(), message.getStatus())) {
+            log.warn("Ignore inventory compensation: orderNo={}, currentStatus={}, incomingStatus={}",
+                    message.getOrderNo(), order.getStatus(), message.getStatus());
+            return;
+        }
+        order.setStatus(message.getStatus());
         orderMapper.updateById(order);
     }
 

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ecommerce.common.dto.OrderPaidMessage;
 import com.ecommerce.order.entity.Order;
 import com.ecommerce.order.mapper.OrderMapper;
+import com.ecommerce.order.service.OrderService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
@@ -18,9 +19,11 @@ import org.springframework.stereotype.Component;
 public class OrderPaidConsumer implements RocketMQListener<OrderPaidMessage> {
 
     private final OrderMapper orderMapper;
+    private final OrderService orderService;
 
-    public OrderPaidConsumer(OrderMapper orderMapper) {
+    public OrderPaidConsumer(OrderMapper orderMapper, OrderService orderService) {
         this.orderMapper = orderMapper;
+        this.orderService = orderService;
     }
 
     @Override
@@ -41,6 +44,10 @@ public class OrderPaidConsumer implements RocketMQListener<OrderPaidMessage> {
                     message.getOrderNo(), order.getStatus(), message.getStatus());
             return;
         }
+        if (message.getStatus() == 4) {
+            orderService.applyInventoryCompensation(message);
+            return;
+        }
         order.setStatus(message.getStatus());
         orderMapper.updateById(order);
         log.info("Order status updated: {} -> {}", message.getOrderNo(), message.getStatus());
@@ -55,6 +62,9 @@ public class OrderPaidConsumer implements RocketMQListener<OrderPaidMessage> {
         }
         if (incomingStatus == 5) {
             return currentStatus == 1;
+        }
+        if (incomingStatus == 4) {
+            return currentStatus == 0;
         }
         return false;
     }

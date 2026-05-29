@@ -76,6 +76,7 @@ public class ReliabilityServiceImpl implements ReliabilityService {
         overview.setExhaustedRetryCount(orderSummary.getExhaustedCount() + paymentSummary.getExhaustedCount());
         overview.setInventoryProcessingCount(inventorySummary.getProcessingCount());
         overview.setInventoryProcessedCount(inventorySummary.getProcessedCount());
+        overview.setInventoryFailedCount(inventorySummary.getFailedCount());
         overview.setDegradedSections(degradedSections);
 
         Long oldestRetryableAge = calculateOldestRetryableAgeMinutes(orderSummary, paymentSummary);
@@ -146,7 +147,7 @@ public class ReliabilityServiceImpl implements ReliabilityService {
             return requireData(inventoryReliabilityClient.getEventSummary(null, null, null));
         } catch (Exception ex) {
             degradedSections.add("inventory");
-            return new InventoryEventSummaryVO(0, 0);
+            return new InventoryEventSummaryVO(0, 0, 0);
         }
     }
 

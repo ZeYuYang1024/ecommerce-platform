@@ -3,6 +3,7 @@ package com.ecommerce.order.service;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.outbox.OutboxQuery;
 import com.ecommerce.common.outbox.OutboxSummary;
+import com.ecommerce.common.dto.OrderPaidMessage;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
 import com.ecommerce.order.dto.response.OutboxMessageVO;
 import com.ecommerce.order.dto.response.OrderSummaryVO;
@@ -25,6 +26,7 @@ public interface OrderService {
     List<Order> listForRecon(LocalDateTime start, LocalDateTime end);
     void markShipped(Long id, String userType, Long merchantId);
     void updateStatus(Long id, Integer status, String userType, Long merchantId);
+    void applyInventoryCompensation(OrderPaidMessage message);
     Page<OutboxMessageVO> listOutbox(OutboxQuery query, int page, int size);
     OutboxSummary getOutboxSummary(OutboxQuery query);
     int retryOutboxMessage(Long messageId);

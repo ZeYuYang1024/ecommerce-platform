@@ -13,6 +13,7 @@ public class ReliabilityOverviewVO {
     private long exhaustedRetryCount;
     private long inventoryProcessedCount;
     private long inventoryProcessingCount;
+    private long inventoryFailedCount;
     private long orderPendingCount;
     private long paymentPendingCount;
     private Long oldestRetryableAgeMinutes;

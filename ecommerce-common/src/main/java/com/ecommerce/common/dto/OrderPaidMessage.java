@@ -1,5 +1,6 @@
 package com.ecommerce.common.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -14,5 +15,13 @@ public class OrderPaidMessage implements Serializable {
 
     private String orderNo;
     private Integer status;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime paidAt;
+    private String transactionId;
+    private String idempotencyKey;
+    private String errorMessage;
+
+    public OrderPaidMessage(String orderNo, Integer status, LocalDateTime paidAt) {
+        this(orderNo, status, paidAt, null, null, null);
+    }
 }

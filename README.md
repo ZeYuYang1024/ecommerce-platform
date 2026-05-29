@@ -5,7 +5,7 @@
 - PC Web 商城（Nuxt 3）
 - Admin 管理后台（Vue 3 + Element Plus）
 - 微信小程序（uni-app）
-- 独立 AI 知识库 / 智能客服模块（`ecommerce-knowledge`）
+- AI 知识库 / 智能客服模块（`ecommerce-knowledge`）
 
 当前仓库不仅包含传统电商链路，也已经接入了 `Ollama + Milvus + DeepSeek + LangChain4j`，支持平台知识库、商家私有知识库，以及面向 C 端用户的智能客服问答。
 
@@ -47,12 +47,12 @@
 
 ### AI 知识库模块（`ecommerce-knowledge`）
 
-> `ecommerce-knowledge` 是独立 POM，不在根 `pom.xml` 的 `<modules>` 中，需要单独编译和启动。
+> `ecommerce-knowledge` 已经并入根工程，和其他服务一起受父 `pom.xml` 统一管理。
 
 | 技术 | 版本 | 说明 |
 |---|---|---|
-| Spring Boot | 3.5.13 | 知识库服务基础框架 |
-| Spring Cloud | 2025.0.2 | 微服务能力 |
+| Spring Boot | 4.0.0 | 知识库服务基础框架 |
+| Spring Cloud | 2025.1.1 | 微服务能力 |
 | LangChain4j | 1.14.1 | RAG 与 Agent 编排 |
 | Milvus | 2.4.0 | 向量数据库 |
 | Ollama | latest | 本地 Embedding 服务 |
@@ -95,7 +95,7 @@ ecommerce-platform/
 ├── ecommerce-search/          # 搜索服务 :8092
 ├── ecommerce-seckill/         # 秒杀服务 :8093
 ├── ecommerce-monitor/         # Spring Boot Admin :8094
-├── ecommerce-knowledge/       # AI 知识库服务 :8095（独立 POM）
+├── ecommerce-knowledge/       # AI 知识库服务 :8095
 ├── ecommerce-web/             # PC Web :3000
 ├── ecommerce-admin/           # Admin 后台 :5173
 ├── ecommerce-miniprogram/     # 微信小程序
@@ -253,10 +253,11 @@ graph TB
 | **OpenFeign (同步)** | Auth → Merchant | Dashboard 统计商家数 |
 | **OpenFeign (同步)** | Auth → Product | Dashboard 统计商品数 |
 | **OpenFeign (同步)** | Merchant → Auth | 审核通过后创建管理账号 |
-| **RocketMQ (异步)** | Order → Inventory | `order-created` 库存锁定 |
-| **RocketMQ (异步)** | Order → Inventory | `order-cancelled` 库存释放 |
-| **RocketMQ (异步)** | Payment → Order | `order-paid` 订单状态更新 |
-| **RocketMQ (异步)** | Payment → Notification | `order-paid` 支付成功通知 |
+| **RocketMQ + Outbox (异步)** | Order → Inventory | `order-created` 库存锁定，消息携带事务 ID / 幂等键 |
+| **RocketMQ + Outbox (异步)** | Order → Inventory | `order-cancelled` 库存释放 |
+| **RocketMQ + Outbox (异步)** | Inventory → Order | `order-paid(status=4)` 库存补偿回滚订单 |
+| **RocketMQ + Outbox (异步)** | Payment → Order | `order-paid` 订单状态更新 / 退款状态回写 |
+| **RocketMQ + Outbox (异步)** | Payment → Notification | `order-paid` 支付成功通知 |
 | **RocketMQ (异步)** | Product → Search | `product-created` ES 索引同步 |
 | **RocketMQ (异步)** | Merchant → Auth | `merchant-approved` 创建商家管理账号 |
 | **RocketMQ (异步)** | Merchant → Notification | `merchant-approved` 审核通过通知 |
@@ -287,10 +288,6 @@ sequenceDiagram
     ORDER->>PRODUCT: [Feign] GET /products/skus/batch<br/>批量查询 SKU 信息
     PRODUCT-->>ORDER: SKU 详情 (价格/名称/图片)
 
-    ORDER->>INV: [Feign] POST /api/v1/inventory/deduct<br/>{skuId, quantity}
-    INV->>INV: 乐观锁扣减库存<br/>(version 字段 CAS)
-    INV-->>ORDER: 扣减结果
-
     ORDER->>ORDER: 生成订单号 (雪花算法)<br/>创建订单 + 订单项<br/>写入 MySQL
 
     ORDER->>CART: [Feign] DELETE /api/v1/cart<br/>清除已下单商品
@@ -298,10 +295,12 @@ sequenceDiagram
     ORDER-->>GW: Result<Order>
     GW-->>User: 订单创建成功
 
-    ORDER->>MQ: 发送 order-created<br/>{orderNo, skuId, qty}
+    ORDER->>ORDER: 本地事务写订单 + outbox
+    ORDER->>MQ: outbox publisher 发送 order-created<br/>{orderNo, transactionId, idempotencyKey, items}
 
     Note over MQ,NOTIFY: 异步消息消费
-    MQ->>INV: 消费 order-created<br/>(二次确认库存锁定)
+    MQ->>INV: 消费 order-created<br/>(幂等锁库存)
+    INV-->>MQ: 失败时写补偿 outbox<br/>order-paid(status=4)
 ```
 
 ### 2. 支付流程
@@ -322,15 +321,16 @@ sequenceDiagram
 
     PAY->>PAY: 生成支付单号<br/>记录支付信息<br/>模拟支付成功
 
-    PAY->>MQ: 发送 order-paid<br/>{orderNo, paymentNo, amount}
+    PAY->>PAY: 本地事务写支付记录 + outbox
+    PAY->>MQ: outbox publisher 发送 order-paid<br/>{orderNo, status, transactionId, idempotencyKey}
 
     PAY-->>GW: Result<Payment>
     GW-->>User: 支付成功
 
     Note over MQ,NOTIFY: 异步消息消费
 
-    MQ->>ORDER: 消费 order-paid<br/>更新订单状态 → PAID
-    ORDER->>ORDER: UPDATE order SET status='paid'
+    MQ->>ORDER: 消费 order-paid<br/>按状态推进订单 / 应用补偿
+    ORDER->>ORDER: UPDATE order SET status='paid/cancelled/refunded'
 
     MQ->>NOTIFY: 消费 order-paid<br/>发送支付成功通知
     NOTIFY->>NOTIFY: 记录通知日志<br/>(短信/邮件/站内信)
@@ -433,7 +433,8 @@ sequenceDiagram
     ORDER->>ORDER: 校验订单状态<br/>(仅待支付可取消)
     ORDER->>ORDER: UPDATE status → CANCELLED
 
-    ORDER->>MQ: 发送 order-cancelled<br/>{orderNo, items[{skuId, qty}]}
+    ORDER->>ORDER: 本地事务写取消状态 + outbox
+    ORDER->>MQ: outbox publisher 发送 order-cancelled<br/>{orderNo, items[{skuId, qty}]}
 
     ORDER-->>GW: Result<Success>
     GW-->>User: 取消成功
@@ -728,14 +729,13 @@ export DEEPSEEK_API_KEY="sk-xxxxxx"
 mvn -DskipTests compile
 ```
 
-#### 6.2 单独编译知识库模块
+#### 6.2 编译知识库模块
 
 ```bash
-cd ecommerce-knowledge
-mvn compile
+mvn -pl ecommerce-knowledge -am compile
 ```
 
-> `ecommerce-knowledge` 是独立 POM，需要单独执行编译和启动命令。
+> `ecommerce-knowledge` 已纳入根工程模块，可以通过根工程直接编译；如果只想编它自己，使用 `-pl ecommerce-knowledge -am` 即可。
 
 #### 6.3 启动顺序建议
 
@@ -776,8 +776,7 @@ cd ecommerce-gateway && mvn spring-boot:run
 知识库模块启动方式：
 
 ```bash
-cd ecommerce-knowledge
-mvn spring-boot:run
+mvn -pl ecommerce-knowledge spring-boot:run
 ```
 
 ### 7. 启动前端
@@ -849,6 +848,39 @@ python ecommerce-knowledge/sql/seed_data.py
 | `product-created` | 4 | 商品创建后同步搜索索引 |
 | `merchant-approved` | 4 | 商家审核通过后创建账号 / 发送通知 |
 
+## 分布式事务现状
+
+当前订单链路采用 `Saga + Transactional Outbox`，并且已经完成这条主流程的代码落地与本地验证：
+
+1. `order` 本地事务写订单和 `order-created` outbox。
+2. `inventory` 消费 `order-created`，在同一个本地事务内完成库存处理、事件状态更新，以及库存不足时的补偿 outbox。
+3. `payment` 本地事务写支付记录和 `order-paid` outbox。
+4. `order` 消费 `order-paid`，推进订单状态，或在 `status=4` 时应用库存补偿。
+
+已经验证通过的范围：
+
+- 正常下单 -> 库存锁定 -> 支付 -> 订单已支付。
+- 库存不足 -> `inventory` 补偿消息 -> 订单取消。
+- 同一订单并发支付时，只落 1 条支付记录、1 条 `order-paid` outbox，其余请求返回“已支付”。
+
+关键落地约束：
+
+- `payment.order_no` 需要唯一索引 `uk_payment_order_no`，对应脚本见 `docs/sql/migrations/2026-05-29-payment-order-unique.sql`。
+- 旧环境如果已经存在重复 `order_no` 的支付脏数据，需要先清理，再执行唯一索引 DDL。
+
+建议保留的验收观察点：
+
+- `GET /api/v1/admin/orders/outbox?aggregateId={orderNo}`
+- `GET /api/v1/admin/inventory/events?orderNo={orderNo}`
+- `GET /api/v1/admin/payment/outbox?aggregateId={orderNo}`
+- `GET /api/v1/orders/no/{orderNo}`
+
+当前还没有覆盖到的故障注入范围：
+
+- 服务重启中的恢复行为
+- broker 故障后的自动重试与堆积恢复
+- 更大规模的乱序消息和长期积压
+
 ## 常见问题
 
 ### 1. 知识库服务报错，连不上 `localhost:11434`
@@ -883,9 +915,16 @@ ollama pull bge-m3
 docker exec -i ecommerce-mysql mysql -uroot -proot < ecommerce-knowledge/sql/init.sql
 ```
 
-### 5. 根工程里找不到 `ecommerce-knowledge`
+### 5. `ecommerce-knowledge` 如何单独编译或启动
 
-这是预期行为。它是独立 POM，不在根 `pom.xml` 的 `<modules>` 里，需要单独 `mvn compile` / `mvn spring-boot:run`。
+它已经在根 `pom.xml` 的 `<modules>` 里，由父 POM 统一管理。
+
+常用命令：
+
+```bash
+mvn -pl ecommerce-knowledge -am compile
+mvn -pl ecommerce-knowledge spring-boot:run
+```
 
 ### 6. 知识库页面返回 401 / 403
 

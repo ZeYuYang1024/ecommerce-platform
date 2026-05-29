@@ -14,6 +14,7 @@ public class InventoryEventAdminServiceImpl implements InventoryEventAdminServic
 
     private static final int STATUS_PROCESSING = 0;
     private static final int STATUS_PROCESSED = 1;
+    private static final int STATUS_FAILED = 2;
 
     private final InventoryEventLogMapper inventoryEventLogMapper;
 
@@ -43,15 +44,19 @@ public class InventoryEventAdminServiceImpl implements InventoryEventAdminServic
                 .orderByDesc(InventoryEventLog::getCreatedAt));
         int processingCount = (int) logs.stream().filter(log -> log.getStatus() != null && log.getStatus() == STATUS_PROCESSING).count();
         int processedCount = (int) logs.stream().filter(log -> log.getStatus() != null && log.getStatus() == STATUS_PROCESSED).count();
+        int failedCount = (int) logs.stream().filter(log -> log.getStatus() != null && log.getStatus() == STATUS_FAILED).count();
         if (status != null) {
             if (status == STATUS_PROCESSING) {
-                return new InventoryEventSummaryVO(processingCount, 0);
+                return new InventoryEventSummaryVO(processingCount, 0, 0);
             }
             if (status == STATUS_PROCESSED) {
-                return new InventoryEventSummaryVO(0, processedCount);
+                return new InventoryEventSummaryVO(0, processedCount, 0);
+            }
+            if (status == STATUS_FAILED) {
+                return new InventoryEventSummaryVO(0, 0, failedCount);
             }
         }
-        return new InventoryEventSummaryVO(processingCount, processedCount);
+        return new InventoryEventSummaryVO(processingCount, processedCount, failedCount);
     }
 
     private InventoryEventLogVO toVO(InventoryEventLog log) {

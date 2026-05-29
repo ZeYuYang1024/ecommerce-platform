@@ -68,6 +68,7 @@ class InventoryEventAdminServiceImplTest {
 
         assertThat(result.getProcessingCount()).isEqualTo(1);
         assertThat(result.getProcessedCount()).isEqualTo(2);
+        assertThat(result.getFailedCount()).isEqualTo(0);
         assertThat(wrapperHolder[0].getSqlSegment()).contains("topic").doesNotContain("status");
         assertThat(wrapperHolder[0].getParamNameValuePairs().values()).contains("order-created");
     }

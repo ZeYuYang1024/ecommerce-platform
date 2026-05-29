@@ -8,6 +8,7 @@ import com.ecommerce.common.outbox.OutboxQuery;
 import com.ecommerce.common.outbox.OutboxSummary;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.common.transaction.DistributedTransactionContext;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.payment.client.OrderClient;
 import com.ecommerce.payment.common.PaymentErrorCode;
@@ -20,6 +21,7 @@ import com.ecommerce.payment.entity.Refund;
 import com.ecommerce.payment.mapper.PaymentMapper;
 import com.ecommerce.payment.mapper.RefundMapper;
 import com.ecommerce.payment.service.PaymentService;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -78,10 +80,23 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setPayMethod(request.getPayMethod());
         payment.setStatus(1);
         payment.setPaidAt(LocalDateTime.now());
-        paymentMapper.insert(payment);
+        try {
+            paymentMapper.insert(payment);
+        } catch (DuplicateKeyException ex) {
+            throw alreadyPaid(ex);
+        }
 
+        DistributedTransactionContext transaction = startTransaction(
+                payment.getOrderNo(),
+                "payment-paid:" + payment.getOrderNo());
         outboxService.enqueue("payment", payment.getOrderNo(), "order-paid",
-                new OrderPaidMessage(payment.getOrderNo(), 1, payment.getPaidAt()));
+                new OrderPaidMessage(
+                        payment.getOrderNo(),
+                        1,
+                        payment.getPaidAt(),
+                        transaction.getTransactionId(),
+                        transaction.getIdempotencyKey(),
+                        null));
 
         return toVO(payment);
     }
@@ -135,8 +150,17 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setStatus(isPartial ? 1 : 3);
         paymentMapper.updateById(payment);
 
+        DistributedTransactionContext transaction = startTransaction(
+                payment.getOrderNo(),
+                "payment-refund:" + payment.getOrderNo() + ":" + refund.getRefundNo());
         outboxService.enqueue("payment", payment.getOrderNo(), "order-paid",
-                new OrderPaidMessage(payment.getOrderNo(), isPartial ? 1 : 5, LocalDateTime.now()));
+                new OrderPaidMessage(
+                        payment.getOrderNo(),
+                        isPartial ? 1 : 5,
+                        LocalDateTime.now(),
+                        transaction.getTransactionId(),
+                        transaction.getIdempotencyKey(),
+                        null));
 
         return toVO(payment);
     }
@@ -259,6 +283,19 @@ public class PaymentServiceImpl implements PaymentService {
     private String generateRefundNo() {
         return "REF" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
                 + String.format("%04d", SnowflakeUtils.nextId() % 10000);
+    }
+
+    private DistributedTransactionContext startTransaction(String businessNo, String idempotencyKey) {
+        return DistributedTransactionContext.start(
+                SnowflakeUtils.nextIdStr(),
+                businessNo,
+                idempotencyKey);
+    }
+
+    private BusinessException alreadyPaid(DuplicateKeyException ex) {
+        BusinessException businessException = new BusinessException(PaymentErrorCode.PAYMENT_ALREADY_PAID);
+        businessException.initCause(ex);
+        return businessException;
     }
 
     private String statusText(Integer status) {

@@ -13,5 +13,11 @@ public class OrderInventoryMessage implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private String orderNo;
+    private String transactionId;
+    private String idempotencyKey;
     private List<OrderItemMessage> items;
+
+    public OrderInventoryMessage(String orderNo, List<OrderItemMessage> items) {
+        this(orderNo, null, null, items);
+    }
 }

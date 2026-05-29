@@ -318,7 +318,7 @@ CREATE TABLE IF NOT EXISTS payment (
     updated_at  DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted     TINYINT       DEFAULT 0,
     UNIQUE INDEX uk_payment_no (payment_no),
-    INDEX idx_order_no (order_no),
+    UNIQUE INDEX uk_payment_order_no (order_no),
     INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='支付表';
 

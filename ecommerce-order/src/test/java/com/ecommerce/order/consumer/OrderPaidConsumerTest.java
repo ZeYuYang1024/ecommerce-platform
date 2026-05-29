@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ecommerce.common.dto.OrderPaidMessage;
 import com.ecommerce.order.entity.Order;
 import com.ecommerce.order.mapper.OrderMapper;
+import com.ecommerce.order.service.OrderService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -22,6 +23,9 @@ class OrderPaidConsumerTest {
 
     @Mock
     private OrderMapper orderMapper;
+
+    @Mock
+    private OrderService orderService;
 
     @InjectMocks
     private OrderPaidConsumer consumer;
@@ -63,5 +67,19 @@ class OrderPaidConsumerTest {
         consumer.onMessage(new OrderPaidMessage("ORD-1", 5, LocalDateTime.now()));
 
         verify(orderMapper).updateById(order);
+    }
+
+    @Test
+    void shouldUpdatePendingOrderToCancelledWhenInventoryCompensationArrives() {
+        Order order = new Order();
+        order.setId(1L);
+        order.setOrderNo("ORD-1");
+        order.setStatus(0);
+        when(orderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(order);
+
+        consumer.onMessage(new OrderPaidMessage("ORD-1", 4, LocalDateTime.now()));
+
+        verify(orderService).applyInventoryCompensation(any(OrderPaidMessage.class));
+        verify(orderMapper, never()).updateById(order);
     }
 }
