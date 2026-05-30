@@ -26,6 +26,7 @@ export const useApi = () => {
   const config = useRuntimeConfig()
   const base = config.public.apiBase as string
   const token = useCookie('token')
+  const username = useCookie('username')
 
   async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
@@ -40,6 +41,10 @@ export const useApi = () => {
     const body = parseBody(text)
 
     if (!res.ok) {
+      if (res.status === 401) {
+        token.value = null
+        username.value = null
+      }
       const error = new Error(typeof body === 'object' && body?.message ? body.message : `HTTP ${res.status}`) as Error & {
         status: number
         body: any
