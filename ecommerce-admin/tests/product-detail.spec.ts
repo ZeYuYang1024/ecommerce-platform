@@ -83,6 +83,10 @@ test.describe('Product Detail', () => {
     expect(count).toBeGreaterThanOrEqual(1)
   })
 
+  test('P2: detail page resolves main image to real preview URL', async ({ page }) => {
+    await expect(page.locator('.main-image')).toHaveAttribute('src', /picsum\.photos\/200/)
+  })
+
   test('P2: SKU without original price shows placeholder', async ({ page }) => {
     const skuTable = page.locator('.el-table').first()
     await expect(skuTable).toContainText('-')

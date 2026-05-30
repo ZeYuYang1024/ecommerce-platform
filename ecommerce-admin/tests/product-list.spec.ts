@@ -223,6 +223,10 @@ test.describe('Product List', () => {
     await expect(page.locator('.thumb-empty').first()).toBeVisible()
   })
 
+  test('P2: product list resolves object-name images to real preview URLs', async ({ page }) => {
+    await expect(page.locator('.thumb').first()).toHaveCSS('background-image', /picsum\.photos\/200/)
+  })
+
   test('P2: pagination shows correct total', async ({ page }) => {
     await expect(page.locator('.el-pagination')).toContainText(String(MOCK_PRODUCTS.length))
   })

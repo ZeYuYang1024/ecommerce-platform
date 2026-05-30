@@ -8,7 +8,6 @@
     </div>
 
     <div class="form-body">
-      <!-- Basic Info Card -->
       <el-card shadow="never" class="form-card">
         <template #header><span class="card-title">基本信息</span></template>
         <el-form label-position="top">
@@ -16,20 +15,19 @@
             <el-form-item label="商品名称">
               <el-input v-model="form.spu.name" placeholder="请输入商品名称" size="large" />
             </el-form-item>
-            <el-form-item label="分类">
+            <el-form-item label="商品分类">
               <el-tree-select
                 v-model="form.spu.categoryId"
                 :data="categories"
                 :props="{ children: 'children', label: 'name', value: 'id' }"
-                placeholder="选择分类"
+                placeholder="请选择分类"
                 check-strictly
-                style="width:100%"
+                style="width: 100%"
               />
             </el-form-item>
           </div>
 
-          <!-- Main Image Upload -->
-          <el-form-item label="主图">
+          <el-form-item label="商品主图">
             <div class="upload-zone">
               <div v-if="form.spu.mainImage" class="upload-preview">
                 <img :src="imageUrl(form.spu.mainImage)" />
@@ -50,22 +48,26 @@
                 drag
               >
                 <el-icon :size="32" class="upload-icon"><Plus /></el-icon>
-                <span class="upload-text">拖拽或点击上传主图</span>
+                <span class="upload-text">拖拽图片到这里，或点击上传</span>
                 <span class="upload-hint">支持 JPG / PNG / WebP，最大 10MB</span>
               </el-upload>
             </div>
           </el-form-item>
 
-          <el-form-item label="简介">
-            <el-input v-model="form.spu.description" type="textarea" :rows="2" placeholder="商品简介" />
+          <el-form-item label="商品简介">
+            <el-input v-model="form.spu.description" type="textarea" :rows="2" placeholder="请输入商品简介" />
           </el-form-item>
-          <el-form-item label="详情描述">
-            <el-input v-model="form.spu.detail" type="textarea" :rows="4" placeholder="商品详情描述（支持 HTML）" />
+          <el-form-item label="商品详情">
+            <el-input
+              v-model="form.spu.detail"
+              type="textarea"
+              :rows="4"
+              placeholder="请输入商品详情描述，支持 HTML"
+            />
           </el-form-item>
         </el-form>
       </el-card>
 
-      <!-- SKU Card -->
       <el-card shadow="never" class="form-card">
         <template #header>
           <div class="sku-card-header">
@@ -80,11 +82,18 @@
           <div v-for="(sku, idx) in form.skus" :key="idx" class="sku-block">
             <div class="sku-block-header">
               <span class="sku-num">SKU #{{ idx + 1 }}</span>
-              <el-button v-if="form.skus.length > 1" text type="danger" size="small" @click="form.skus.splice(idx,1)">移除</el-button>
+              <el-button
+                v-if="form.skus.length > 1"
+                text
+                type="danger"
+                size="small"
+                @click="form.skus.splice(idx, 1)"
+              >
+                移除
+              </el-button>
             </div>
 
             <div class="sku-fields">
-              <!-- Image -->
               <div class="sku-upload-area">
                 <span class="sku-field-label">图片</span>
                 <div v-if="sku.image" class="sku-img-preview">
@@ -98,7 +107,7 @@
                   class="sku-upload-box"
                   :http-request="customUpload"
                   :show-file-list="false"
-                  :on-success="(res) => { if (res.code === 200) sku.image = res.data }"
+                  :on-success="(res) => onSkuImageUploaded(sku, res)"
                   :before-upload="beforeUpload"
                   accept="image/*"
                 >
@@ -106,15 +115,32 @@
                 </el-upload>
               </div>
 
-              <!-- Specs -->
               <div class="spec-area">
                 <span class="sku-field-label">规格属性</span>
                 <div class="spec-pairs">
                   <div v-for="(pair, pi) in sku.specPairs" :key="pi" class="spec-row">
-                    <el-input v-model="pair.key" placeholder="属性名" class="spec-key" size="small" @change="syncSpec(idx)" />
+                    <el-input
+                      v-model="pair.key"
+                      placeholder="属性名"
+                      class="spec-key"
+                      size="small"
+                      @change="syncSpec(idx)"
+                    />
                     <span class="spec-sep">:</span>
-                    <el-input v-model="pair.value" placeholder="属性值" class="spec-val" size="small" @change="syncSpec(idx)" />
-                    <el-button v-if="sku.specPairs.length > 1" text type="danger" size="small" @click="removeSpecPair(idx, pi)">
+                    <el-input
+                      v-model="pair.value"
+                      placeholder="属性值"
+                      class="spec-val"
+                      size="small"
+                      @change="syncSpec(idx)"
+                    />
+                    <el-button
+                      v-if="sku.specPairs.length > 1"
+                      text
+                      type="danger"
+                      size="small"
+                      @click="removeSpecPair(idx, pi)"
+                    >
                       <el-icon><Delete /></el-icon>
                     </el-button>
                   </div>
@@ -124,14 +150,13 @@
                 </el-button>
               </div>
 
-              <!-- Name & Price -->
-              <el-input v-model="sku.name" placeholder="SKU 名称（如：128GB 黑色）" class="sku-name" />
+              <el-input v-model="sku.name" placeholder="SKU 名称，例如 128GB 黑色" class="sku-name" />
 
               <div class="price-row">
                 <el-input v-model="sku.price" placeholder="售价" type="number" class="price-inp">
                   <template #prepend>售价</template>
                 </el-input>
-                <el-input v-model="sku.originalPrice" placeholder="原价（选填）" type="number" class="price-inp">
+                <el-input v-model="sku.originalPrice" placeholder="原价" type="number" class="price-inp">
                   <template #prepend>原价</template>
                 </el-input>
               </div>
@@ -140,7 +165,6 @@
         </div>
       </el-card>
 
-      <!-- Actions -->
       <div class="submit-bar">
         <el-button type="primary" size="large" @click="submit" :loading="saving">
           {{ isEdit ? '保存修改' : '创建商品' }}
@@ -155,8 +179,8 @@
 import { computed, ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Delete, Close } from '@element-plus/icons-vue'
 import axios from 'axios'
+import { resolveImageUrl, resolveImageUrls } from '@/utils/image'
 
 const route = useRoute()
 const router = useRouter()
@@ -167,9 +191,10 @@ const detailUrl = computed(() => (isMerchantMode.value ? `/api/v1/admin/merchant
 const listRoute = computed(() => (isMerchantMode.value ? '/merchant/products' : '/products'))
 const saving = ref(false)
 const categories = ref([])
+const imageMap = ref({})
 
 const form = reactive({
-  spu: { name: '', categoryId: null, mainImage: '', description: '', detail: '', images: '' },
+  spu: { name: '', categoryId: null, mainImage: '', description: '', detail: '', images: '', brandId: null },
   skus: []
 })
 
@@ -209,13 +234,8 @@ async function customUpload(options) {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     if (uploadRes.code === 200) {
-      const objectName = uploadRes.data
-      const { data: urlRes } = await axios.get(`/api/v1/files/${objectName}/url`)
-      if (urlRes.code === 200) {
-        options.onSuccess({ code: 200, data: urlRes.data })
-      } else {
-        options.onSuccess({ code: 200, data: objectName })
-      }
+      // 表单里只保存对象名，预览时再通过文件服务解析成可访问地址。
+      options.onSuccess({ code: 200, data: uploadRes.data })
     } else {
       options.onSuccess(uploadRes)
     }
@@ -229,14 +249,35 @@ const ALLOWED_IMG_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp',
 function beforeUpload(file) {
   const isValid = ALLOWED_IMG_TYPES.includes(file.type)
   const isLt10M = file.size / 1024 / 1024 < 10
-  if (!isValid) { ElMessage.error('仅支持 JPG / PNG / GIF / WebP / BMP 格式'); return false }
-  if (!isLt10M) { ElMessage.error('图片大小不能超过 10MB'); return false }
+
+  if (!isValid) {
+    ElMessage.error('仅支持 JPG / PNG / GIF / WebP / BMP / AVIF 图片')
+    return false
+  }
+  if (!isLt10M) {
+    ElMessage.error('图片大小不能超过 10MB')
+    return false
+  }
   return true
+}
+
+function syncResolvedImage(objectName, url) {
+  imageMap.value = { ...imageMap.value, [objectName]: url }
 }
 
 function onMainImageUploaded(res) {
   if (res.code === 200) {
     form.spu.mainImage = res.data
+    resolveImageUrl(res.data).then((url) => syncResolvedImage(res.data, url))
+  } else {
+    ElMessage.error(res.message || '上传失败')
+  }
+}
+
+function onSkuImageUploaded(sku, res) {
+  if (res.code === 200) {
+    sku.image = res.data
+    resolveImageUrl(res.data).then((url) => syncResolvedImage(res.data, url))
   } else {
     ElMessage.error(res.message || '上传失败')
   }
@@ -244,8 +285,7 @@ function onMainImageUploaded(res) {
 
 function imageUrl(objectName) {
   if (!objectName) return ''
-  if (objectName.startsWith('http')) return objectName
-  return `/api/v1/files/${objectName}/url`
+  return imageMap.value[objectName] || ''
 }
 
 onMounted(async () => {
@@ -258,20 +298,30 @@ onMounted(async () => {
     const { data: detail } = await axios.get(detailUrl.value)
     if (detail.code === 200) {
       const d = detail.data
+
+      // 编辑态先把已保存的对象名解析成预览地址，避免图片组件直接请求 JSON 接口。
+      imageMap.value = await resolveImageUrls([
+        d.spu.mainImage,
+        ...(d.skus || []).map((s) => s.image)
+      ])
+
       form.spu = {
         name: d.spu.name || '',
         categoryId: d.spu.categoryId || null,
         mainImage: d.spu.mainImage || '',
         description: d.spu.description || '',
         detail: d.spu.detail || '',
-        images: d.spu.images || ''
+        images: d.spu.images || '',
+        brandId: d.spu.brandId || null
       }
-      form.skus = (d.skus || []).map(s => {
+      form.skus = (d.skus || []).map((s) => {
         let pairs = []
         try {
           const obj = typeof s.spec === 'string' ? JSON.parse(s.spec) : (s.spec || {})
           pairs = Object.entries(obj).map(([k, v]) => ({ key: k, value: v }))
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          // ignore malformed spec JSON
+        }
         if (pairs.length === 0) pairs = [{ key: '', value: '' }]
         return {
           name: s.name || '',
@@ -299,7 +349,7 @@ async function submit() {
         images: form.spu.images,
         detail: form.spu.detail
       },
-      skus: form.skus.map(s => ({
+      skus: form.skus.map((s) => ({
         name: s.name,
         spec: s.spec,
         price: s.price,
@@ -316,7 +366,7 @@ async function submit() {
     ElMessage.success(isEdit.value ? '保存成功' : '创建成功')
     router.push(listRoute.value)
   } catch (e) {
-    ElMessage.error('操作失败')
+    ElMessage.error('保存失败')
   } finally {
     saving.value = false
   }
@@ -354,7 +404,6 @@ async function submit() {
   gap: 0 24px;
 }
 
-/* Upload zone */
 .upload-zone { position: relative; }
 .upload-preview {
   position: relative;
@@ -408,7 +457,6 @@ async function submit() {
 .upload-text { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
 .upload-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
-/* SKU blocks */
 .sku-card-header {
   display: flex;
   justify-content: space-between;

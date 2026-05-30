@@ -152,6 +152,24 @@ class ProductServiceImplTest {
         }
 
         @Test
+        void createProduct_shouldNormalizePresignedMainImageBeforePersisting() {
+            CreateProductRequest request = new CreateProductRequest();
+            CreateProductRequest.SpuRequest spuReq = new CreateProductRequest.SpuRequest();
+            spuReq.setName("new product");
+            spuReq.setCategoryId(1L);
+            spuReq.setMainImage("http://localhost:9000/ecommerce/2055572987490471936.avif?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=604800");
+            request.setSpu(spuReq);
+
+            when(spuMapper.insert(any(Spu.class))).thenReturn(1);
+
+            productService.createProduct(request);
+
+            ArgumentCaptor<Spu> captor = ArgumentCaptor.forClass(Spu.class);
+            verify(spuMapper).insert(captor.capture());
+            assertThat(captor.getValue().getMainImage()).isEqualTo("2055572987490471936.avif");
+        }
+
+        @Test
         void createProduct_shouldWorkWithoutSkus() {
             CreateProductRequest request = new CreateProductRequest();
             CreateProductRequest.SpuRequest spuReq = new CreateProductRequest.SpuRequest();
@@ -174,6 +192,20 @@ class ProductServiceImplTest {
 
             assertThat(result.getId()).isEqualTo(1L);
             verify(spuMapper).updateById(spu);
+        }
+
+        @Test
+        void updateSpu_shouldNormalizePresignedMainImageBeforePersisting() {
+            Spu updating = new Spu();
+            updating.setId(1L);
+            updating.setMainImage("http://localhost:9000/ecommerce/2055572987490471936.avif?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=604800");
+            when(spuMapper.updateById(any(Spu.class))).thenReturn(1);
+
+            productService.updateSpu(updating);
+
+            ArgumentCaptor<Spu> captor = ArgumentCaptor.forClass(Spu.class);
+            verify(spuMapper).updateById(captor.capture());
+            assertThat(captor.getValue().getMainImage()).isEqualTo("2055572987490471936.avif");
         }
 
         @Test
@@ -220,6 +252,15 @@ class ProductServiceImplTest {
             assertThat(vo.getStatus()).isEqualTo(1);
             assertThat(vo.getAvgRating()).isEqualTo(new BigDecimal("4.5"));
             assertThat(vo.getReviewCount()).isEqualTo(100);
+        }
+
+        @Test
+        void toSpuVO_shouldNormalizeLegacyPresignedMainImage() {
+            spu.setMainImage("http://localhost:9000/ecommerce/2055572987490471936.avif?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=604800");
+
+            SpuVO vo = productService.toSpuVO(spu);
+
+            assertThat(vo.getMainImage()).isEqualTo("2055572987490471936.avif");
         }
     }
 

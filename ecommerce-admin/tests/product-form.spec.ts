@@ -200,6 +200,32 @@ test.describe('Product Form', () => {
     await expect(page.locator('.sku-block')).toHaveCount(2)
   })
 
+  test('P2: edit mode resolves stored object-name images for preview', async ({ page }) => {
+    await page.route('**/api/v1/products/1', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 200, data: MOCK_PRODUCT_DETAIL }),
+      })
+    })
+
+    await page.route('**/api/v1/admin/products/1', async (route) => {
+      if (route.request().method() === 'PUT') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ code: 200, message: 'success', data: {} }),
+        })
+      } else {
+        await route.continue()
+      }
+    })
+
+    await gotoEditForm(page)
+
+    await expect(page.locator('.upload-preview img')).toHaveAttribute('src', /picsum\.photos\/200/)
+  })
+
   test('P2: form keeps one SKU block as the minimum', async ({ page }) => {
     await gotoCreateForm(page)
 

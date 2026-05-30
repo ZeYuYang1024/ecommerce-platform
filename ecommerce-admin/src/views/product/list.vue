@@ -71,6 +71,7 @@
 import { ref, onMounted } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import axios from 'axios'
+import { resolveImageUrls } from '@/utils/image'
 
 const loading = ref(false)
 const tableData = ref([])
@@ -79,6 +80,7 @@ const status = ref(null)
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
+const imageMap = ref({})
 
 function handleSizeChange() {
   page.value = 1
@@ -87,8 +89,7 @@ function handleSizeChange() {
 
 function thumbUrl(src) {
   if (!src) return ''
-  if (src.startsWith('http')) return src
-  return `/api/v1/files/${src}/url`
+  return imageMap.value[src] || ''
 }
 
 async function fetchData() {
@@ -99,6 +100,7 @@ async function fetchData() {
     })
     if (data.code === 200) {
       tableData.value = data.data.records
+      imageMap.value = await resolveImageUrls(tableData.value.map(row => row.mainImage))
       total.value = Number(data.data.total) || tableData.value.length
     }
   } finally { loading.value = false }

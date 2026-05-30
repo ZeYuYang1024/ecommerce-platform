@@ -106,10 +106,12 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
+import { resolveImageUrls } from '@/utils/image'
 
 const route = useRoute()
 const loading = ref(false)
 const detail = ref(null)
+const imageMap = ref({})
 
 const allImages = computed(() => {
   if (!detail.value) return []
@@ -122,15 +124,21 @@ const allImages = computed(() => {
 
 function imageUrl(src) {
   if (!src) return ''
-  if (src.startsWith('http')) return src
-  return `/api/v1/files/${src}/url`
+  return imageMap.value[src] || ''
 }
 
 onMounted(async () => {
   loading.value = true
   try {
     const { data } = await axios.get(`/api/v1/products/${route.params.id}`)
-    if (data.code === 200) detail.value = data.data
+    if (data.code === 200) {
+      detail.value = data.data
+      imageMap.value = await resolveImageUrls([
+        data.data?.spu?.mainImage,
+        ...allImages.value,
+        ...(data.data?.skus || []).map(row => row.image),
+      ])
+    }
   } finally { loading.value = false }
 })
 </script>

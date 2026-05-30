@@ -20,12 +20,15 @@ import com.ecommerce.common.dto.ProductCreatedMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -161,8 +164,8 @@ public class ProductServiceImpl implements ProductService {
         spu.setCategoryId(request.getSpu().getCategoryId());
         spu.setBrandId(request.getSpu().getBrandId());
         spu.setDescription(request.getSpu().getDescription());
-        spu.setMainImage(request.getSpu().getMainImage());
-        spu.setImages(request.getSpu().getImages());
+        spu.setMainImage(normalizeObjectReference(request.getSpu().getMainImage()));
+        spu.setImages(normalizeImageList(request.getSpu().getImages()));
         spu.setDetail(request.getSpu().getDetail());
 
         spu.setId(SnowflakeUtils.nextId());
@@ -189,7 +192,7 @@ public class ProductServiceImpl implements ProductService {
                         throw new BusinessException(ProductErrorCode.INVALID_PRICE_FORMAT);
                     }
                 }
-                sku.setImage(sr.getImage());
+                sku.setImage(normalizeObjectReference(sr.getImage()));
                 skuMapper.insert(sku);
 
                 // 初始化库存为 0（best-effort）
@@ -201,6 +204,8 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public Spu updateSpu(Spu spu) {
+        spu.setMainImage(normalizeObjectReference(spu.getMainImage()));
+        spu.setImages(normalizeImageList(spu.getImages()));
         spuMapper.updateById(spu);
         return spu;
     }
@@ -214,8 +219,8 @@ public class ProductServiceImpl implements ProductService {
         vo.setBrandId(spu.getBrandId());
         vo.setMerchantId(spu.getMerchantId());
         vo.setDescription(spu.getDescription());
-        vo.setMainImage(spu.getMainImage());
-        vo.setImages(spu.getImages());
+        vo.setMainImage(normalizeObjectReference(spu.getMainImage()));
+        vo.setImages(normalizeImageList(spu.getImages()));
         vo.setDetail(spu.getDetail());
         vo.setStatus(spu.getStatus());
         vo.setAvgRating(spu.getAvgRating());
@@ -312,5 +317,68 @@ public class ProductServiceImpl implements ProductService {
 
     public long countAll() {
         return spuMapper.selectCount(new LambdaQueryWrapper<>());
+    }
+
+    private String normalizeImageList(String images) {
+        // 历史数据里可能混入了预签名 URL，这里统一提取对象名，避免前端持久化整段临时地址。
+        if (!StringUtils.hasText(images) || !images.contains("http")) {
+            return images;
+        }
+        String normalized = images;
+        int start = 0;
+        while (start < normalized.length()) {
+            int httpIndex = normalized.indexOf("http", start);
+            if (httpIndex < 0) {
+                break;
+            }
+            int end = findImageReferenceEnd(normalized, httpIndex);
+            String candidate = normalized.substring(httpIndex, end);
+            String replacement = normalizeObjectReference(candidate);
+            normalized = normalized.substring(0, httpIndex) + replacement + normalized.substring(end);
+            start = httpIndex + replacement.length();
+        }
+        return normalized;
+    }
+
+    private int findImageReferenceEnd(String text, int start) {
+        int quote = text.indexOf('"', start);
+        int apostrophe = text.indexOf('\'', start);
+        int comma = text.indexOf(',', start);
+        int bracket = text.indexOf(']', start);
+        int end = text.length();
+        for (int idx : new int[]{quote, apostrophe, comma, bracket}) {
+            if (idx >= 0 && idx < end) {
+                end = idx;
+            }
+        }
+        return end;
+    }
+
+    private String normalizeObjectReference(String value) {
+        // 新数据直接存对象名；如果传入的是完整 URL，则降级提取最后一段对象名。
+        if (!StringUtils.hasText(value)) {
+            return value;
+        }
+        String trimmed = value.trim();
+        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+        try {
+            String path = UriComponentsBuilder.fromUriString(trimmed).build().getPath();
+            if (!StringUtils.hasText(path)) {
+                return trimmed;
+            }
+            int lastSlash = path.lastIndexOf('/');
+            if (lastSlash < 0 || lastSlash == path.length() - 1) {
+                return trimmed;
+            }
+            String objectName = path.substring(lastSlash + 1);
+            if (objectName.toLowerCase(Locale.ROOT).contains("%")) {
+                return trimmed;
+            }
+            return objectName;
+        } catch (Exception ignored) {
+            return trimmed;
+        }
     }
 }
