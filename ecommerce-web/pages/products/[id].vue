@@ -9,7 +9,7 @@
       <!-- Image Gallery -->
       <div>
         <div class="aspect-square bg-gray-50 rounded-2xl overflow-hidden border border-gray-100">
-          <img :src="product.spu.mainImage || '/placeholder.svg'" :alt="product.spu.name" class="w-full h-full object-cover" />
+          <img :src="mainImage" :alt="product.spu.name" class="w-full h-full object-cover" />
         </div>
         <!-- Sub images -->
         <div v-if="subImages.length > 0" class="flex gap-2 mt-3">
@@ -83,11 +83,9 @@ const loading = ref(true)
 const product = ref<any>(null)
 const selectedSku = ref<any>(null)
 const cart = useCartStore()
-
-const subImages = computed(() => {
-  if (!product.value?.spu?.images) return []
-  try { return JSON.parse(product.value.spu.images) } catch { return [] }
-})
+const { useResolvedImage, primeImageUrls, resolveImageUrl } = useImageUrl()
+const mainImage = useResolvedImage(() => product.value?.spu?.mainImage)
+const subImages = ref<string[]>([])
 
 function parseSpec(spec: string): Record<string, string> {
   if (!spec) return {}
@@ -99,7 +97,19 @@ onMounted(async () => {
   try {
     const api = useApi()
     const res: any = await api.get(`/products/${route.params.id}`)
-    if (res.code === 200) product.value = res.data
+    if (res.code === 200) {
+      product.value = res.data
+
+      let rawSubImages: string[] = []
+      try { rawSubImages = JSON.parse(res.data?.spu?.images || '[]') } catch { rawSubImages = [] }
+      // 详情页首屏会同时展示主图、附图、SKU 图，先统一解析成真实访问地址。
+      await primeImageUrls([
+        res.data?.spu?.mainImage,
+        ...rawSubImages,
+        ...(res.data?.skus || []).map((sku: any) => sku.image),
+      ])
+      subImages.value = await Promise.all(rawSubImages.map((img) => resolveImageUrl(img)))
+    }
   } finally { loading.value = false }
 })
 

@@ -15,7 +15,7 @@
         </div>
         <div v-for="item in order.items" :key="item.id" class="flex items-center gap-4 py-2 border-b border-gray-50 last:border-0">
           <div class="w-14 h-14 bg-gray-50 rounded-lg overflow-hidden">
-            <img :src="item.image || '/placeholder.svg'" class="w-full h-full object-cover" />
+            <img :src="item.resolvedImage || '/placeholder.svg'" class="w-full h-full object-cover" />
           </div>
           <div class="flex-1 min-w-0">
             <div class="text-sm font-medium truncate">{{ item.name }}</div>
@@ -44,6 +44,7 @@ const loading = ref(true)
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
+const { primeImageUrls, resolveImageUrl } = useImageUrl()
 
 function statusClass(status: number) {
   const map: Record<number, string> = { 0: 'text-amber-600', 1: 'text-green-600', 2: 'text-blue-600', 3: 'text-gray-400', 4: 'text-red-400' }
@@ -57,6 +58,11 @@ async function fetchOrders() {
     const res: any = await api.get('/orders', { page: page.value, size: size.value })
     if (res.code === 200) {
       orders.value = res.data?.records || []
+      const images = orders.value.flatMap((order: any) => (order.items || []).map((item: any) => item.image))
+      await primeImageUrls(images)
+      await Promise.all(orders.value.flatMap((order: any) => (order.items || []).map(async (item: any) => {
+        item.resolvedImage = await resolveImageUrl(item.image)
+      })))
       total.value = res.data?.total || 0
     }
   } finally { loading.value = false }

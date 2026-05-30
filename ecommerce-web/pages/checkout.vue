@@ -77,7 +77,7 @@
           <h3 class="font-medium text-gray-900 mb-4">商品明细</h3>
           <div v-for="item in checkedItems" :key="item.skuId" class="flex items-center gap-4 py-3 border-b border-gray-50 last:border-0">
             <div class="w-12 h-12 bg-gray-50 rounded-lg overflow-hidden flex-shrink-0">
-              <img :src="item.image || '/placeholder.svg'" class="w-full h-full object-cover" />
+              <img :src="item.resolvedImage || '/placeholder.svg'" class="w-full h-full object-cover" />
             </div>
             <div class="flex-1 min-w-0">
               <div class="text-sm font-medium truncate">{{ item.name }}</div>
@@ -111,6 +111,7 @@ const auth = useAuthStore()
 const cart = useCartStore()
 const router = useRouter()
 const api = useApi()
+const { primeImageUrls, resolveImageUrl } = useImageUrl()
 
 const submitting = ref(false)
 const orderError = ref('')
@@ -127,6 +128,10 @@ const selectedAddr = computed(() => addresses.value.find(a => a.id === selectedA
 const hasAddress = computed(() => !!selectedAddrId.value)
 
 onMounted(async () => {
+  await primeImageUrls(cart.items.map((item: any) => item.image))
+  await Promise.all(cart.items.map(async (item: any) => {
+    item.resolvedImage = await resolveImageUrl(item.image)
+  }))
   try {
     const res: any = await api.get('/users/addresses?t=' + Date.now())
     if (res.code === 200 && res.data) {

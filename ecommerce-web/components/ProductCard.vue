@@ -2,7 +2,7 @@
   <NuxtLink :to="`/products/${product.id}`" class="group bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-gray-200 transition-all duration-300">
     <div class="aspect-square bg-gray-50 overflow-hidden">
       <img
-        :src="product.mainImage || '/placeholder.svg'"
+        :src="mainImage"
         :alt="product.name"
         class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
       />
@@ -22,6 +22,8 @@
 import { computed } from 'vue'
 
 const props = defineProps<{ product: any }>()
+const { useResolvedImage } = useImageUrl()
+const mainImage = useResolvedImage(() => props.product.mainImage)
 
 const priceText = computed(() => {
   const min = props.product.minPrice

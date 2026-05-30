@@ -21,7 +21,7 @@
         <h3 class="font-medium text-gray-900 mb-4">商品明细</h3>
         <div v-for="item in order.items" :key="item.id" class="flex items-center gap-4 py-3 border-b border-gray-50 last:border-0">
           <div class="w-14 h-14 bg-gray-50 rounded-lg overflow-hidden">
-            <img :src="item.image || '/placeholder.svg'" class="w-full h-full object-cover" />
+            <img :src="item.resolvedImage || '/placeholder.svg'" class="w-full h-full object-cover" />
           </div>
           <div class="flex-1 min-w-0">
             <div class="text-sm font-medium truncate">{{ item.name }}</div>
@@ -48,6 +48,7 @@ const api = useApi()
 const order = ref<any>(null)
 const loading = ref(true)
 const errorMsg = ref('')
+const { primeImageUrls, resolveImageUrl } = useImageUrl()
 
 onMounted(async () => {
   loading.value = true
@@ -56,6 +57,11 @@ onMounted(async () => {
     const res: any = await api.get(`/orders/no/${route.params.id}`)
     if (res.code === 200) {
       order.value = res.data
+      const items = order.value?.items || []
+      await primeImageUrls(items.map((item: any) => item.image))
+      await Promise.all(items.map(async (item: any) => {
+        item.resolvedImage = await resolveImageUrl(item.image)
+      }))
     } else {
       errorMsg.value = res.message || '订单不存在'
     }

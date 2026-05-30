@@ -16,7 +16,7 @@
       <div v-for="item in cart.items" :key="item.skuId" class="bg-white rounded-2xl border border-gray-100 p-4 flex items-center gap-4">
         <input type="checkbox" :checked="item.checked" @change="cart.toggleCheck(item.skuId)" class="w-5 h-5 accent-amber-500" />
         <div class="w-20 h-20 bg-gray-50 rounded-xl overflow-hidden flex-shrink-0">
-          <img :src="item.image || '/placeholder.svg'" class="w-full h-full object-cover" />
+          <img :src="item.resolvedImage || '/placeholder.svg'" class="w-full h-full object-cover" />
         </div>
         <div class="flex-1 min-w-0">
           <div class="font-medium text-gray-900 truncate">{{ item.name }}</div>
@@ -47,6 +47,7 @@
 <script setup lang="ts">
 const auth = useAuthStore()
 const cart = useCartStore()
+const { primeImageUrls, resolveImageUrl } = useImageUrl()
 
 const totalPrice = computed(() => {
   return cart.items
@@ -54,6 +55,13 @@ const totalPrice = computed(() => {
     .reduce((s: number, i: any) => s + i.price * i.quantity, 0)
     .toFixed(2)
 })
+
+watch(() => cart.items.map((item: any) => item.image), async () => {
+  await primeImageUrls(cart.items.map((item: any) => item.image))
+  await Promise.all(cart.items.map(async (item: any) => {
+    item.resolvedImage = await resolveImageUrl(item.image)
+  }))
+}, { immediate: true })
 
 function increase(item: any) { cart.updateQuantity(item.skuId, item.quantity + 1) }
 function decrease(item: any) {
