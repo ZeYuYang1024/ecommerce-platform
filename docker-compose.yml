@@ -56,6 +56,7 @@ services:
       - "10909:10909"
     environment:
       NAMESRV_ADDR: rocketmq-namesrv:9876
+      JAVA_OPT_EXT: -XX:-UseContainerSupport
     command: sh mqbroker -n rocketmq-namesrv:9876 -c /home/rocketmq/conf/broker.conf
     depends_on:
       - rocketmq-namesrv
