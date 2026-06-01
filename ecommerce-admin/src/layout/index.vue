@@ -213,6 +213,24 @@
             <span>权限管理</span>
             <span v-if="$route.path === '/permissions'" class="active-dot"></span>
           </router-link>
+
+          <div class="nav-section">会员</div>
+
+          <router-link to="/member/levels" class="nav-item" :class="{ active: $route.path === '/member/levels' }">
+            <el-icon><Medal /></el-icon>
+            <span>会员等级</span>
+            <span v-if="$route.path === '/member/levels'" class="active-dot"></span>
+          </router-link>
+          <router-link to="/member/profiles" class="nav-item" :class="{ active: $route.path === '/member/profiles' }">
+            <el-icon><Avatar /></el-icon>
+            <span>会员列表</span>
+            <span v-if="$route.path === '/member/profiles'" class="active-dot"></span>
+          </router-link>
+          <router-link to="/member/points" class="nav-item" :class="{ active: $route.path === '/member/points' }">
+            <el-icon><Coin /></el-icon>
+            <span>积分流水</span>
+            <span v-if="$route.path === '/member/points'" class="active-dot"></span>
+          </router-link>
         </template>
       </nav>
 

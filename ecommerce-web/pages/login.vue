@@ -5,7 +5,7 @@
       <input v-model="form.username" placeholder="用户名" class="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm" />
       <input v-model="form.password" type="password" placeholder="密码" class="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm" />
       <button @click="doLogin" :disabled="loading" class="w-full h-12 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-200 text-white font-medium rounded-xl transition-colors">
-        {{ loading ? '登录中...' : '登 录' }}
+        {{ loading ? '登录中...' : '登录' }}
       </button>
       <p v-if="error" class="text-sm text-red-500 text-center">{{ error }}</p>
       <p class="text-sm text-gray-400 text-center">

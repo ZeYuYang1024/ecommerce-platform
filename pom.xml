@@ -27,6 +27,7 @@
         <module>ecommerce-seckill</module>
         <module>ecommerce-knowledge</module>
         <module>ecommerce-monitor</module>
+        <module>ecommerce-member</module>
     </modules>
 
     <properties>

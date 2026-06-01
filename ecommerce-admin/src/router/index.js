@@ -57,7 +57,10 @@ const routes = [
       { path: 'settlement', name: 'Settlement', component: () => import('@/views/settlement/index.vue'), meta: { title: '日终结算' } },
       { path: 'users', name: 'Users', component: () => import('@/views/user/list.vue'), meta: { title: '用户管理' } },
       { path: 'roles', name: 'Roles', component: () => import('@/views/role/index.vue'), meta: { title: '角色管理' } },
-      { path: 'permissions', name: 'Permissions', component: () => import('@/views/permission/index.vue'), meta: { title: '权限管理' } }
+      { path: 'permissions', name: 'Permissions', component: () => import('@/views/permission/index.vue'), meta: { title: '权限管理' } },
+      { path: 'member/levels', name: 'MemberLevels', component: () => import('@/views/member/levels.vue'), meta: { title: '会员等级' } },
+      { path: 'member/profiles', name: 'MemberProfiles', component: () => import('@/views/member/profiles.vue'), meta: { title: '会员列表' } },
+      { path: 'member/points', name: 'MemberPoints', component: () => import('@/views/member/points.vue'), meta: { title: '积分流水' } }
     ]
   }
 ]
