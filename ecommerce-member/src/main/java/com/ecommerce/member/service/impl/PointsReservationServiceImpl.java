@@ -11,11 +11,9 @@ import com.ecommerce.member.dto.request.internal.PointsReserveRequest;
 import com.ecommerce.member.dto.response.internal.PointsReserveResponse;
 import com.ecommerce.member.entity.MemberProfile;
 import com.ecommerce.member.entity.PointsReservation;
-import com.ecommerce.member.entity.PointsTransaction;
 import com.ecommerce.member.mapper.MemberProfileMapper;
 import com.ecommerce.member.mapper.PointsConsumeDetailMapper;
 import com.ecommerce.member.mapper.PointsReservationMapper;
-import com.ecommerce.member.mapper.PointsTransactionMapper;
 import com.ecommerce.member.service.PointsReservationService;
 import com.ecommerce.member.service.PointsService;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +26,6 @@ public class PointsReservationServiceImpl implements PointsReservationService {
 
     private final PointsReservationMapper pointsReservationMapper;
     private final PointsConsumeDetailMapper pointsConsumeDetailMapper;
-    private final PointsTransactionMapper pointsTransactionMapper;
     private final MemberProfileMapper memberProfileMapper;
     private final PointsService pointsService;
 
@@ -99,36 +96,9 @@ public class PointsReservationServiceImpl implements PointsReservationService {
             throw new BusinessException(MemberErrorCode.POINTS_RESERVATION_CONFLICT);
         }
 
-        MemberProfile profile = memberProfileMapper.selectOne(
-                new LambdaQueryWrapper<MemberProfile>()
-                        .eq(MemberProfile::getUserId, reservation.getUserId()));
-        if (profile == null) {
-            throw new BusinessException(MemberErrorCode.MEMBER_PROFILE_NOT_FOUND);
-        }
-
-        int profileRows = memberProfileMapper.update(null,
-                new LambdaUpdateWrapper<MemberProfile>()
-                        .eq(MemberProfile::getId, profile.getId())
-                        .eq(MemberProfile::getVersion, profile.getVersion())
-                        .setSql("total_spent_points = total_spent_points + " + reservation.getReservedPoints())
-                        .setSql("version = version + 1"));
-        if (profileRows == 0) {
-            throw new BusinessException(MemberErrorCode.POINTS_RESERVATION_CONFLICT);
-        }
-
-        PointsTransaction tx = new PointsTransaction();
-        tx.setId(SnowflakeUtils.nextId());
-        tx.setUserId(reservation.getUserId());
-        tx.setDirection("SPEND");
-        tx.setAmount(reservation.getReservedPoints());
-        tx.setBalanceAfter(profile.getAvailablePoints());
-        tx.setSourceType("ORDER");
-        tx.setSourceId(reservation.getOrderNo());
-        tx.setBizKey(resolveConfirmBizKey(request, reservation));
-        tx.setConsumedAmount(0);
-        tx.setRemark("订单积分抵扣");
-        tx.setRelatedReservationNo(reservation.getReservationNo());
-        pointsTransactionMapper.insert(tx);
+        pointsService.spend(reservation.getUserId(), reservation.getReservedPoints(), "ORDER",
+                reservation.getOrderNo(), resolveConfirmBizKey(request, reservation),
+                "订单积分抵扣", reservation.getReservationNo());
     }
 
     @Override

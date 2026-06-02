@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS points_reservation (
     UNIQUE KEY uk_order_scene (order_no, scene_type),
     KEY idx_user_status (user_id, status),
     KEY idx_order_no (order_no)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='积分预占主记录';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='points reservation';
 
 CREATE TABLE IF NOT EXISTS points_consume_detail (
     id BIGINT PRIMARY KEY,
@@ -34,8 +34,34 @@ CREATE TABLE IF NOT EXISTS points_consume_detail (
     KEY idx_reservation_id (reservation_id),
     KEY idx_user_expire_at (user_id, expire_at),
     KEY idx_earn_tx_id (earn_tx_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='积分消费批次明细';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='points consume detail';
 
-ALTER TABLE points_transaction
-    ADD COLUMN IF NOT EXISTS related_reservation_no VARCHAR(32) NULL COMMENT '关联积分预占单号' AFTER remark,
-    ADD COLUMN IF NOT EXISTS reversal_of_tx_id BIGINT NULL COMMENT '冲正指向的原流水ID' AFTER related_reservation_no;
+SET @ddl := IF (
+  EXISTS (
+    SELECT 1
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'points_transaction'
+      AND COLUMN_NAME = 'related_reservation_no'
+  ),
+  'SELECT ''points_transaction.related_reservation_no already exists'' AS message',
+  'ALTER TABLE points_transaction ADD COLUMN related_reservation_no VARCHAR(32) NULL COMMENT ''related reservation number'' AFTER remark'
+);
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @ddl := IF (
+  EXISTS (
+    SELECT 1
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'points_transaction'
+      AND COLUMN_NAME = 'reversal_of_tx_id'
+  ),
+  'SELECT ''points_transaction.reversal_of_tx_id already exists'' AS message',
+  'ALTER TABLE points_transaction ADD COLUMN reversal_of_tx_id BIGINT NULL COMMENT ''reversal source tx id'' AFTER related_reservation_no'
+);
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

@@ -56,6 +56,10 @@ public class OrderController {
         vo.setId(order.getId());
         vo.setOrderNo(order.getOrderNo());
         vo.setTotalAmount(order.getTotalAmount());
+        vo.setOriginalAmount(order.getOriginalAmount());
+        vo.setPointsUsed(order.getPointsUsed());
+        vo.setPointsDeductionAmount(order.getPointsDeductionAmount());
+        vo.setPointsDeductionRatio(order.getPointsDeductionRatio());
         vo.setStatus(order.getStatus());
         return Result.ok(vo);
     }
@@ -69,6 +73,10 @@ public class OrderController {
         vo.setOrderNo(order.getOrderNo());
         vo.setUserId(order.getUserId());
         vo.setTotalAmount(order.getTotalAmount());
+        vo.setOriginalAmount(order.getOriginalAmount());
+        vo.setPointsUsed(order.getPointsUsed());
+        vo.setPointsDeductionAmount(order.getPointsDeductionAmount());
+        vo.setPointsDeductionRatio(order.getPointsDeductionRatio());
         vo.setStatus(order.getStatus());
         return Result.ok(vo);
     }

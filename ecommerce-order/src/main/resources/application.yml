@@ -47,6 +47,12 @@ outbox:
     fixed-delay-ms: 5000
     batch-size: 50
 
+member:
+  points:
+    deduction:
+      enabled: true
+      points-per-yuan: 100
+
 management:
   endpoints:
     web:

@@ -1,6 +1,7 @@
 package com.ecommerce.payment.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.ecommerce.common.dto.OrderRefundedMessage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.OrderPaidMessage;
 import com.ecommerce.common.outbox.OutboxMessage;
@@ -153,14 +154,16 @@ public class PaymentServiceImpl implements PaymentService {
         DistributedTransactionContext transaction = startTransaction(
                 payment.getOrderNo(),
                 "payment-refund:" + payment.getOrderNo() + ":" + refund.getRefundNo());
-        outboxService.enqueue("payment", payment.getOrderNo(), "order-paid",
-                new OrderPaidMessage(
+        outboxService.enqueue("payment", payment.getOrderNo(), "order-refunded",
+                new OrderRefundedMessage(
+                        refund.getRefundNo(),
                         payment.getOrderNo(),
-                        isPartial ? 1 : 5,
+                        payment.getUserId(),
+                        refundAmount,
+                        isPartial ? "PARTIAL" : "FULL",
+                        "SUCCESS",
                         LocalDateTime.now(),
-                        transaction.getTransactionId(),
-                        transaction.getIdempotencyKey(),
-                        null));
+                        transaction.getIdempotencyKey()));
 
         return toVO(payment);
     }

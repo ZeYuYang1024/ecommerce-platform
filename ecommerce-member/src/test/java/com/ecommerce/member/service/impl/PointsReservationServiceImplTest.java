@@ -8,11 +8,9 @@ import com.ecommerce.member.dto.request.internal.PointsReserveRequest;
 import com.ecommerce.member.dto.response.internal.PointsReserveResponse;
 import com.ecommerce.member.entity.MemberProfile;
 import com.ecommerce.member.entity.PointsReservation;
-import com.ecommerce.member.entity.PointsTransaction;
 import com.ecommerce.member.mapper.MemberProfileMapper;
 import com.ecommerce.member.mapper.PointsConsumeDetailMapper;
 import com.ecommerce.member.mapper.PointsReservationMapper;
-import com.ecommerce.member.mapper.PointsTransactionMapper;
 import com.ecommerce.member.service.PointsService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,9 +34,6 @@ class PointsReservationServiceImplTest {
 
     @Mock
     private PointsConsumeDetailMapper pointsConsumeDetailMapper;
-
-    @Mock
-    private PointsTransactionMapper pointsTransactionMapper;
 
     @Mock
     private MemberProfileMapper memberProfileMapper;
@@ -92,32 +87,18 @@ class PointsReservationServiceImplTest {
     }
 
     @Test
-    void confirmShouldCreateSpendLedgerAndMarkReservationConsumed() {
+    void confirmShouldDelegateSpendAndMarkReservationConsumed() {
         PointsReservation reservation = buildReservation("PR1", "ORD-1", 10001L, 120, "RESERVED");
-        MemberProfile profile = buildProfile(1L, 10001L, 380L, 2L);
         when(pointsReservationMapper.selectOne(any())).thenReturn(reservation);
         when(pointsReservationMapper.update(any(), any())).thenReturn(1);
-        when(memberProfileMapper.selectOne(any())).thenReturn(profile);
-        when(memberProfileMapper.update(any(), any())).thenReturn(1);
 
         service.confirm(new PointsReservationConfirmRequest("PR1", "confirm:ORD-1"));
 
-        verify(pointsService, never()).spend(any(), any(), any(), any(), any(), any(), any());
+        verify(pointsService).spend(10001L, 120, "ORDER", "ORD-1",
+                "confirm:ORD-1", "\u8ba2\u5355\u79ef\u5206\u62b5\u6263", "PR1");
         verify(pointsReservationMapper).update(any(), any());
-        verify(memberProfileMapper).update(any(), any());
-        ArgumentCaptor<PointsTransaction> spendCaptor = ArgumentCaptor.forClass(PointsTransaction.class);
-        verify(pointsTransactionMapper).insert(spendCaptor.capture());
-        PointsTransaction spend = spendCaptor.getValue();
-        assertThat(spend.getUserId()).isEqualTo(10001L);
-        assertThat(spend.getDirection()).isEqualTo("SPEND");
-        assertThat(spend.getAmount()).isEqualTo(120);
-        assertThat(spend.getBalanceAfter()).isEqualTo(380L);
-        assertThat(spend.getSourceType()).isEqualTo("ORDER");
-        assertThat(spend.getSourceId()).isEqualTo("ORD-1");
-        assertThat(spend.getBizKey()).isEqualTo("confirm:ORD-1");
-        assertThat(spend.getRemark()).isEqualTo("订单积分抵扣");
-        assertThat(spend.getRelatedReservationNo()).isEqualTo("PR1");
         verify(pointsConsumeDetailMapper, never()).insert(any(com.ecommerce.member.entity.PointsConsumeDetail.class));
+        verify(memberProfileMapper, never()).update(any(), any());
     }
 
     @Test

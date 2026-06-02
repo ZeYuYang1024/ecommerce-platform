@@ -16,6 +16,9 @@ public class CreateOrderRequest {
     private String receiverPhone;
     @NotBlank
     private String receiverAddress;
+    private Boolean usePoints;
+    private Integer pointsToUse;
+    private String clientRequestId;
 
     @Data
     public static class OrderItemRequest {

@@ -1,6 +1,7 @@
 package com.ecommerce.payment.outbox;
 
 import com.ecommerce.common.dto.OrderPaidMessage;
+import com.ecommerce.common.dto.OrderRefundedMessage;
 import com.ecommerce.common.outbox.OutboxMessage;
 import com.ecommerce.common.outbox.OutboxService;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
@@ -11,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -69,5 +71,26 @@ class PaymentOutboxPublisherTest {
 
         verify(outboxService).markFailed(message, "mq down");
         verify(outboxService, never()).markSent(2L);
+    }
+
+    @Test
+    void publishPendingMessagesShouldSendRefundMessageAndMarkSent() throws Exception {
+        OutboxMessage message = new OutboxMessage();
+        message.setId(3L);
+        message.setTopic("order-refunded");
+        message.setAggregateId("ORD-3");
+        message.setPayloadJson("{\"orderNo\":\"ORD-3\",\"refundNo\":\"REF-3\"}");
+        OrderRefundedMessage payload = new OrderRefundedMessage(
+                "REF-3", "ORD-3", 1L, new BigDecimal("88.00"), "FULL", "SUCCESS",
+                LocalDateTime.of(2026, 6, 2, 13, 0), "payment-refund:ORD-3:REF-3");
+        when(outboxService.loadPendingBatch(20)).thenReturn(List.of(message));
+        when(outboxService.markSending(3L)).thenReturn(true);
+        when(jsonMapper.readValue(message.getPayloadJson(), OrderRefundedMessage.class)).thenReturn(payload);
+
+        PaymentOutboxPublisher publisher = new PaymentOutboxPublisher(outboxService, rocketMQTemplate, jsonMapper);
+        publisher.publishPendingMessages();
+
+        verify(rocketMQTemplate).syncSend("order-refunded", payload);
+        verify(outboxService).markSent(3L);
     }
 }

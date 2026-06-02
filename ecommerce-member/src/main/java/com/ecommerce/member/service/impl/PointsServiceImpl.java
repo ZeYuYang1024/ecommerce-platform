@@ -10,9 +10,13 @@ import com.ecommerce.member.common.MemberErrorCode;
 import com.ecommerce.member.dto.response.PointsTransactionVO;
 import com.ecommerce.member.entity.MemberLevel;
 import com.ecommerce.member.entity.MemberProfile;
+import com.ecommerce.member.entity.PointsConsumeDetail;
+import com.ecommerce.member.entity.PointsReservation;
 import com.ecommerce.member.entity.PointsTransaction;
 import com.ecommerce.member.mapper.MemberLevelMapper;
 import com.ecommerce.member.mapper.MemberProfileMapper;
+import com.ecommerce.member.mapper.PointsConsumeDetailMapper;
+import com.ecommerce.member.mapper.PointsReservationMapper;
 import com.ecommerce.member.mapper.PointsTransactionMapper;
 import com.ecommerce.member.service.PointsService;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -32,6 +37,8 @@ public class PointsServiceImpl implements PointsService {
     private final PointsTransactionMapper pointsTransactionMapper;
     private final MemberProfileMapper memberProfileMapper;
     private final MemberLevelMapper memberLevelMapper;
+    private final PointsReservationMapper pointsReservationMapper;
+    private final PointsConsumeDetailMapper pointsConsumeDetailMapper;
 
     @Override
     @Transactional
@@ -99,15 +106,98 @@ public class PointsServiceImpl implements PointsService {
     }
 
     @Override
+    @Transactional
     public void spend(Long userId, Integer amount, String sourceType, String sourceId, String bizKey,
                       String remark, String relatedReservationNo) {
-        throw new UnsupportedOperationException("Points spend flow is implemented in later Phase 2A tasks");
+        if (amount == null || amount <= 0) {
+            throw new BusinessException(MemberErrorCode.INVALID_POINTS_AMOUNT);
+        }
+
+        if (pointsTransactionMapper.selectCount(new LambdaQueryWrapper<PointsTransaction>()
+                .eq(PointsTransaction::getBizKey, bizKey)) > 0) {
+            log.info("Duplicate spend bizKey ignored: {}", bizKey);
+            return;
+        }
+
+        MemberProfile profile = memberProfileMapper.selectOne(new LambdaQueryWrapper<MemberProfile>()
+                .eq(MemberProfile::getUserId, userId));
+        if (profile == null) {
+            throw new BusinessException(MemberErrorCode.MEMBER_PROFILE_NOT_FOUND);
+        }
+
+        int rows = memberProfileMapper.update(null,
+                new LambdaUpdateWrapper<MemberProfile>()
+                        .eq(MemberProfile::getId, profile.getId())
+                        .eq(MemberProfile::getVersion, profile.getVersion())
+                        .setSql("total_spent_points = total_spent_points + " + amount)
+                        .setSql("version = version + 1"));
+        if (rows == 0) {
+            throw new BusinessException(MemberErrorCode.CONCURRENT_UPDATE_FAILED);
+        }
+
+        PointsTransaction tx = new PointsTransaction();
+        tx.setId(SnowflakeUtils.nextId());
+        tx.setUserId(userId);
+        tx.setDirection("SPEND");
+        tx.setAmount(amount);
+        tx.setBalanceAfter(profile.getAvailablePoints());
+        tx.setSourceType(sourceType);
+        tx.setSourceId(sourceId);
+        tx.setBizKey(bizKey);
+        tx.setConsumedAmount(0);
+        tx.setRemark(remark);
+        tx.setRelatedReservationNo(relatedReservationNo);
+        pointsTransactionMapper.insert(tx);
+
+        allocateConsumeDetails(userId, amount, relatedReservationNo);
     }
 
     @Override
+    @Transactional
     public void reverseSpend(Long userId, Integer amount, String sourceType, String sourceId, String bizKey,
                              String remark, String relatedReservationNo, Long reversalOfTxId) {
-        throw new UnsupportedOperationException("Points reverse spend flow is implemented in later Phase 2A tasks");
+        if (amount == null || amount <= 0) {
+            throw new BusinessException(MemberErrorCode.INVALID_POINTS_AMOUNT);
+        }
+
+        if (pointsTransactionMapper.selectCount(new LambdaQueryWrapper<PointsTransaction>()
+                .eq(PointsTransaction::getBizKey, bizKey)) > 0) {
+            log.info("Duplicate reverse spend bizKey ignored: {}", bizKey);
+            return;
+        }
+
+        MemberProfile profile = memberProfileMapper.selectOne(new LambdaQueryWrapper<MemberProfile>()
+                .eq(MemberProfile::getUserId, userId));
+        if (profile == null) {
+            throw new BusinessException(MemberErrorCode.MEMBER_PROFILE_NOT_FOUND);
+        }
+
+        int rows = memberProfileMapper.update(null,
+                new LambdaUpdateWrapper<MemberProfile>()
+                        .eq(MemberProfile::getId, profile.getId())
+                        .eq(MemberProfile::getVersion, profile.getVersion())
+                        .setSql("available_points = available_points + " + amount)
+                        .setSql("version = version + 1"));
+        if (rows == 0) {
+            throw new BusinessException(MemberErrorCode.CONCURRENT_UPDATE_FAILED);
+        }
+
+        MemberProfile updated = memberProfileMapper.selectById(profile.getId());
+        PointsTransaction tx = new PointsTransaction();
+        tx.setId(SnowflakeUtils.nextId());
+        tx.setUserId(userId);
+        tx.setDirection("EARN");
+        tx.setAmount(amount);
+        tx.setBalanceAfter(updated != null ? updated.getAvailablePoints() : profile.getAvailablePoints() + amount);
+        tx.setSourceType(sourceType);
+        tx.setSourceId(sourceId);
+        tx.setBizKey(bizKey);
+        tx.setConsumedAmount(0);
+        tx.setExpireAt(LocalDateTime.now().plusMonths(POINTS_EXPIRE_MONTHS));
+        tx.setRemark(remark);
+        tx.setRelatedReservationNo(relatedReservationNo);
+        tx.setReversalOfTxId(reversalOfTxId);
+        pointsTransactionMapper.insert(tx);
     }
 
     @Override
@@ -167,5 +257,55 @@ public class PointsServiceImpl implements PointsService {
             throw new BusinessException(MemberErrorCode.LEVEL_NOT_FOUND);
         }
         return level;
+    }
+
+    private void allocateConsumeDetails(Long userId, Integer amount, String relatedReservationNo) {
+        if (relatedReservationNo == null || relatedReservationNo.isBlank()) {
+            return;
+        }
+
+        PointsReservation reservation = pointsReservationMapper.selectOne(new LambdaQueryWrapper<PointsReservation>()
+                .eq(PointsReservation::getReservationNo, relatedReservationNo));
+        if (reservation == null) {
+            return;
+        }
+
+        List<PointsTransaction> earnTransactions = pointsTransactionMapper.selectList(
+                new LambdaQueryWrapper<PointsTransaction>()
+                        .eq(PointsTransaction::getUserId, userId)
+                        .eq(PointsTransaction::getDirection, "EARN")
+                        .apply("amount > consumed_amount")
+                        .orderByAsc(PointsTransaction::getExpireAt)
+                        .orderByAsc(PointsTransaction::getCreatedAt));
+
+        int remaining = amount;
+        for (PointsTransaction earnTx : earnTransactions) {
+            if (remaining <= 0) {
+                break;
+            }
+            int available = earnTx.getAmount() - (earnTx.getConsumedAmount() == null ? 0 : earnTx.getConsumedAmount());
+            if (available <= 0) {
+                continue;
+            }
+
+            int consume = Math.min(available, remaining);
+            earnTx.setConsumedAmount((earnTx.getConsumedAmount() == null ? 0 : earnTx.getConsumedAmount()) + consume);
+            pointsTransactionMapper.updateById(earnTx);
+
+            PointsConsumeDetail detail = new PointsConsumeDetail();
+            detail.setId(SnowflakeUtils.nextId());
+            detail.setReservationId(reservation.getId());
+            detail.setUserId(userId);
+            detail.setEarnTxId(earnTx.getId());
+            detail.setConsumePoints(consume);
+            detail.setRestoredPoints(0);
+            detail.setExpireAt(earnTx.getExpireAt());
+            pointsConsumeDetailMapper.insert(detail);
+            remaining -= consume;
+        }
+
+        if (remaining > 0) {
+            throw new BusinessException(MemberErrorCode.POINTS_INSUFFICIENT);
+        }
     }
 }

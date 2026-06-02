@@ -11,9 +11,9 @@ import com.ecommerce.member.dto.response.GrowthTransactionVO;
 import com.ecommerce.member.entity.GrowthTransaction;
 import com.ecommerce.member.entity.MemberLevel;
 import com.ecommerce.member.entity.MemberProfile;
+import com.ecommerce.member.mapper.GrowthTransactionMapper;
 import com.ecommerce.member.mapper.MemberLevelMapper;
 import com.ecommerce.member.mapper.MemberProfileMapper;
-import com.ecommerce.member.mapper.GrowthTransactionMapper;
 import com.ecommerce.member.service.GrowthService;
 import com.ecommerce.member.service.LevelService;
 import lombok.RequiredArgsConstructor;
@@ -35,11 +35,10 @@ public class GrowthServiceImpl implements GrowthService {
     @Transactional
     public void add(Long userId, Integer amount, String sourceType, String sourceId,
                     String bizKey, String remark) {
-        if (amount <= 0) {
+        if (amount == null || amount == 0) {
             return;
         }
 
-        // 幂等检查
         Long exists = growthTransactionMapper.selectCount(
                 new LambdaQueryWrapper<GrowthTransaction>()
                         .eq(GrowthTransaction::getBizKey, bizKey));
@@ -48,25 +47,23 @@ public class GrowthServiceImpl implements GrowthService {
             return;
         }
 
-        // 获取或创建档案
         MemberProfile profile = getOrCreateProfile(userId);
 
-        // 乐观锁更新成长值
         int rows = memberProfileMapper.update(null,
                 new LambdaUpdateWrapper<MemberProfile>()
                         .eq(MemberProfile::getId, profile.getId())
                         .eq(MemberProfile::getVersion, profile.getVersion())
                         .setSql("growth_value = growth_value + " + amount)
-                        .setSql("total_growth_value = total_growth_value + " + amount)
+                        .setSql(amount > 0
+                                ? "total_growth_value = total_growth_value + " + amount
+                                : "total_growth_value = total_growth_value")
                         .setSql("version = version + 1"));
         if (rows == 0) {
             throw new BusinessException(MemberErrorCode.CONCURRENT_UPDATE_FAILED);
         }
 
-        // 获取更新后的余额
         MemberProfile updated = memberProfileMapper.selectById(profile.getId());
 
-        // 插入成长值流水
         GrowthTransaction tx = new GrowthTransaction();
         tx.setId(SnowflakeUtils.nextId());
         tx.setUserId(userId);
@@ -78,11 +75,12 @@ public class GrowthServiceImpl implements GrowthService {
         tx.setRemark(remark);
         growthTransactionMapper.insert(tx);
 
-        log.info("Growth added: userId={}, amount={}, bizKey={}, balanceAfter={}",
+        log.info("Growth changed: userId={}, amount={}, bizKey={}, balanceAfter={}",
                 userId, amount, bizKey, tx.getBalanceAfter());
 
-        // 检查升级
-        levelService.checkUpgrade(userId, updated.getGrowthValue());
+        if (amount > 0) {
+            levelService.checkUpgrade(userId, updated.getGrowthValue());
+        }
     }
 
     @Override

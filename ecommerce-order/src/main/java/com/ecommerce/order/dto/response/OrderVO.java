@@ -12,6 +12,10 @@ public class OrderVO {
     private String orderNo;
     private Long userId;
     private BigDecimal totalAmount;
+    private BigDecimal originalAmount;
+    private Integer pointsUsed;
+    private BigDecimal pointsDeductionAmount;
+    private Integer pointsDeductionRatio;
     private Integer status;
     private String statusText;
     private String receiverName;
