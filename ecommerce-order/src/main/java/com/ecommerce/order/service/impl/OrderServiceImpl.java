@@ -1,7 +1,6 @@
 package com.ecommerce.order.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.OrderItemMessage;
@@ -9,18 +8,24 @@ import com.ecommerce.common.dto.OrderPaidMessage;
 import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.common.outbox.OutboxMessage;
 import com.ecommerce.common.outbox.OutboxQuery;
-import com.ecommerce.common.outbox.OutboxSummary;
 import com.ecommerce.common.outbox.OutboxService;
+import com.ecommerce.common.outbox.OutboxSummary;
 import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.common.result.ErrorCode;
+import com.ecommerce.common.result.Result;
 import com.ecommerce.common.transaction.DistributedTransactionContext;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.order.client.CartClient;
+import com.ecommerce.order.client.MemberClient;
 import com.ecommerce.order.client.ProductSpuClient;
+import com.ecommerce.order.client.dto.MemberPointsReservationReleaseRequest;
+import com.ecommerce.order.client.dto.MemberPointsReserveRequest;
+import com.ecommerce.order.client.dto.MemberPointsReserveResponse;
 import com.ecommerce.order.common.OrderErrorCode;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
-import com.ecommerce.order.dto.response.OutboxMessageVO;
 import com.ecommerce.order.dto.response.OrderSummaryVO;
 import com.ecommerce.order.dto.response.OrderVO;
+import com.ecommerce.order.dto.response.OutboxMessageVO;
 import com.ecommerce.order.entity.Order;
 import com.ecommerce.order.entity.OrderItem;
 import com.ecommerce.order.mapper.OrderItemMapper;
@@ -28,10 +33,12 @@ import com.ecommerce.order.mapper.OrderMapper;
 import com.ecommerce.order.service.OrderService;
 import com.ecommerce.order.transaction.OrderTransactionCoordinator;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -50,14 +57,22 @@ public class OrderServiceImpl implements OrderService {
     private final OrderItemMapper itemMapper;
     private final CartClient cartClient;
     private final ProductSpuClient productSpuClient;
+    private final MemberClient memberClient;
     private final OutboxService outboxService;
 
+    @Value("${member.points.deduction.enabled:true}")
+    private boolean pointsDeductionEnabled;
+
+    @Value("${member.points.deduction.points-per-yuan:100}")
+    private int pointsPerYuan;
+
     public OrderServiceImpl(OrderMapper orderMapper, OrderItemMapper itemMapper, ProductSpuClient productSpuClient,
-                            CartClient cartClient, OutboxService outboxService) {
+                            CartClient cartClient, MemberClient memberClient, OutboxService outboxService) {
         this.orderMapper = orderMapper;
         this.itemMapper = itemMapper;
         this.cartClient = cartClient;
         this.productSpuClient = productSpuClient;
+        this.memberClient = memberClient;
         this.outboxService = outboxService;
     }
 
@@ -70,59 +85,70 @@ public class OrderServiceImpl implements OrderService {
 
         Map<Long, SkuBatchVO> skuMap = loadSkuSnapshots(request);
 
-        BigDecimal total = BigDecimal.ZERO;
+        BigDecimal originalTotal = BigDecimal.ZERO;
         for (CreateOrderRequest.OrderItemRequest item : request.getItems()) {
             SkuBatchVO sku = skuMap.get(item.getSkuId());
             BigDecimal price = sku.getPrice();
-            total = total.add(price.multiply(BigDecimal.valueOf(item.getQuantity())));
+            originalTotal = originalTotal.add(price.multiply(BigDecimal.valueOf(item.getQuantity())));
         }
 
-        // Create order / 创建订单
+        PointsDeductionSnapshot deduction = calculatePointsDeduction(request, originalTotal);
+
         Order order = new Order();
         order.setId(SnowflakeUtils.nextId());
         order.setOrderNo(generateOrderNo());
         order.setUserId(userId);
-        order.setTotalAmount(total);
-        order.setStatus(0); // Pending payment / 待支付
+        order.setOriginalAmount(originalTotal);
+        order.setTotalAmount(originalTotal.subtract(deduction.deductionAmount()));
+        order.setPointsUsed(deduction.pointsUsed());
+        order.setPointsDeductionAmount(deduction.deductionAmount());
+        order.setPointsDeductionRatio(deduction.pointsDeductionRatio());
+        order.setStatus(0);
         order.setReceiverName(request.getReceiverName());
         order.setReceiverPhone(request.getReceiverPhone());
         order.setReceiverAddress(request.getReceiverAddress());
-        orderMapper.insert(order);
 
-        // Create order items / 创建订单项
-        List<OrderItemMessage> lockItems = new ArrayList<>();
-        for (CreateOrderRequest.OrderItemRequest i : request.getItems()) {
-            SkuBatchVO sku = skuMap.get(i.getSkuId());
-            OrderItem item = new OrderItem();
-            item.setId(SnowflakeUtils.nextId());
-            item.setOrderId(order.getId());
-            item.setOrderNo(order.getOrderNo());
-            item.setSkuId(i.getSkuId());
-            item.setSpuId(sku.getSpuId());
-            item.setName(sku.getSkuName());
-            item.setImage(sku.getImage());
-            BigDecimal price = sku.getPrice();
-            item.setPrice(price);
-            item.setQuantity(i.getQuantity());
-            item.setTotalPrice(price.multiply(BigDecimal.valueOf(i.getQuantity())));
-            itemMapper.insert(item);
+        String reservationNo = reservePointsIfNeeded(userId, request, order.getOrderNo(), deduction);
+        order.setPointsReservationNo(reservationNo);
 
-            lockItems.add(new OrderItemMessage(i.getSkuId(), i.getQuantity()));
-        }
-
-        DistributedTransactionContext transaction = OrderTransactionCoordinator.startOrderCreated(order.getOrderNo());
-
-        outboxService.enqueue("order", order.getOrderNo(), "order-created",
-                OrderTransactionCoordinator.buildInventoryMessage(transaction, lockItems));
-
-        // Best-effort cart refresh after checkout / 下单后尽力刷新购物车
         try {
-            cartClient.getCart(userId);
-        } catch (Exception e) {
-            log.warn("cart refresh failed for userId={}", userId, e);
-        }
+            orderMapper.insert(order);
 
-        return toVO(order, java.util.Collections.emptyMap());
+            List<OrderItemMessage> lockItems = new ArrayList<>();
+            for (CreateOrderRequest.OrderItemRequest i : request.getItems()) {
+                SkuBatchVO sku = skuMap.get(i.getSkuId());
+                OrderItem item = new OrderItem();
+                item.setId(SnowflakeUtils.nextId());
+                item.setOrderId(order.getId());
+                item.setOrderNo(order.getOrderNo());
+                item.setSkuId(i.getSkuId());
+                item.setSpuId(sku.getSpuId());
+                item.setName(sku.getSkuName());
+                item.setImage(sku.getImage());
+                BigDecimal price = sku.getPrice();
+                item.setPrice(price);
+                item.setQuantity(i.getQuantity());
+                item.setTotalPrice(price.multiply(BigDecimal.valueOf(i.getQuantity())));
+                itemMapper.insert(item);
+
+                lockItems.add(new OrderItemMessage(i.getSkuId(), i.getQuantity()));
+            }
+
+            DistributedTransactionContext transaction = OrderTransactionCoordinator.startOrderCreated(order.getOrderNo());
+            outboxService.enqueue("order", order.getOrderNo(), "order-created",
+                    OrderTransactionCoordinator.buildInventoryMessage(transaction, lockItems));
+
+            try {
+                cartClient.getCart(userId);
+            } catch (Exception e) {
+                log.warn("cart refresh failed for userId={}", userId, e);
+            }
+
+            return toVO(order, Collections.emptyMap());
+        } catch (RuntimeException ex) {
+            releaseReservedPointsQuietly(order.getPointsReservationNo(), order.getOrderNo(), "ORDER_CREATE_FAILED");
+            throw ex;
+        }
     }
 
     @Override
@@ -131,7 +157,9 @@ public class OrderServiceImpl implements OrderService {
                 new LambdaQueryWrapper<Order>()
                         .eq(Order::getOrderNo, orderNo)
                         .eq(Order::getUserId, userId));
-        if (order == null) throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
+        if (order == null) {
+            throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
+        }
         return getOrder(userId, order.getId());
     }
 
@@ -191,42 +219,78 @@ public class OrderServiceImpl implements OrderService {
         if (order.getStatus() != 0) {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_PENDING);
         }
+
         order.setStatus(4);
         orderMapper.updateById(order);
 
         List<OrderItem> items = itemMapper.selectList(
                 new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, id));
         List<OrderItemMessage> releaseItems = items.stream()
-            .map(i -> new OrderItemMessage(i.getSkuId(), i.getQuantity()))
-            .collect(Collectors.toList());
+                .map(i -> new OrderItemMessage(i.getSkuId(), i.getQuantity()))
+                .collect(Collectors.toList());
         outboxService.enqueue("order", order.getOrderNo(), "order-cancelled",
                 new OrderInventoryMessage(order.getOrderNo(), releaseItems));
+        releaseReservedPointsQuietly(order.getPointsReservationNo(), order.getOrderNo(), "USER_CANCELLED");
+    }
+
+    private void updateStatusByOrderNo(String orderNo, Integer status) {
+        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>().eq(Order::getOrderNo, orderNo));
+        if (order == null) {
+            throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
+        }
+        validateStatusTransition(order.getStatus(), status);
+        if (Objects.equals(order.getStatus(), status)) {
+            return;
+        }
+        order.setStatus(status);
+        orderMapper.updateById(order);
+    }
+
+    @Override
+    public Page<OrderVO> listAll(int page, int size, Integer status) {
+        LambdaQueryWrapper<Order> wrapper = new LambdaQueryWrapper<>();
+        if (status != null) {
+            wrapper.eq(Order::getStatus, status);
+        }
+        wrapper.orderByDesc(Order::getCreatedAt);
+        Page<Order> pageReq = new Page<>(page, size);
+        Page<Order> result = orderMapper.selectPage(pageReq, wrapper);
+        Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(result.getRecords());
+        List<OrderVO> vos = result.getRecords().stream().map(o -> toVO(o, itemsMap)).collect(Collectors.toList());
+        return new Page<OrderVO>(result.getCurrent(), result.getSize(), result.getTotal()).setRecords(vos);
     }
 
     @Override
     public Page<OrderVO> listByMerchant(Long merchantId, int page, int size, Integer status) {
-        List<Long> spuIds = loadMerchantSpuIds(merchantId);
-        if (spuIds.isEmpty()) return new Page<>(page, size, 0);
-        List<Long> orderIds = loadMerchantOrderIds(spuIds);
-        if (orderIds.isEmpty()) return new Page<>(page, size, 0);
-        LambdaQueryWrapper<Order> w = new LambdaQueryWrapper<Order>().in(Order::getId, orderIds);
-        if (status != null) w.eq(Order::getStatus, status);
-        w.orderByDesc(Order::getCreatedAt);
-        Page<Order> result = orderMapper.selectPage(new Page<>(page, size), w);
+        List<Long> merchantSpuIds = loadMerchantSpuIds(merchantId);
+        if (merchantSpuIds.isEmpty()) {
+            return new Page<>(page, size, 0);
+        }
+        List<Long> orderIds = loadMerchantOrderIds(merchantSpuIds);
+        if (orderIds.isEmpty()) {
+            return new Page<>(page, size, 0);
+        }
+        LambdaQueryWrapper<Order> wrapper = new LambdaQueryWrapper<Order>()
+                .in(Order::getId, orderIds)
+                .eq(status != null, Order::getStatus, status)
+                .orderByDesc(Order::getCreatedAt);
+        Page<Order> pageReq = new Page<>(page, size);
+        Page<Order> result = orderMapper.selectPage(pageReq, wrapper);
         Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(result.getRecords());
-        List<OrderVO> vos = result.getRecords().stream().map(o -> toVO(o, itemsMap)).collect(Collectors.toList());
-        Page<OrderVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
-        voPage.setRecords(vos);
-        return voPage;
+        List<OrderVO> vos = result.getRecords().stream().map(o -> {
+            ensureMerchantOwnsOrder(o, "merchant", merchantId);
+            return toVO(o, itemsMap);
+        }).collect(Collectors.toList());
+        return new Page<OrderVO>(result.getCurrent(), result.getSize(), result.getTotal()).setRecords(vos);
     }
 
     @Override
     public List<String> listOrderNosByMerchant(Long merchantId) {
-        List<Long> spuIds = loadMerchantSpuIds(merchantId);
-        if (spuIds.isEmpty()) {
+        List<Long> merchantSpuIds = loadMerchantSpuIds(merchantId);
+        if (merchantSpuIds.isEmpty()) {
             return Collections.emptyList();
         }
-        List<Long> orderIds = loadMerchantOrderIds(spuIds);
+        List<Long> orderIds = loadMerchantOrderIds(merchantSpuIds);
         if (orderIds.isEmpty()) {
             return Collections.emptyList();
         }
@@ -235,22 +299,6 @@ public class OrderServiceImpl implements OrderService {
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
-    }
-
-    @Override
-    public Page<OrderVO> listAll(int page, int size, Integer status) {
-        Page<Order> pageReq = new Page<>(page, size);
-        LambdaQueryWrapper<Order> wrapper = new LambdaQueryWrapper<>();
-        if (status != null) {
-            wrapper.eq(Order::getStatus, status);
-        }
-        wrapper.orderByDesc(Order::getCreatedAt);
-        Page<Order> result = orderMapper.selectPage(pageReq, wrapper);
-        Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(result.getRecords());
-        List<OrderVO> vos = result.getRecords().stream().map(o -> toVO(o, itemsMap)).collect(Collectors.toList());
-        Page<OrderVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
-        voPage.setRecords(vos);
-        return voPage;
     }
 
     @Override
@@ -270,8 +318,12 @@ public class OrderServiceImpl implements OrderService {
         }
         ensureMerchantOwnsOrder(order, userType, merchantId);
         if (order.getStatus() == null || order.getStatus() != 1) {
-            if (order.getStatus() != null && order.getStatus() == 2) throw new BusinessException(OrderErrorCode.ORDER_ALREADY_SHIPPED);
-            if (order.getStatus() != null && order.getStatus() == 4) throw new BusinessException(OrderErrorCode.ORDER_ALREADY_CANCELLED);
+            if (order.getStatus() != null && order.getStatus() == 2) {
+                throw new BusinessException(OrderErrorCode.ORDER_ALREADY_SHIPPED);
+            }
+            if (order.getStatus() != null && order.getStatus() == 4) {
+                throw new BusinessException(OrderErrorCode.ORDER_ALREADY_CANCELLED);
+            }
             throw new BusinessException(OrderErrorCode.ORDER_NOT_PAID);
         }
         order.setStatus(2);
@@ -286,9 +338,14 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
         }
         ensureMerchantOwnsOrder(order, userType, merchantId);
-        validateStatusTransition(order.getStatus(), status);
+        Integer currentStatus = order.getStatus();
+        validateStatusTransition(currentStatus, status);
+        if (Objects.equals(currentStatus, status)) {
+            return;
+        }
         order.setStatus(status);
         orderMapper.updateById(order);
+        releaseReservedPointsIfPendingCancellation(order, currentStatus, status, "STATUS_UPDATE_CANCELLED");
     }
 
     @Override
@@ -308,8 +365,10 @@ public class OrderServiceImpl implements OrderService {
                     message.getOrderNo(), order.getStatus(), message.getStatus());
             return;
         }
+        Integer currentStatus = order.getStatus();
         order.setStatus(message.getStatus());
         orderMapper.updateById(order);
+        releaseReservedPointsIfPendingCancellation(order, currentStatus, message.getStatus(), "INVENTORY_COMPENSATION");
     }
 
     @Override
@@ -361,6 +420,10 @@ public class OrderServiceImpl implements OrderService {
         vo.setOrderNo(order.getOrderNo());
         vo.setUserId(order.getUserId());
         vo.setTotalAmount(order.getTotalAmount());
+        vo.setOriginalAmount(order.getOriginalAmount());
+        vo.setPointsUsed(order.getPointsUsed());
+        vo.setPointsDeductionAmount(order.getPointsDeductionAmount());
+        vo.setPointsDeductionRatio(order.getPointsDeductionRatio());
         vo.setStatus(order.getStatus());
         vo.setStatusText(statusText(order.getStatus()));
         vo.setReceiverName(order.getReceiverName());
@@ -368,7 +431,7 @@ public class OrderServiceImpl implements OrderService {
         vo.setReceiverAddress(order.getReceiverAddress());
         vo.setCreatedAt(order.getCreatedAt());
 
-        List<OrderItem> items = itemsMap.getOrDefault(order.getId(), java.util.Collections.emptyList());
+        List<OrderItem> items = itemsMap.getOrDefault(order.getId(), Collections.emptyList());
         List<OrderVO.OrderItemVO> itemVOs = new ArrayList<>();
         for (OrderItem item : items) {
             OrderVO.OrderItemVO iv = new OrderVO.OrderItemVO();
@@ -410,7 +473,7 @@ public class OrderServiceImpl implements OrderService {
 
     private List<Long> loadMerchantSpuIds(Long merchantId) {
         try {
-            var response = productSpuClient.getSpuIdsByMerchant(merchantId);
+            Result<List<Long>> response = productSpuClient.getSpuIdsByMerchant(merchantId);
             return response.getData() != null ? response.getData() : Collections.emptyList();
         } catch (Exception e) {
             return Collections.emptyList();
@@ -428,7 +491,9 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private Map<Long, List<OrderItem>> loadItemsForOrders(List<Order> orders) {
-        if (orders.isEmpty()) return java.util.Collections.emptyMap();
+        if (orders.isEmpty()) {
+            return Collections.emptyMap();
+        }
         List<Long> orderIds = orders.stream().map(Order::getId).collect(Collectors.toList());
         List<OrderItem> items = itemMapper.selectList(
                 new LambdaQueryWrapper<OrderItem>().in(OrderItem::getOrderId, orderIds));
@@ -442,9 +507,10 @@ public class OrderServiceImpl implements OrderService {
         if (skuIds.stream().anyMatch(Objects::isNull)) {
             throw new BusinessException(OrderErrorCode.ORDER_ITEMS_EMPTY);
         }
+
         List<SkuBatchVO> skuSnapshots;
         try {
-            var response = productSpuClient.batchQuerySkus(skuIds);
+            Result<List<SkuBatchVO>> response = productSpuClient.batchQuerySkus(skuIds);
             skuSnapshots = response.getData();
         } catch (Exception e) {
             throw new BusinessException(OrderErrorCode.ORDER_ITEMS_EMPTY);
@@ -452,6 +518,7 @@ public class OrderServiceImpl implements OrderService {
         if (skuSnapshots == null || skuSnapshots.size() != skuIds.size()) {
             throw new BusinessException(OrderErrorCode.ORDER_ITEMS_EMPTY);
         }
+
         Map<Long, SkuBatchVO> skuMap = new HashMap<>();
         for (SkuBatchVO snapshot : skuSnapshots) {
             if (snapshot == null || snapshot.getSkuId() == null || snapshot.getSpuId() == null || snapshot.getPrice() == null) {
@@ -491,6 +558,95 @@ public class OrderServiceImpl implements OrderService {
         return Math.min(limit, 20);
     }
 
+    private String reservePointsIfNeeded(Long userId, CreateOrderRequest request, String orderNo,
+                                         PointsDeductionSnapshot deduction) {
+        if (!Boolean.TRUE.equals(request.getUsePoints())) {
+            return null;
+        }
+        if (deduction.pointsUsed() == null || deduction.pointsUsed() <= 0) {
+            return null;
+        }
+
+        Result<MemberPointsReserveResponse> response = memberClient.reservePoints(new MemberPointsReserveRequest(
+                userId,
+                orderNo,
+                "ORDER_DEDUCTION",
+                deduction.pointsUsed(),
+                buildReservationIdempotencyKey(orderNo, request.getClientRequestId())));
+        if (response == null || response.getCode() != 200 || response.getData() == null
+                || response.getData().getReservationNo() == null || response.getData().getReservationNo().isBlank()) {
+            throw remoteBusinessException(response, OrderErrorCode.ORDER_FORBIDDEN.getCode(), "points reservation failed");
+        }
+        return response.getData().getReservationNo();
+    }
+
+    private PointsDeductionSnapshot calculatePointsDeduction(CreateOrderRequest request, BigDecimal originalTotal) {
+        if (!Boolean.TRUE.equals(request.getUsePoints()) || request.getPointsToUse() == null || request.getPointsToUse() <= 0) {
+            return new PointsDeductionSnapshot(0, BigDecimal.ZERO.setScale(2, RoundingMode.DOWN), pointsPerYuan);
+        }
+        if (!pointsDeductionEnabled || pointsPerYuan <= 0) {
+            throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
+        }
+        if (request.getPointsToUse() % pointsPerYuan != 0) {
+            throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
+        }
+        BigDecimal deductionAmount = BigDecimal.valueOf(request.getPointsToUse())
+                .divide(BigDecimal.valueOf(pointsPerYuan), 2, RoundingMode.DOWN);
+        if (deductionAmount.compareTo(BigDecimal.ZERO) <= 0 || deductionAmount.compareTo(originalTotal) > 0) {
+            throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
+        }
+        return new PointsDeductionSnapshot(request.getPointsToUse(), deductionAmount, pointsPerYuan);
+    }
+
+    private String buildReservationIdempotencyKey(String orderNo, String clientRequestId) {
+        if (clientRequestId != null && !clientRequestId.isBlank()) {
+            return "reserve:" + orderNo + ":" + clientRequestId;
+        }
+        return "reserve:" + orderNo;
+    }
+
+    private void releaseReservedPointsQuietly(String reservationNo, String orderNo, String reason) {
+        if (reservationNo == null || reservationNo.isBlank()) {
+            return;
+        }
+        try {
+            memberClient.releasePoints(reservationNo, new MemberPointsReservationReleaseRequest(
+                    reservationNo,
+                    reason,
+                    "release:" + orderNo + ":" + reason));
+        } catch (Exception ex) {
+            log.warn("release reserved points failed: reservationNo={}, orderNo={}, reason={}",
+                    reservationNo, orderNo, reason, ex);
+        }
+    }
+
+    private void releaseReservedPointsIfPendingCancellation(Order order, Integer currentStatus, Integer targetStatus,
+                                                            String reason) {
+        if (order == null) {
+            return;
+        }
+        if (!Objects.equals(currentStatus, 0) || !Objects.equals(targetStatus, 4)) {
+            return;
+        }
+        releaseReservedPointsQuietly(order.getPointsReservationNo(), order.getOrderNo(), reason);
+    }
+
+    private BusinessException remoteBusinessException(Result<?> response, int defaultCode, String defaultMessage) {
+        int code = response != null ? response.getCode() : defaultCode;
+        String message = response != null && response.getMessage() != null ? response.getMessage() : defaultMessage;
+        return new BusinessException(new ErrorCode() {
+            @Override
+            public int getCode() {
+                return code;
+            }
+
+            @Override
+            public String getMessage() {
+                return message;
+            }
+        });
+    }
+
     private String buildItemSummary(String firstItemName, int itemCount) {
         if (firstItemName == null || firstItemName.isBlank()) {
             return null;
@@ -498,13 +654,22 @@ public class OrderServiceImpl implements OrderService {
         if (itemCount <= 1) {
             return firstItemName;
         }
-        return firstItemName + " 等" + itemCount + "件";
+        return firstItemName + " and " + itemCount + " items";
     }
 
-    private String generateOrderNo() {
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-        String seq = String.format("%04d", SnowflakeUtils.nextId() % 10000);
-        return timestamp + seq;
+    private String statusText(Integer status) {
+        if (status == null) {
+            return "UNKNOWN";
+        }
+        return switch (status) {
+            case 0 -> "PENDING";
+            case 1 -> "PAID";
+            case 2 -> "SHIPPED";
+            case 3 -> "COMPLETED";
+            case 4 -> "CANCELLED";
+            case 5 -> "REFUNDED";
+            default -> "UNKNOWN";
+        };
     }
 
     private OutboxMessageVO toOutboxVO(OutboxMessage message) {
@@ -514,20 +679,17 @@ public class OrderServiceImpl implements OrderService {
         vo.setTopic(message.getTopic());
         vo.setStatus(message.getStatus());
         vo.setRetryCount(message.getRetryCount());
-        vo.setLastError(message.getLastError());
         vo.setNextRetryAt(message.getNextRetryAt());
+        vo.setLastError(message.getLastError());
         vo.setCreatedAt(message.getCreatedAt());
         return vo;
     }
 
-    private String statusText(Integer status) {
-        if (status != null && status == 5) return "已退款";
-        if (status == null) return "未知";
-        if (status == 0) return "待支付";
-        if (status == 1) return "已支付";
-        if (status == 2) return "已发货";
-        if (status == 3) return "已完成";
-        if (status == 4) return "已取消";
-        return "未知";
+    private String generateOrderNo() {
+        return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) +
+                String.format("%06d", Math.abs((int) (System.nanoTime() % 1_000_000)));
+    }
+
+    private record PointsDeductionSnapshot(Integer pointsUsed, BigDecimal deductionAmount, Integer pointsDeductionRatio) {
     }
 }

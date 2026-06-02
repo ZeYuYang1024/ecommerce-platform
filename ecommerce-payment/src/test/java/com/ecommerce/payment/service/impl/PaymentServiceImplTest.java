@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.OrderInternalVO;
 import com.ecommerce.common.dto.OrderPaidMessage;
+import com.ecommerce.common.dto.OrderRefundedMessage;
 import com.ecommerce.common.outbox.OutboxMessage;
 import com.ecommerce.common.outbox.OutboxQuery;
 import com.ecommerce.common.outbox.OutboxSummary;
@@ -291,14 +292,17 @@ class PaymentServiceImplTest {
             verify(outboxService).enqueue(
                     eq("payment"),
                     eq("202605091200000001"),
-                    eq("order-paid"),
-                    argThat((OrderPaidMessage message) ->
+                    eq("order-refunded"),
+                    argThat((OrderRefundedMessage message) ->
                             message != null
+                                    && message.getRefundNo() != null
+                                    && !message.getRefundNo().isBlank()
                                     && "202605091200000001".equals(message.getOrderNo())
-                                    && Integer.valueOf(5).equals(message.getStatus())
-                                    && message.getPaidAt() != null
-                                    && message.getTransactionId() != null
-                                    && !message.getTransactionId().isBlank()
+                                    && Long.valueOf(1L).equals(message.getUserId())
+                                    && new BigDecimal("6999.00").compareTo(message.getRefundAmount()) == 0
+                                    && "FULL".equals(message.getRefundType())
+                                    && "SUCCESS".equals(message.getRefundStatus())
+                                    && message.getOccurredAt() != null
                                     && message.getIdempotencyKey() != null
                                     && message.getIdempotencyKey().startsWith("payment-refund:")));
         }
@@ -320,12 +324,17 @@ class PaymentServiceImplTest {
             verify(outboxService).enqueue(
                     eq("payment"),
                     eq("202605091200000001"),
-                    eq("order-paid"),
-                    argThat((OrderPaidMessage message) ->
+                    eq("order-refunded"),
+                    argThat((OrderRefundedMessage message) ->
                             message != null
+                                    && message.getRefundNo() != null
+                                    && !message.getRefundNo().isBlank()
                                     && "202605091200000001".equals(message.getOrderNo())
-                                    && Integer.valueOf(1).equals(message.getStatus())
-                                    && message.getPaidAt() != null));
+                                    && Long.valueOf(1L).equals(message.getUserId())
+                                    && new BigDecimal("1000.00").compareTo(message.getRefundAmount()) == 0
+                                    && "PARTIAL".equals(message.getRefundType())
+                                    && "SUCCESS".equals(message.getRefundStatus())
+                                    && message.getOccurredAt() != null));
         }
 
         @Test

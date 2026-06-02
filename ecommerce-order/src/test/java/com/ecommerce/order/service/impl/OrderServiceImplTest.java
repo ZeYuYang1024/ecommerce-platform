@@ -11,6 +11,7 @@ import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.order.client.CartClient;
+import com.ecommerce.order.client.MemberClient;
 import com.ecommerce.order.client.ProductSpuClient;
 import com.ecommerce.order.common.OrderErrorCode;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
@@ -65,6 +66,9 @@ class OrderServiceImplTest {
 
     @Mock
     private OutboxService outboxService;
+
+    @Mock
+    private MemberClient memberClient;
 
     @Mock
     private RocketMQTemplate rocketMQTemplate;
@@ -303,6 +307,7 @@ class OrderServiceImplTest {
     class CancelTests {
         @Test
         void shouldCancelPendingOrderAndEnqueueReleaseMessage() {
+            order.setPointsReservationNo("PR-CANCEL-1");
             when(orderMapper.selectById(1L)).thenReturn(order);
             when(orderMapper.updateById(any(Order.class))).thenReturn(1);
             when(itemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
@@ -312,6 +317,8 @@ class OrderServiceImplTest {
             verify(orderMapper).updateById(any(Order.class));
             verify(outboxService).enqueue(eq("order"), eq("202605091200000001"), eq("order-cancelled"),
                     any(OrderInventoryMessage.class));
+            verify(memberClient).releasePoints(eq("PR-CANCEL-1"),
+                    argThat(request -> request != null && "USER_CANCELLED".equals(request.getReason())));
         }
 
         @Test

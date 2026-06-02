@@ -2,6 +2,7 @@ package com.ecommerce.order.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.OrderInternalVO;
+import com.ecommerce.common.dto.OrderMemberVO;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
 import com.ecommerce.order.dto.response.OrderSummaryVO;
@@ -55,6 +56,27 @@ public class OrderController {
         vo.setId(order.getId());
         vo.setOrderNo(order.getOrderNo());
         vo.setTotalAmount(order.getTotalAmount());
+        vo.setOriginalAmount(order.getOriginalAmount());
+        vo.setPointsUsed(order.getPointsUsed());
+        vo.setPointsDeductionAmount(order.getPointsDeductionAmount());
+        vo.setPointsDeductionRatio(order.getPointsDeductionRatio());
+        vo.setStatus(order.getStatus());
+        return Result.ok(vo);
+    }
+
+    @GetMapping("/internal/orders/no/{orderNo}/member")
+    public Result<OrderMemberVO> internalGetByOrderNoForMember(@PathVariable String orderNo) {
+        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>().eq(Order::getOrderNo, orderNo));
+        if (order == null) return Result.fail(404, "订单不存在");
+        OrderMemberVO vo = new OrderMemberVO();
+        vo.setId(order.getId());
+        vo.setOrderNo(order.getOrderNo());
+        vo.setUserId(order.getUserId());
+        vo.setTotalAmount(order.getTotalAmount());
+        vo.setOriginalAmount(order.getOriginalAmount());
+        vo.setPointsUsed(order.getPointsUsed());
+        vo.setPointsDeductionAmount(order.getPointsDeductionAmount());
+        vo.setPointsDeductionRatio(order.getPointsDeductionRatio());
         vo.setStatus(order.getStatus());
         return Result.ok(vo);
     }

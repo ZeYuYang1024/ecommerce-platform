@@ -9,5 +9,9 @@ public class OrderInternalVO {
     private Long id;
     private String orderNo;
     private BigDecimal totalAmount;
+    private BigDecimal originalAmount;
+    private Integer pointsUsed;
+    private BigDecimal pointsDeductionAmount;
+    private Integer pointsDeductionRatio;
     private Integer status;
 }

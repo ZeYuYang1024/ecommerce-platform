@@ -39,7 +39,7 @@
           </el-input>
         </div>
         <el-button type="primary" size="large" class="submit-btn" @click="login" :loading="loading">
-          登 录
+          登录
         </el-button>
       </el-form>
       <div class="divider"><span>或</span></div>

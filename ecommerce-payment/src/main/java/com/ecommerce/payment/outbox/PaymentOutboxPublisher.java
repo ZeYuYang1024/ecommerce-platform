@@ -1,6 +1,7 @@
 package com.ecommerce.payment.outbox;
 
 import com.ecommerce.common.dto.OrderPaidMessage;
+import com.ecommerce.common.dto.OrderRefundedMessage;
 import com.ecommerce.common.outbox.OutboxMessage;
 import com.ecommerce.common.outbox.OutboxService;
 import lombok.extern.slf4j.Slf4j;
@@ -42,7 +43,7 @@ public class PaymentOutboxPublisher {
                 continue;
             }
             try {
-                OrderPaidMessage payload = jsonMapper.readValue(message.getPayloadJson(), OrderPaidMessage.class);
+                Object payload = deserializePayload(message);
                 rocketMQTemplate.syncSend(message.getTopic(), payload);
                 outboxService.markSent(message.getId());
             } catch (RuntimeException e) {
@@ -50,5 +51,12 @@ public class PaymentOutboxPublisher {
                 outboxService.markFailed(message, e.getMessage());
             }
         }
+    }
+
+    private Object deserializePayload(OutboxMessage message) {
+        if ("order-refunded".equals(message.getTopic())) {
+            return jsonMapper.readValue(message.getPayloadJson(), OrderRefundedMessage.class);
+        }
+        return jsonMapper.readValue(message.getPayloadJson(), OrderPaidMessage.class);
     }
 }
