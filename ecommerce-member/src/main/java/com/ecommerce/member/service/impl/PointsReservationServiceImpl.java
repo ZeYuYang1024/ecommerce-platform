@@ -75,7 +75,6 @@ public class PointsReservationServiceImpl implements PointsReservationService {
         reservation.setStatus("RESERVED");
         reservation.setIdempotencyKey(request.getIdempotencyKey());
         pointsReservationMapper.insert(reservation);
-
         return toReserveResponse(reservation);
     }
 
@@ -90,25 +89,46 @@ public class PointsReservationServiceImpl implements PointsReservationService {
             throw new BusinessException(MemberErrorCode.POINTS_RESERVATION_STATUS_INVALID);
         }
 
+        int claimRows = pointsReservationMapper.update(null,
+                new LambdaUpdateWrapper<PointsReservation>()
+                        .eq(PointsReservation::getId, reservation.getId())
+                        .eq(PointsReservation::getStatus, "RESERVED")
+                        .setSql("consumed_points = " + reservation.getReservedPoints())
+                        .setSql("status = 'CONSUMED'"));
+        if (claimRows == 0) {
+            throw new BusinessException(MemberErrorCode.POINTS_RESERVATION_CONFLICT);
+        }
+
+        MemberProfile profile = memberProfileMapper.selectOne(
+                new LambdaQueryWrapper<MemberProfile>()
+                        .eq(MemberProfile::getUserId, reservation.getUserId()));
+        if (profile == null) {
+            throw new BusinessException(MemberErrorCode.MEMBER_PROFILE_NOT_FOUND);
+        }
+
+        int profileRows = memberProfileMapper.update(null,
+                new LambdaUpdateWrapper<MemberProfile>()
+                        .eq(MemberProfile::getId, profile.getId())
+                        .eq(MemberProfile::getVersion, profile.getVersion())
+                        .setSql("total_spent_points = total_spent_points + " + reservation.getReservedPoints())
+                        .setSql("version = version + 1"));
+        if (profileRows == 0) {
+            throw new BusinessException(MemberErrorCode.POINTS_RESERVATION_CONFLICT);
+        }
+
         PointsTransaction tx = new PointsTransaction();
         tx.setId(SnowflakeUtils.nextId());
         tx.setUserId(reservation.getUserId());
         tx.setDirection("SPEND");
         tx.setAmount(reservation.getReservedPoints());
+        tx.setBalanceAfter(profile.getAvailablePoints());
         tx.setSourceType("ORDER");
         tx.setSourceId(reservation.getOrderNo());
-        tx.setBizKey("ORDER:" + reservation.getOrderNo() + ":SPEND");
+        tx.setBizKey(resolveConfirmBizKey(request, reservation));
         tx.setConsumedAmount(0);
         tx.setRemark("订单积分抵扣");
         tx.setRelatedReservationNo(reservation.getReservationNo());
         pointsTransactionMapper.insert(tx);
-
-        PointsReservation updated = new PointsReservation();
-        updated.setId(reservation.getId());
-        updated.setConsumedPoints(reservation.getReservedPoints());
-        updated.setReleasedPoints(reservation.getReleasedPoints());
-        updated.setStatus("CONSUMED");
-        pointsReservationMapper.updateById(updated);
     }
 
     @Override
@@ -120,6 +140,16 @@ public class PointsReservationServiceImpl implements PointsReservationService {
         }
         if (!"RESERVED".equals(reservation.getStatus())) {
             throw new BusinessException(MemberErrorCode.POINTS_RESERVATION_STATUS_INVALID);
+        }
+
+        int claimRows = pointsReservationMapper.update(null,
+                new LambdaUpdateWrapper<PointsReservation>()
+                        .eq(PointsReservation::getId, reservation.getId())
+                        .eq(PointsReservation::getStatus, "RESERVED")
+                        .setSql("released_points = " + reservation.getReservedPoints())
+                        .setSql("status = 'RELEASED'"));
+        if (claimRows == 0) {
+            throw new BusinessException(MemberErrorCode.POINTS_RESERVATION_CONFLICT);
         }
 
         MemberProfile profile = memberProfileMapper.selectOne(
@@ -138,13 +168,6 @@ public class PointsReservationServiceImpl implements PointsReservationService {
         if (rows == 0) {
             throw new BusinessException(MemberErrorCode.POINTS_RESERVATION_CONFLICT);
         }
-
-        PointsReservation updated = new PointsReservation();
-        updated.setId(reservation.getId());
-        updated.setConsumedPoints(reservation.getConsumedPoints());
-        updated.setReleasedPoints(reservation.getReservedPoints());
-        updated.setStatus("RELEASED");
-        pointsReservationMapper.updateById(updated);
     }
 
     private PointsReservation getReservation(String reservationNo) {
@@ -163,5 +186,12 @@ public class PointsReservationServiceImpl implements PointsReservationService {
         response.setReservedPoints(reservation.getReservedPoints());
         response.setStatus(reservation.getStatus());
         return response;
+    }
+
+    private String resolveConfirmBizKey(PointsReservationConfirmRequest request, PointsReservation reservation) {
+        if (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank()) {
+            return request.getIdempotencyKey();
+        }
+        return "ORDER:" + reservation.getOrderNo() + ":SPEND";
     }
 }
