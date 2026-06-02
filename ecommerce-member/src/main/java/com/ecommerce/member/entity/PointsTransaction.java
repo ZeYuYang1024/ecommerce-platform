@@ -18,5 +18,7 @@ public class PointsTransaction {
     private Integer consumedAmount;
     private LocalDateTime expireAt;
     private String remark;
+    private String relatedReservationNo;
+    private Long reversalOfTxId;
     private LocalDateTime createdAt;
 }

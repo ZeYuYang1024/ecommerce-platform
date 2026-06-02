@@ -21,29 +21,33 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class PointsServiceImpl implements PointsService {
 
+    private static final int POINTS_EXPIRE_MONTHS = 12;
+
     private final PointsTransactionMapper pointsTransactionMapper;
     private final MemberProfileMapper memberProfileMapper;
     private final MemberLevelMapper memberLevelMapper;
-
-    private static final int POINTS_EXPIRE_MONTHS = 12;
 
     @Override
     @Transactional
     public void earn(Long userId, Integer amount, String sourceType, String sourceId,
                      String bizKey, String remark) {
+        earn(userId, amount, sourceType, sourceId, bizKey, remark, null, null);
+    }
+
+    @Override
+    @Transactional
+    public void earn(Long userId, Integer amount, String sourceType, String sourceId,
+                     String bizKey, String remark, String relatedReservationNo, Long reversalOfTxId) {
         if (amount <= 0) {
             throw new BusinessException(MemberErrorCode.INVALID_POINTS_AMOUNT);
         }
 
-        // 幂等检查
         Long exists = pointsTransactionMapper.selectCount(
                 new LambdaQueryWrapper<PointsTransaction>()
                         .eq(PointsTransaction::getBizKey, bizKey));
@@ -52,19 +56,15 @@ public class PointsServiceImpl implements PointsService {
             return;
         }
 
-        // 获取或创建档案
         MemberProfile profile = getOrCreateProfile(userId);
 
-        // 查询当前等级以获取积分倍率
         MemberLevel level = memberLevelMapper.selectById(profile.getLevelId());
         if (level == null) {
             level = getDefaultLevel();
         }
 
-        // 计算实际积分数（含倍率）
         int finalAmount = (int) Math.floor(amount * level.getPointsMultiplier().doubleValue());
 
-        // 插入积分流水
         PointsTransaction tx = new PointsTransaction();
         tx.setId(SnowflakeUtils.nextId());
         tx.setUserId(userId);
@@ -76,8 +76,9 @@ public class PointsServiceImpl implements PointsService {
         tx.setConsumedAmount(0);
         tx.setExpireAt(LocalDateTime.now().plusMonths(POINTS_EXPIRE_MONTHS));
         tx.setRemark(remark);
+        tx.setRelatedReservationNo(relatedReservationNo);
+        tx.setReversalOfTxId(reversalOfTxId);
 
-        // 乐观锁更新积分余额
         int rows = memberProfileMapper.update(null,
                 new LambdaUpdateWrapper<MemberProfile>()
                         .eq(MemberProfile::getId, profile.getId())
@@ -89,7 +90,6 @@ public class PointsServiceImpl implements PointsService {
             throw new BusinessException(MemberErrorCode.CONCURRENT_UPDATE_FAILED);
         }
 
-        // 获取更新后的余额
         MemberProfile updated = memberProfileMapper.selectById(profile.getId());
         tx.setBalanceAfter(updated.getAvailablePoints());
         pointsTransactionMapper.insert(tx);
@@ -99,12 +99,24 @@ public class PointsServiceImpl implements PointsService {
     }
 
     @Override
+    public void spend(Long userId, Integer amount, String sourceType, String sourceId, String bizKey,
+                      String remark, String relatedReservationNo) {
+        throw new UnsupportedOperationException("Points spend flow is implemented in later Phase 2A tasks");
+    }
+
+    @Override
+    public void reverseSpend(Long userId, Integer amount, String sourceType, String sourceId, String bizKey,
+                             String remark, String relatedReservationNo, Long reversalOfTxId) {
+        throw new UnsupportedOperationException("Points reverse spend flow is implemented in later Phase 2A tasks");
+    }
+
+    @Override
     public IPage<PointsTransactionVO> getTransactions(Long userId, int page, int size) {
-        Page<PointsTransaction> p = new Page<>(page, size);
+        Page<PointsTransaction> pageRequest = new Page<>(page, size);
         LambdaQueryWrapper<PointsTransaction> wrapper = new LambdaQueryWrapper<PointsTransaction>()
                 .eq(PointsTransaction::getUserId, userId)
                 .orderByDesc(PointsTransaction::getCreatedAt);
-        IPage<PointsTransaction> result = pointsTransactionMapper.selectPage(p, wrapper);
+        IPage<PointsTransaction> result = pointsTransactionMapper.selectPage(pageRequest, wrapper);
 
         return result.convert(tx -> {
             PointsTransactionVO vo = new PointsTransactionVO();

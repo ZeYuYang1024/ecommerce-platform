@@ -2,23 +2,34 @@ package com.ecommerce.member.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ecommerce.member.dto.response.PointsTransactionVO;
-import java.time.LocalDateTime;
 
 public interface PointsService {
 
     /**
-     * 发放积分 (幂等，基于 bizKey)
-     * @param userId      用户ID
-     * @param amount      积分数
-     * @param sourceType  来源类型 ORDER/CHECKIN/REVIEW/CAMPAIGN
-     * @param sourceId    来源业务ID
-     * @param bizKey      幂等业务键
-     * @param remark      备注
+     * 发放积分，兼容一期发积分场景。
      */
     void earn(Long userId, Integer amount, String sourceType, String sourceId, String bizKey, String remark);
 
     /**
-     * 积分流水列表（分页）
+     * 发放积分，并记录关联的预占单或冲正来源。
+     */
+    void earn(Long userId, Integer amount, String sourceType, String sourceId, String bizKey,
+              String remark, String relatedReservationNo, Long reversalOfTxId);
+
+    /**
+     * 消费积分。
+     */
+    void spend(Long userId, Integer amount, String sourceType, String sourceId, String bizKey,
+               String remark, String relatedReservationNo);
+
+    /**
+     * 冲正已消费积分。
+     */
+    void reverseSpend(Long userId, Integer amount, String sourceType, String sourceId, String bizKey,
+                      String remark, String relatedReservationNo, Long reversalOfTxId);
+
+    /**
+     * 积分流水列表。
      */
     IPage<PointsTransactionVO> getTransactions(Long userId, int page, int size);
 }

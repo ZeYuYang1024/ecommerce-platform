@@ -35,3 +35,7 @@ CREATE TABLE IF NOT EXISTS points_consume_detail (
     KEY idx_user_expire_at (user_id, expire_at),
     KEY idx_earn_tx_id (earn_tx_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='积分消费批次明细';
+
+ALTER TABLE points_transaction
+    ADD COLUMN IF NOT EXISTS related_reservation_no VARCHAR(32) NULL COMMENT '关联积分预占单号' AFTER remark,
+    ADD COLUMN IF NOT EXISTS reversal_of_tx_id BIGINT NULL COMMENT '冲正指向的原流水ID' AFTER related_reservation_no;
