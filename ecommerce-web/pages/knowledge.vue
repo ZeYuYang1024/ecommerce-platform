@@ -98,6 +98,7 @@
 
 <script setup lang="ts">
 import { marked } from 'marked'
+import { createStreamingAssistantMessage } from '../../frontend-shared/chatMessageState.mjs'
 
 definePageMeta({
   layout: 'blank',
@@ -153,8 +154,7 @@ async function send(quick?: string) {
   lastLightRoute.value = ''
   lastRoute.value = ''
   messages.value.push({ role: 'user', content: text })
-  const aiMsg: ChatMessage = { role: 'assistant', content: '', loading: true }
-  messages.value.push(aiMsg)
+  const aiMsg = createStreamingAssistantMessage(messages)
   scrollBottom()
 
   sending.value = true

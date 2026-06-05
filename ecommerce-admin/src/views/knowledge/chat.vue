@@ -55,6 +55,7 @@
 import { computed, nextTick, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { postChatStream } from '@/utils/chatStream'
+import { createStreamingAssistantMessage } from '../../../../frontend-shared/chatMessageState.mjs'
 
 const route = useRoute()
 const isMerchantView = computed(() => route.path.startsWith('/merchant/knowledge'))
@@ -120,8 +121,7 @@ async function send() {
   lightRouteName.value = '-'
   routeName.value = ''
   messages.value.push({ role: 'user', content: text })
-  const assistant = { role: 'assistant', content: '', loading: true }
-  messages.value.push(assistant)
+  const assistant = createStreamingAssistantMessage(messages)
   streaming.value = true
   scrollBottom()
 
