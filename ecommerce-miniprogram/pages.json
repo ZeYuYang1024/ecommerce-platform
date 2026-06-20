@@ -10,6 +10,7 @@
     { "path": "pages/address/index", "style": { "navigationBarTitleText": "收货地址" } },
     { "path": "pages/order/list", "style": { "navigationBarTitleText": "我的订单" } },
     { "path": "pages/order-detail/index", "style": { "navigationBarTitleText": "订单详情" } },
+    { "path": "pages/logistics/detail", "style": { "navigationBarTitleText": "物流详情" } },
     { "path": "pages/coupon/index", "style": { "navigationBarTitleText": "优惠券中心" } },
     { "path": "pages/seckill/index", "style": { "navigationBarTitleText": "限时秒杀" } },
     { "path": "pages/user/index", "style": { "navigationBarTitleText": "我的" } }
