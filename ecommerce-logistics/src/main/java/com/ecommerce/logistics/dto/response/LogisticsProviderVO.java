@@ -8,6 +8,7 @@ public class LogisticsProviderVO {
     private String providerCode;
     private String providerName;
     private String providerLogo;
+    private String customerAccount;
     private Integer supportWaybill;
     private Integer status;
     private String statusText;
