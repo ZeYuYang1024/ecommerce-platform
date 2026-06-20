@@ -44,6 +44,15 @@
         <el-form-item label="月结账号">
           <el-input v-model="form.customerAccount" placeholder="月结账号/客户号" />
         </el-form-item>
+        <el-form-item label="API Key">
+          <el-input v-model="form.apiKey" placeholder="快递鸟API Key" />
+        </el-form-item>
+        <el-form-item label="API Secret">
+          <el-input v-model="form.apiSecret" type="password" show-password placeholder="快递鸟API Secret" />
+        </el-form-item>
+        <el-form-item label="聚合编码">
+          <el-input v-model="form.aggregationCode" placeholder="聚合平台快递公司编码" />
+        </el-form-item>
         <el-form-item label="电子面单">
           <el-switch v-model="form.supportWaybill" :active-value="1" :inactive-value="0" />
         </el-form-item>
@@ -73,7 +82,8 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const form = reactive({
   id: null, providerCode: '', providerName: '', providerLogo: '',
-  customerAccount: '', supportWaybill: 0, priority: 99
+  customerAccount: '', apiKey: '', apiSecret: '', aggregationCode: '',
+  supportWaybill: 0, priority: 99
 })
 
 const fetchData = async () => {
@@ -91,13 +101,17 @@ const fetchData = async () => {
 
 const showAddDialog = () => {
   isEdit.value = false
-  Object.assign(form, { id: null, providerCode: '', providerName: '', providerLogo: '', customerAccount: '', supportWaybill: 0, priority: 99 })
+  Object.assign(form, { id: null, providerCode: '', providerName: '', providerLogo: '', customerAccount: '', apiKey: '', apiSecret: '', aggregationCode: '', supportWaybill: 0, priority: 99 })
   dialogVisible.value = true
 }
 
 const showEditDialog = (row) => {
   isEdit.value = true
   Object.assign(form, { ...row })
+  // security: do not pre-populate sensitive fields
+  form.apiKey = ''
+  form.apiSecret = ''
+  form.aggregationCode = ''
   dialogVisible.value = true
 }
 

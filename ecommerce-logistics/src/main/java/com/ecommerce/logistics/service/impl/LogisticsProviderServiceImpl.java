@@ -59,6 +59,9 @@ public class LogisticsProviderServiceImpl implements LogisticsProviderService {
         entity.setProviderName(vo.getProviderName());
         entity.setProviderLogo(vo.getProviderLogo());
         entity.setCustomerAccount(vo.getCustomerAccount());
+        entity.setApiKey(vo.getApiKey());
+        entity.setApiSecret(vo.getApiSecret());
+        entity.setAggregationCode(vo.getAggregationCode());
         entity.setSupportWaybill(vo.getSupportWaybill() != null ? vo.getSupportWaybill() : 0);
         entity.setStatus(vo.getStatus() != null ? vo.getStatus() : 1);
         entity.setPriority(vo.getPriority() != null ? vo.getPriority() : 99);
@@ -76,6 +79,9 @@ public class LogisticsProviderServiceImpl implements LogisticsProviderService {
         if (vo.getProviderName() != null) entity.setProviderName(vo.getProviderName());
         if (vo.getProviderLogo() != null) entity.setProviderLogo(vo.getProviderLogo());
         if (vo.getCustomerAccount() != null) entity.setCustomerAccount(vo.getCustomerAccount());
+        if (vo.getApiKey() != null) entity.setApiKey(vo.getApiKey());
+        if (vo.getApiSecret() != null) entity.setApiSecret(vo.getApiSecret());
+        if (vo.getAggregationCode() != null) entity.setAggregationCode(vo.getAggregationCode());
         if (vo.getSupportWaybill() != null) entity.setSupportWaybill(vo.getSupportWaybill());
         if (vo.getPriority() != null) entity.setPriority(vo.getPriority());
         providerMapper.updateById(entity);
@@ -108,6 +114,10 @@ public class LogisticsProviderServiceImpl implements LogisticsProviderService {
         vo.setProviderCode(entity.getProviderCode());
         vo.setProviderName(entity.getProviderName());
         vo.setProviderLogo(entity.getProviderLogo());
+        vo.setCustomerAccount(entity.getCustomerAccount());
+        vo.setApiKey(entity.getApiKey());
+        vo.setApiSecret(entity.getApiSecret());
+        vo.setAggregationCode(entity.getAggregationCode());
         vo.setSupportWaybill(entity.getSupportWaybill());
         vo.setStatus(entity.getStatus());
         vo.setStatusText(entity.getStatus() == 1 ? "启用" : "停用");

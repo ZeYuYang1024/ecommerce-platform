@@ -9,6 +9,9 @@ public class LogisticsProviderVO {
     private String providerName;
     private String providerLogo;
     private String customerAccount;
+    private String apiKey;
+    private String apiSecret;
+    private String aggregationCode;
     private Integer supportWaybill;
     private Integer status;
     private String statusText;

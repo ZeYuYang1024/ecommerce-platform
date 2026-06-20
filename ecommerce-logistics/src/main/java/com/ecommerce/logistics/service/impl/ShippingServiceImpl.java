@@ -39,6 +39,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -58,6 +59,8 @@ public class ShippingServiceImpl implements ShippingService {
     private int trackingCacheMinutes;
 
     private static final DateTimeFormatter NO_SUFFIX = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+    private static final AtomicInteger shippingNoCounter = new AtomicInteger(
+            (int) (System.currentTimeMillis() % 100000));
 
     @Override
     @Transactional
@@ -96,7 +99,7 @@ public class ShippingServiceImpl implements ShippingService {
             throw new BusinessException(LogisticsErrorCode.QUANTITY_EXCEEDS_ORDER);
         }
 
-        String shippingNo = "SH" + LocalDateTime.now().format(NO_SUFFIX) + String.format("%04d", new Random().nextInt(10000));
+        String shippingNo = "SH" + LocalDateTime.now().format(NO_SUFFIX) + String.format("%05d", shippingNoCounter.getAndUpdate(n -> (n + 1) % 100000));
 
         ShippingOrder order = new ShippingOrder();
         order.setShippingNo(shippingNo);

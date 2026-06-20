@@ -47,12 +47,12 @@ public class AdminLogisticsController {
     }
 
     @PostMapping("/providers")
-    public Result<LogisticsProviderVO> createProvider(@RequestBody LogisticsProviderVO vo) {
+    public Result<LogisticsProviderVO> createProvider(@Valid @RequestBody LogisticsProviderVO vo) {
         return Result.ok(providerService.createProvider(vo));
     }
 
     @PutMapping("/providers/{id}")
-    public Result<LogisticsProviderVO> updateProvider(@PathVariable Long id, @RequestBody LogisticsProviderVO vo) {
+    public Result<LogisticsProviderVO> updateProvider(@PathVariable Long id, @Valid @RequestBody LogisticsProviderVO vo) {
         return Result.ok(providerService.updateProvider(id, vo));
     }
 
