@@ -60,7 +60,9 @@ const routes = [
       { path: 'permissions', name: 'Permissions', component: () => import('@/views/permission/index.vue'), meta: { title: '权限管理' } },
       { path: 'member/levels', name: 'MemberLevels', component: () => import('@/views/member/levels.vue'), meta: { title: '会员等级' } },
       { path: 'member/profiles', name: 'MemberProfiles', component: () => import('@/views/member/profiles.vue'), meta: { title: '会员列表' } },
-      { path: 'member/points', name: 'MemberPoints', component: () => import('@/views/member/points.vue'), meta: { title: '积分流水' } }
+      { path: 'member/points', name: 'MemberPoints', component: () => import('@/views/member/points.vue'), meta: { title: '积分流水' } },
+      { path: 'logistics/providers', name: 'LogisticsProviders', component: () => import('@/views/logistics/providers.vue'), meta: { title: '物流公司', icon: 'Van' } },
+      { path: 'logistics/shipping', name: 'LogisticsShipping', component: () => import('@/views/logistics/shipping.vue'), meta: { title: '发货单管理', icon: 'List' } }
     ]
   }
 ]
