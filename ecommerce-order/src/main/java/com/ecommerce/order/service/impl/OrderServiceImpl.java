@@ -312,22 +312,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public void markShipped(Long id, String userType, Long merchantId) {
-        Order order = orderMapper.selectById(id);
-        if (order == null) {
-            throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
-        }
-        ensureMerchantOwnsOrder(order, userType, merchantId);
-        if (order.getStatus() == null || order.getStatus() != 1) {
-            if (order.getStatus() != null && order.getStatus() == 2) {
-                throw new BusinessException(OrderErrorCode.ORDER_ALREADY_SHIPPED);
-            }
-            if (order.getStatus() != null && order.getStatus() == 4) {
-                throw new BusinessException(OrderErrorCode.ORDER_ALREADY_CANCELLED);
-            }
-            throw new BusinessException(OrderErrorCode.ORDER_NOT_PAID);
-        }
-        order.setStatus(2);
-        orderMapper.updateById(order);
+        throw new BusinessException(OrderErrorCode.SHIPPING_MUST_USE_LOGISTICS);
     }
 
     @Override

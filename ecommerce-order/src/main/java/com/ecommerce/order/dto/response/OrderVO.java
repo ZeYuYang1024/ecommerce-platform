@@ -18,6 +18,8 @@ public class OrderVO {
     private Integer pointsDeductionRatio;
     private Integer status;
     private String statusText;
+    private String fulfillmentStatus;
+    private String fulfillmentStatusText;
     private String receiverName;
     private String receiverPhone;
     private String receiverAddress;
