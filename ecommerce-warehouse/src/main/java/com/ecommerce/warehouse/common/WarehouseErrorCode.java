@@ -17,7 +17,9 @@ public enum WarehouseErrorCode implements ErrorCode {
     WAREHOUSE_DISABLED(50030012, "仓库已停用"),
     NOT_MANAGED_WAREHOUSE(50030013, "非托管库存仓"),
     STOCK_LOCK_FAILED(50030014, "库存锁定失败"),
-    DUPLICATE_INBOUND_NO(50030015, "入库单号重复");
+    DUPLICATE_INBOUND_NO(50030015, "入库单号重复"),
+    ZONE_CODE_EXISTS(50030016, "货区编码已存在"),
+    BIN_CODE_EXISTS(50030017, "货位编码已存在");
 
     private final int code;
     private final String message;
