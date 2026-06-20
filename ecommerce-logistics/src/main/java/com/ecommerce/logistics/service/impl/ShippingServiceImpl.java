@@ -350,6 +350,45 @@ public class ShippingServiceImpl implements ShippingService {
         log.info("Logistics callback received: provider={}, body={}, signature={}", providerCode, rawBody, signature);
     }
 
+    @Override
+    public String generateWaybill(Long shippingId) {
+        ShippingOrder order = shippingOrderMapper.selectById(shippingId);
+        if (order == null) throw new BusinessException(LogisticsErrorCode.SHIPPING_NOT_FOUND);
+
+        // Call aggregation provider to get waybill
+        // Phase 3 stub: generate a mock waybill URL
+        String waybillUrl = "https://waybill.example.com/" + order.getTrackingNo() + ".pdf";
+        order.setWaybillUrl(waybillUrl);
+        shippingOrderMapper.updateById(order);
+        log.info("Waybill generated: shippingId={}, url={}", shippingId, waybillUrl);
+        return waybillUrl;
+    }
+
+    @Override
+    @Transactional
+    public List<ShippingOrderVO> batchShip(com.ecommerce.logistics.dto.request.BatchShipRequest request, String userType, Long merchantId) {
+        List<ShippingOrderVO> results = new java.util.ArrayList<>();
+        for (com.ecommerce.logistics.dto.request.BatchShipRequest.BatchShipItem item : request.getItems()) {
+            CreateShippingRequest shipReq = new CreateShippingRequest();
+            shipReq.setOrderId(item.getOrderId());
+            shipReq.setProviderId(item.getProviderId());
+            shipReq.setTrackingNo(item.getTrackingNo());
+            shipReq.setPackageWeight(item.getPackageWeight());
+            shipReq.setClientRequestId("batch-" + item.getOrderId() + "-" + System.currentTimeMillis());
+
+            try {
+                ShippingOrderVO vo = createShipping(shipReq, userType, merchantId);
+                results.add(vo);
+            } catch (BusinessException e) {
+                log.warn("Batch ship failed for orderId={}: {}", item.getOrderId(), e.getMessage());
+                ShippingOrderVO errVo = new ShippingOrderVO();
+                errVo.setOrderId(item.getOrderId());
+                results.add(errVo);
+            }
+        }
+        return results;
+    }
+
     private ShippingOrderVO toVO(ShippingOrder order) {
         ShippingOrderVO vo = new ShippingOrderVO();
         vo.setId(order.getId());

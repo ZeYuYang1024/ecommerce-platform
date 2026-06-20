@@ -17,4 +17,6 @@ public interface ShippingService {
     TrackingVO getTrackingByTrackingNo(String trackingNo, String providerCode, Long merchantId);
     List<FulfillmentSummaryVO> getFulfillmentSummary(List<Long> orderIds);
     void processCallback(String providerCode, String rawBody, String signature);
+    String generateWaybill(Long shippingId);
+    List<ShippingOrderVO> batchShip(com.ecommerce.logistics.dto.request.BatchShipRequest request, String userType, Long merchantId);
 }

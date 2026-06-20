@@ -2,6 +2,7 @@ package com.ecommerce.logistics.controller.admin;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ecommerce.common.result.Result;
+import com.ecommerce.logistics.dto.request.BatchShipRequest;
 import com.ecommerce.logistics.dto.request.CreateShippingRequest;
 import com.ecommerce.logistics.dto.request.CreateShippingTemplateRequest;
 import com.ecommerce.logistics.dto.response.LogisticsProviderVO;
@@ -120,6 +121,16 @@ public class AdminLogisticsController {
     public Result<ShippingOrderVO> getShipping(@PathVariable Long id,
                                                 @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
         return Result.ok(shippingService.getShipping(id, "admin", headerMerchantId));
+    }
+
+    @PostMapping("/shipping/{id}/waybill")
+    public Result<String> generateWaybill(@PathVariable Long id) {
+        return Result.ok(shippingService.generateWaybill(id));
+    }
+
+    @PostMapping("/shipping/batch")
+    public Result<List<ShippingOrderVO>> batchShip(@RequestBody BatchShipRequest request) {
+        return Result.ok(shippingService.batchShip(request, "admin", null));
     }
 
     // ===== 排障用轨迹查询 =====
