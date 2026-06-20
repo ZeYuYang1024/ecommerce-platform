@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.logistics.client.WarehouseClient;
 import com.ecommerce.logistics.common.FulfillmentStatus;
 import com.ecommerce.logistics.common.LogisticsErrorCode;
 import com.ecommerce.logistics.common.ShippingStatus;
@@ -66,6 +67,9 @@ class ShippingServiceImplTest {
 
     @Mock
     private AggregationProvider aggregationProvider;
+
+    @Mock
+    private WarehouseClient warehouseClient;
 
     @InjectMocks
     private ShippingServiceImpl service;

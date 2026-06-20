@@ -14,7 +14,9 @@ public enum LogisticsErrorCode implements ErrorCode {
     INVALID_STATUS_TRANSITION(50020009, "非法的状态变更"),
     CALLBACK_SIGNATURE_INVALID(50020010, "回调签名无效"),
     QUANTITY_EXCEEDS_ORDER(50020011, "发货数量超过订单数量"),
-    SHIPPING_FORBIDDEN(50020012, "无权访问该发货单");
+    SHIPPING_FORBIDDEN(50020012, "无权访问该发货单"),
+    WAREHOUSE_OUTBOUND_FAILED(50020013, "仓储出库单创建失败"),
+    INSUFFICIENT_MANAGED_STOCK(50020014, "托管仓库存不足");
 
     private final int code;
     private final String message;

@@ -6,6 +6,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.ShippingDispatchedMessage;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.common.result.Result;
+import com.ecommerce.logistics.client.WarehouseClient;
+import com.ecommerce.logistics.client.dto.CreateOutboundRequest;
+import com.ecommerce.logistics.client.dto.OutboundOrderVO;
 import com.ecommerce.logistics.common.FulfillmentStatus;
 import com.ecommerce.logistics.common.LogisticsErrorCode;
 import com.ecommerce.logistics.common.ShippingStatus;
@@ -48,6 +52,7 @@ public class ShippingServiceImpl implements ShippingService {
     private final TrackingRecordMapper trackingRecordMapper;
     private final OutboxService outboxService;
     private final AggregationProvider aggregationProvider;
+    private final WarehouseClient warehouseClient;
 
     @Value("${logistics.tracking.cache-minutes:30}")
     private int trackingCacheMinutes;
@@ -105,12 +110,19 @@ public class ShippingServiceImpl implements ShippingService {
         order.setTrackingNo(request.getTrackingNo());
         order.setDispatchType(0);
         order.setSourceType(request.getSourceType() != null ? request.getSourceType() : 0);
-        order.setShippingStatus(ShippingStatus.DISPATCHED); // light-warehouse mode: mark dispatched immediately
         order.setPackageWeight(request.getPackageWeight() != null ? request.getPackageWeight() : 0);
         order.setPackageSize(request.getPackageSize());
-        order.setShippedAt(LocalDateTime.now());
         order.setMerchantId(merchantId);
         order.setVersion(0);
+
+        // Phase 2: managed warehouse (stock_mode=1) — create outbound and wait for outbound-shipped event
+        // Light warehouse mode — mark dispatched immediately
+        if (request.getWarehouseId() != null) {
+            order.setShippingStatus(ShippingStatus.PENDING);
+        } else {
+            order.setShippingStatus(ShippingStatus.DISPATCHED);
+            order.setShippedAt(LocalDateTime.now());
+        }
         shippingOrderMapper.insert(order);
 
         for (CreateShippingRequest.ShippingItemRequest itemReq : request.getItems()) {
@@ -122,20 +134,49 @@ public class ShippingServiceImpl implements ShippingService {
             shippingOrderItemMapper.insert(item);
         }
 
-        // enqueue shipping-dispatched event
-        ShippingDispatchedMessage msg = new ShippingDispatchedMessage();
-        msg.setShippingId(order.getId());
-        msg.setOrderId(order.getOrderId());
-        msg.setOrderNo(order.getOrderNo());
-        msg.setTrackingNo(order.getTrackingNo());
-        msg.setShippingStatus(order.getShippingStatus());
-        msg.setMerchantId(merchantId);
-        msg.setTransactionId("logistics-dispatch-" + shippingNo);
-        msg.setIdempotencyKey("shipping-dispatched:" + shippingNo);
-        msg.setOccurredAt(LocalDateTime.now());
-        outboxService.enqueue("shipping", shippingNo, "shipping-dispatched", msg);
+        // Phase 2: If warehouse has managed stock, create outbound order to lock stock
+        if (request.getWarehouseId() != null) {
+            CreateOutboundRequest outboundReq = new CreateOutboundRequest();
+            outboundReq.setWarehouseId(request.getWarehouseId());
+            outboundReq.setOutboundType("SALES");
+            outboundReq.setShippingId(order.getId());
+            outboundReq.setMerchantId(merchantId);
+            outboundReq.setItems(request.getItems().stream().map(i -> {
+                CreateOutboundRequest.OutboundItemRequest oi = new CreateOutboundRequest.OutboundItemRequest();
+                oi.setSkuId(i.getSkuId());
+                oi.setQuantity(i.getQuantity());
+                return oi;
+            }).toList());
 
-        log.info("Shipping order created: shippingNo={}, orderId={}, trackingNo={}", shippingNo, request.getOrderId(), request.getTrackingNo());
+            try {
+                Result<OutboundOrderVO> result = warehouseClient.createOutbound(outboundReq);
+                if (result == null || result.getCode() != 200) {
+                    throw new BusinessException(LogisticsErrorCode.WAREHOUSE_OUTBOUND_FAILED);
+                }
+                // Managed warehouse: outbound created, stock locked — wait for outbound-shipped event
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                log.error("Failed to create outbound order for shipping {}", shippingNo, e);
+                throw new BusinessException(LogisticsErrorCode.WAREHOUSE_OUTBOUND_FAILED);
+            }
+        } else {
+            // Light warehouse mode: enqueue shipping-dispatched event immediately
+            ShippingDispatchedMessage msg = new ShippingDispatchedMessage();
+            msg.setShippingId(order.getId());
+            msg.setOrderId(order.getOrderId());
+            msg.setOrderNo(order.getOrderNo());
+            msg.setTrackingNo(order.getTrackingNo());
+            msg.setShippingStatus(order.getShippingStatus());
+            msg.setMerchantId(merchantId);
+            msg.setTransactionId("logistics-dispatch-" + shippingNo);
+            msg.setIdempotencyKey("shipping-dispatched:" + shippingNo);
+            msg.setOccurredAt(LocalDateTime.now());
+            outboxService.enqueue("shipping", shippingNo, "shipping-dispatched", msg);
+        }
+
+        log.info("Shipping order created: shippingNo={}, orderId={}, trackingNo={}, warehouseManaged={}",
+                shippingNo, request.getOrderId(), request.getTrackingNo(), request.getWarehouseId() != null);
         return toVO(order);
     }
 
