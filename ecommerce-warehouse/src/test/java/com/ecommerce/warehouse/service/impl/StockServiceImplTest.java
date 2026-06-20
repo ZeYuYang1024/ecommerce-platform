@@ -1,6 +1,7 @@
 package com.ecommerce.warehouse.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.warehouse.common.WarehouseErrorCode;
@@ -25,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -119,13 +121,14 @@ class StockServiceImplTest {
         void shouldAddStockExistingRecord() {
             when(warehouseMapper.selectById(1L)).thenReturn(managedWarehouse);
             when(physicalStockMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(stock);
-            when(physicalStockMapper.updateById(any(PhysicalStock.class))).thenReturn(1);
+            when(physicalStockMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+            // Re-select after atomic update for outbox publishing
+            when(physicalStockMapper.selectById(100L)).thenReturn(stock);
 
             service.addStock(1L, 200L, 10L, 20);
 
-            assertThat(stock.getQuantity()).isEqualTo(70);
-            assertThat(stock.getAvailableQty()).isEqualTo(70);
-            verify(physicalStockMapper).updateById(stock);
+            // Should use atomic UPDATE, not updateById
+            verify(physicalStockMapper).update(isNull(), any(UpdateWrapper.class));
             verify(physicalStockMapper, never()).insert(any(PhysicalStock.class));
             verify(outboxService).enqueue(
                     eq("physical_stock"), anyString(),
@@ -143,7 +146,7 @@ class StockServiceImplTest {
                     .isEqualTo(WarehouseErrorCode.NOT_MANAGED_WAREHOUSE.getCode());
 
             verify(physicalStockMapper, never()).insert(any(PhysicalStock.class));
-            verify(physicalStockMapper, never()).updateById(any(PhysicalStock.class));
+            verify(physicalStockMapper, never()).update(isNull(), any(UpdateWrapper.class));
         }
 
         @Test
@@ -168,13 +171,13 @@ class StockServiceImplTest {
             when(warehouseMapper.selectById(1L)).thenReturn(managedWarehouse);
             when(physicalStockMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(List.of(stock));
-            when(physicalStockMapper.updateById(any(PhysicalStock.class))).thenReturn(1);
+            when(physicalStockMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+            when(physicalStockMapper.selectById(100L)).thenReturn(stock);
 
             service.lockStock(1L, 200L, 20);
 
-            assertThat(stock.getLockedQty()).isEqualTo(20);
-            assertThat(stock.getAvailableQty()).isEqualTo(30);
-            verify(physicalStockMapper).updateById(stock);
+            // Should use atomic UPDATE with WHERE condition, not updateById
+            verify(physicalStockMapper).update(isNull(), any(UpdateWrapper.class));
             verify(outboxService).enqueue(
                     eq("physical_stock"), anyString(),
                     eq("warehouse-stock-changed"), any());
@@ -195,16 +198,15 @@ class StockServiceImplTest {
             when(warehouseMapper.selectById(1L)).thenReturn(managedWarehouse);
             when(physicalStockMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(List.of(stock, stock2));
-            when(physicalStockMapper.updateById(any(PhysicalStock.class))).thenReturn(1);
+            when(physicalStockMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+            when(physicalStockMapper.selectById(100L)).thenReturn(stock);
+            when(physicalStockMapper.selectById(101L)).thenReturn(stock2);
 
             // Request 55 units: 50 from first bin, 5 from second
             service.lockStock(1L, 200L, 55);
 
-            assertThat(stock.getLockedQty()).isEqualTo(50);
-            assertThat(stock.getAvailableQty()).isEqualTo(0);
-            assertThat(stock2.getLockedQty()).isEqualTo(5);
-            assertThat(stock2.getAvailableQty()).isEqualTo(5);
-            verify(physicalStockMapper, times(2)).updateById(any(PhysicalStock.class));
+            // Two atomic UPDATEs, one per bin
+            verify(physicalStockMapper, times(2)).update(isNull(), any(UpdateWrapper.class));
             verify(outboxService, times(2)).enqueue(
                     eq("physical_stock"), anyString(),
                     eq("warehouse-stock-changed"), any());
@@ -221,7 +223,7 @@ class StockServiceImplTest {
                     .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
                     .isEqualTo(WarehouseErrorCode.INSUFFICIENT_STOCK.getCode());
 
-            verify(physicalStockMapper, never()).updateById(any(PhysicalStock.class));
+            verify(physicalStockMapper, never()).update(isNull(), any(UpdateWrapper.class));
         }
     }
 
@@ -236,14 +238,13 @@ class StockServiceImplTest {
             stock.setQuantity(50);
             when(physicalStockMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(List.of(stock));
-            when(physicalStockMapper.updateById(any(PhysicalStock.class))).thenReturn(1);
+            when(physicalStockMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+            when(physicalStockMapper.selectById(100L)).thenReturn(stock);
 
             service.deductStock(1L, 200L, 20);
 
-            assertThat(stock.getQuantity()).isEqualTo(30);
-            assertThat(stock.getLockedQty()).isEqualTo(10);
-            // availableQty unchanged
-            verify(physicalStockMapper).updateById(stock);
+            // Should use atomic UPDATE with WHERE condition
+            verify(physicalStockMapper).update(isNull(), any(UpdateWrapper.class));
             verify(outboxService).enqueue(
                     eq("physical_stock"), anyString(),
                     eq("warehouse-stock-changed"), any());
@@ -260,7 +261,7 @@ class StockServiceImplTest {
                     .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
                     .isEqualTo(WarehouseErrorCode.INSUFFICIENT_STOCK.getCode());
 
-            verify(physicalStockMapper, never()).updateById(any(PhysicalStock.class));
+            verify(physicalStockMapper, never()).update(isNull(), any(UpdateWrapper.class));
         }
     }
 
@@ -275,13 +276,13 @@ class StockServiceImplTest {
             stock.setAvailableQty(30);
             when(physicalStockMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(List.of(stock));
-            when(physicalStockMapper.updateById(any(PhysicalStock.class))).thenReturn(1);
+            when(physicalStockMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+            when(physicalStockMapper.selectById(100L)).thenReturn(stock);
 
             service.releaseStock(1L, 200L, 10);
 
-            assertThat(stock.getLockedQty()).isEqualTo(10);
-            assertThat(stock.getAvailableQty()).isEqualTo(40);
-            verify(physicalStockMapper).updateById(stock);
+            // Should use atomic UPDATE with WHERE condition
+            verify(physicalStockMapper).update(isNull(), any(UpdateWrapper.class));
             verify(outboxService).enqueue(
                     eq("physical_stock"), anyString(),
                     eq("warehouse-stock-changed"), any());

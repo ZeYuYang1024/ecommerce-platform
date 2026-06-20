@@ -1,10 +1,10 @@
 package com.ecommerce.warehouse.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.ecommerce.common.dto.WarehouseStockChangedMessage;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
-import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.warehouse.common.WarehouseErrorCode;
 import com.ecommerce.warehouse.dto.response.PhysicalStockVO;
 import com.ecommerce.warehouse.entity.PhysicalStock;
@@ -79,10 +79,18 @@ public class StockServiceImpl implements StockService {
                         .eq(PhysicalStock::getBinId, binId));
 
         if (stock != null) {
-            // Update existing record: quantity += qty, available_qty += qty
-            stock.setQuantity(stock.getQuantity() + quantity);
-            stock.setAvailableQty(stock.getAvailableQty() + quantity);
-            physicalStockMapper.updateById(stock);
+            // Atomic UPDATE: add quantity directly at DB level
+            UpdateWrapper<PhysicalStock> updateWrapper = new UpdateWrapper<>();
+            updateWrapper.eq("id", stock.getId())
+                    .setSql("quantity = quantity + " + quantity)
+                    .setSql("available_qty = available_qty + " + quantity);
+
+            int rows = physicalStockMapper.update(null, updateWrapper);
+            if (rows == 0) {
+                throw new BusinessException(WarehouseErrorCode.STOCK_CONCURRENT_UPDATE);
+            }
+            // Re-select for accurate outbox message
+            stock = physicalStockMapper.selectById(stock.getId());
         } else {
             // Create new record
             stock = new PhysicalStock();
@@ -110,7 +118,7 @@ public class StockServiceImpl implements StockService {
                         .eq(PhysicalStock::getSkuId, skuId)
                         .gt(PhysicalStock::getAvailableQty, 0));
 
-        // Sum available quantity across all bins
+        // Fast-fail pre-check: sum available across all bins
         int totalAvailable = stocks.stream()
                 .mapToInt(s -> s.getAvailableQty() != null ? s.getAvailableQty() : 0)
                 .sum();
@@ -126,11 +134,23 @@ public class StockServiceImpl implements StockService {
             int take = Math.min(available, remaining);
             if (take <= 0) continue;
 
-            stock.setLockedQty((stock.getLockedQty() != null ? stock.getLockedQty() : 0) + take);
-            stock.setAvailableQty(available - take);
-            physicalStockMapper.updateById(stock);
+            // Atomic UPDATE: check available_qty >= take at DB level, then lock
+            UpdateWrapper<PhysicalStock> updateWrapper = new UpdateWrapper<>();
+            updateWrapper.eq("id", stock.getId())
+                    .ge("available_qty", take)
+                    .setSql("locked_qty = locked_qty + " + take)
+                    .setSql("available_qty = available_qty - " + take);
 
-            publishStockChanged(stock, "LOCK", take);
+            int rows = physicalStockMapper.update(null, updateWrapper);
+            if (rows == 0) {
+                // Either concurrent modification or stock was taken by another tx.
+                // @Transactional ensures previous bin updates in this tx roll back.
+                throw new BusinessException(WarehouseErrorCode.STOCK_CONCURRENT_UPDATE);
+            }
+
+            // Re-select for accurate outbox message
+            PhysicalStock updated = physicalStockMapper.selectById(stock.getId());
+            publishStockChanged(updated, "LOCK", take);
             remaining -= take;
         }
 
@@ -163,12 +183,20 @@ public class StockServiceImpl implements StockService {
             int take = Math.min(locked, remaining);
             if (take <= 0) continue;
 
-            // quantity -= take, locked_qty -= take (available_qty unchanged)
-            stock.setQuantity(stock.getQuantity() - take);
-            stock.setLockedQty(locked - take);
-            physicalStockMapper.updateById(stock);
+            // Atomic UPDATE: check locked_qty >= take at DB level, then deduct
+            UpdateWrapper<PhysicalStock> updateWrapper = new UpdateWrapper<>();
+            updateWrapper.eq("id", stock.getId())
+                    .ge("locked_qty", take)
+                    .setSql("quantity = quantity - " + take)
+                    .setSql("locked_qty = locked_qty - " + take);
 
-            publishStockChanged(stock, "DEDUCT", take);
+            int rows = physicalStockMapper.update(null, updateWrapper);
+            if (rows == 0) {
+                throw new BusinessException(WarehouseErrorCode.STOCK_CONCURRENT_UPDATE);
+            }
+
+            PhysicalStock updated = physicalStockMapper.selectById(stock.getId());
+            publishStockChanged(updated, "DEDUCT", take);
             remaining -= take;
         }
 
@@ -201,12 +229,20 @@ public class StockServiceImpl implements StockService {
             int take = Math.min(locked, remaining);
             if (take <= 0) continue;
 
-            // locked_qty -= take, available_qty += take
-            stock.setLockedQty(locked - take);
-            stock.setAvailableQty((stock.getAvailableQty() != null ? stock.getAvailableQty() : 0) + take);
-            physicalStockMapper.updateById(stock);
+            // Atomic UPDATE: check locked_qty >= take at DB level, then release
+            UpdateWrapper<PhysicalStock> updateWrapper = new UpdateWrapper<>();
+            updateWrapper.eq("id", stock.getId())
+                    .ge("locked_qty", take)
+                    .setSql("locked_qty = locked_qty - " + take)
+                    .setSql("available_qty = available_qty + " + take);
 
-            publishStockChanged(stock, "RELEASE", take);
+            int rows = physicalStockMapper.update(null, updateWrapper);
+            if (rows == 0) {
+                throw new BusinessException(WarehouseErrorCode.STOCK_CONCURRENT_UPDATE);
+            }
+
+            PhysicalStock updated = physicalStockMapper.selectById(stock.getId());
+            publishStockChanged(updated, "RELEASE", take);
             remaining -= take;
         }
 
