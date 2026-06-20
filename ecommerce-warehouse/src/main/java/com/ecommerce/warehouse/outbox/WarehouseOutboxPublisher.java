@@ -1,0 +1,50 @@
+package com.ecommerce.warehouse.outbox;
+
+import com.ecommerce.common.dto.OutboundShippedMessage;
+import com.ecommerce.common.dto.WarehouseStockChangedMessage;
+import com.ecommerce.common.outbox.OutboxMessage;
+import com.ecommerce.common.outbox.OutboxService;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+import tools.jackson.databind.json.JsonMapper;
+
+@Slf4j
+@Component
+public class WarehouseOutboxPublisher {
+
+    private final OutboxService outboxService;
+    private final RocketMQTemplate rocketMQTemplate;
+    private final JsonMapper jsonMapper;
+    private final int batchSize;
+
+    public WarehouseOutboxPublisher(OutboxService outboxService, RocketMQTemplate rocketMQTemplate,
+                                    JsonMapper jsonMapper,
+                                    @Value("${outbox.publisher.batch-size:50}") int batchSize) {
+        this.outboxService = outboxService;
+        this.rocketMQTemplate = rocketMQTemplate;
+        this.jsonMapper = jsonMapper;
+        this.batchSize = batchSize;
+    }
+
+    @Scheduled(fixedDelayString = "${outbox.publisher.fixed-delay-ms:5000}")
+    public void publishPending() {
+        for (OutboxMessage message : outboxService.loadPendingBatch(batchSize)) {
+            if (!outboxService.markSending(message.getId())) continue;
+            try {
+                Object payload = switch (message.getTopic()) {
+                    case "outbound-shipped" -> jsonMapper.readValue(message.getPayloadJson(), OutboundShippedMessage.class);
+                    case "warehouse-stock-changed" -> jsonMapper.readValue(message.getPayloadJson(), WarehouseStockChangedMessage.class);
+                    default -> throw new IllegalStateException("Unknown warehouse topic: " + message.getTopic());
+                };
+                rocketMQTemplate.syncSend(message.getTopic(), payload);
+                outboxService.markSent(message.getId());
+            } catch (RuntimeException e) {
+                log.warn("Publish warehouse outbox failed, id={}", message.getId(), e);
+                outboxService.markFailed(message, e.getMessage());
+            }
+        }
+    }
+}
