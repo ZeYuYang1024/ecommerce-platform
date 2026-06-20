@@ -68,6 +68,10 @@ spring:
               uri: lb://ecommerce-member
               predicates:
                 - Path=/api/v1/member/**,/api/v1/admin/member/**
+            - id: logistics
+              uri: lb://ecommerce-logistics
+              predicates:
+                - Path=/api/v1/logistics/**,/api/v1/admin/logistics/**,/api/v1/callback/logistics/**
             - id: knowledge
               uri: lb://ecommerce-knowledge
               predicates:
