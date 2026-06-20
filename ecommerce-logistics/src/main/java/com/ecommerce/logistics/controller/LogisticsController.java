@@ -15,6 +15,6 @@ public class LogisticsController {
 
     @GetMapping("/tracking/shipping/{shippingId}")
     public Result<TrackingVO> getTracking(@PathVariable Long shippingId) {
-        return Result.ok(shippingService.getTracking(shippingId));
+        return Result.ok(shippingService.getTracking(shippingId, null));
     }
 }

@@ -66,8 +66,9 @@ public class AdminLogisticsController {
     // ===== 发货管理 =====
 
     @PostMapping("/shipping")
-    public Result<ShippingOrderVO> createShipping(@Valid @RequestBody CreateShippingRequest request) {
-        return Result.ok(shippingService.createShipping(request, "admin", null));
+    public Result<ShippingOrderVO> createShipping(@Valid @RequestBody CreateShippingRequest request,
+                                                  @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        return Result.ok(shippingService.createShipping(request, "admin", headerMerchantId));
     }
 
     @GetMapping("/shipping")
@@ -81,14 +82,17 @@ public class AdminLogisticsController {
     }
 
     @GetMapping("/shipping/{id}")
-    public Result<ShippingOrderVO> getShipping(@PathVariable Long id) {
-        return Result.ok(shippingService.getShipping(id, "admin", null));
+    public Result<ShippingOrderVO> getShipping(@PathVariable Long id,
+                                                @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        return Result.ok(shippingService.getShipping(id, "admin", headerMerchantId));
     }
 
     // ===== 排障用轨迹查询 =====
 
     @GetMapping("/tracking/no/{trackingNo}")
-    public Result<TrackingVO> getTrackingByNo(@PathVariable String trackingNo, @RequestParam String providerCode) {
-        return Result.ok(shippingService.getTrackingByTrackingNo(trackingNo, providerCode));
+    public Result<TrackingVO> getTrackingByNo(@PathVariable String trackingNo,
+                                               @RequestParam String providerCode,
+                                               @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        return Result.ok(shippingService.getTrackingByTrackingNo(trackingNo, providerCode, headerMerchantId));
     }
 }

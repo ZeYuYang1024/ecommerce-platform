@@ -55,7 +55,7 @@ async function cancel() {
 }
 
 async function viewLogistics() {
-  const res = await request({ url: `/api/v1/internal/logistics/shipping/by-order/${order.value.orderNo}` })
+  const res = await request({ url: `/api/v1/internal/logistics/shipping/by-order/${order.value.id}` })
   if (res.code === 200 && res.data) {
     uni.navigateTo({ url: `/pages/logistics/detail?shippingId=${res.data.id}` })
   } else {

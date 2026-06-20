@@ -13,8 +13,8 @@ public interface ShippingService {
     IPage<ShippingOrderVO> listShipping(int page, int size, String orderNo, Integer shippingStatus, Long merchantId);
     ShippingOrderVO getShipping(Long id, String userType, Long merchantId);
     ShippingOrderVO getShippingByOrderId(Long orderId);
-    TrackingVO getTracking(Long shippingId);
-    TrackingVO getTrackingByTrackingNo(String trackingNo, String providerCode);
+    TrackingVO getTracking(Long shippingId, Long merchantId);
+    TrackingVO getTrackingByTrackingNo(String trackingNo, String providerCode, Long merchantId);
     List<FulfillmentSummaryVO> getFulfillmentSummary(List<Long> orderIds);
     void processCallback(String providerCode, String rawBody, String signature);
 }

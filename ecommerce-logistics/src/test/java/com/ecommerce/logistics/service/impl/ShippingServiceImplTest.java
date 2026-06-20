@@ -365,7 +365,7 @@ class ShippingServiceImplTest {
                     .thenReturn(List.of(record));
             when(providerMapper.selectById(1L)).thenReturn(provider);
 
-            TrackingVO vo = service.getTracking(1L);
+            TrackingVO vo = service.getTracking(1L, null);
 
             assertThat(vo.getTrackingNo()).isEqualTo("SF1234567890");
             assertThat(vo.getShippingNo()).isEqualTo("SH202606200001");
@@ -378,7 +378,7 @@ class ShippingServiceImplTest {
         void shouldThrowWhenShippingNotFoundForTracking() {
             when(shippingOrderMapper.selectById(999L)).thenReturn(null);
 
-            assertThatThrownBy(() -> service.getTracking(999L))
+            assertThatThrownBy(() -> service.getTracking(999L, null))
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
                     .isEqualTo(LogisticsErrorCode.SHIPPING_NOT_FOUND.getCode());
@@ -409,7 +409,7 @@ class ShippingServiceImplTest {
             resp.setTraces(List.of(trace));
             when(aggregationProvider.queryTracking(anyString(), anyString())).thenReturn(resp);
 
-            TrackingVO vo = service.getTracking(1L);
+            TrackingVO vo = service.getTracking(1L, null);
 
             assertThat(vo.getTracks()).isNotEmpty();
             verify(trackingRecordMapper, atLeastOnce()).insert(any(TrackingRecord.class));
@@ -428,7 +428,7 @@ class ShippingServiceImplTest {
             resp.setTraces(Collections.emptyList());
             when(aggregationProvider.queryTracking(anyString(), anyString())).thenReturn(resp);
 
-            TrackingVO vo = service.getTracking(1L);
+            TrackingVO vo = service.getTracking(1L, null);
 
             assertThat(vo.getTracks()).isEmpty();
         }
@@ -456,7 +456,7 @@ class ShippingServiceImplTest {
             resp.setTraces(List.of(trace));
             when(aggregationProvider.queryTracking(anyString(), anyString())).thenReturn(resp);
 
-            TrackingVO vo = service.getTracking(1L);
+            TrackingVO vo = service.getTracking(1L, null);
 
             verify(trackingRecordMapper, never()).insert(any(TrackingRecord.class));
         }
@@ -476,7 +476,7 @@ class ShippingServiceImplTest {
             when(aggregationProvider.queryTracking(anyString(), anyString()))
                     .thenThrow(new RuntimeException("网络异常"));
 
-            TrackingVO vo = service.getTracking(1L);
+            TrackingVO vo = service.getTracking(1L, null);
 
             assertThat(vo.getTracks()).hasSize(1);
         }
@@ -495,7 +495,7 @@ class ShippingServiceImplTest {
             resp.setTraces(Collections.emptyList());
             when(aggregationProvider.queryTracking(anyString(), anyString())).thenReturn(resp);
 
-            TrackingVO vo = service.getTrackingByTrackingNo("SF1234567890", "SF");
+            TrackingVO vo = service.getTrackingByTrackingNo("SF1234567890", "SF", null);
 
             assertThat(vo.getTrackingNo()).isEqualTo("SF1234567890");
         }
@@ -504,7 +504,7 @@ class ShippingServiceImplTest {
         void shouldThrowWhenTrackingNoNotFound() {
             when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
 
-            assertThatThrownBy(() -> service.getTrackingByTrackingNo("NONEXISTENT", "SF"))
+            assertThatThrownBy(() -> service.getTrackingByTrackingNo("NONEXISTENT", "SF", null))
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
                     .isEqualTo(LogisticsErrorCode.SHIPPING_NOT_FOUND.getCode());
@@ -523,7 +523,7 @@ class ShippingServiceImplTest {
                     .thenReturn(mockPage);
             when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(Collections.emptyList());
-            when(providerMapper.selectById(1L)).thenReturn(provider);
+            when(providerMapper.selectBatchIds(any())).thenReturn(List.of(provider));
 
             IPage<ShippingOrderVO> result = service.listShipping(1, 10, null, null, null);
 
@@ -541,7 +541,7 @@ class ShippingServiceImplTest {
                     .thenReturn(mockPage);
             when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(Collections.emptyList());
-            when(providerMapper.selectById(1L)).thenReturn(provider);
+            when(providerMapper.selectBatchIds(any())).thenReturn(List.of(provider));
 
             IPage<ShippingOrderVO> result = service.listShipping(1, 10, "ORD001", null, null);
 

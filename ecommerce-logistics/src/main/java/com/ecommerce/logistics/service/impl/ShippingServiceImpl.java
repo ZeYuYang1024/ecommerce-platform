@@ -57,6 +57,10 @@ public class ShippingServiceImpl implements ShippingService {
     @Override
     @Transactional
     public ShippingOrderVO createShipping(CreateShippingRequest request, String userType, Long merchantId) {
+        // Phase 1 note: Payment status validation is delegated to the caller.
+        // The admin ship dialog only shows for status=1 (paid) orders.
+        // Full server-side validation will be added when integrating with order service Feign.
+
         // idempotency check
         ShippingOrder existing = shippingOrderMapper.selectOne(
                 new LambdaQueryWrapper<ShippingOrder>()
@@ -93,7 +97,8 @@ public class ShippingServiceImpl implements ShippingService {
         order.setShippingNo(shippingNo);
         order.setClientRequestId(request.getClientRequestId());
         order.setOrderId(request.getOrderId());
-        order.setOrderNo(""); // will be populated later via Feign order query
+        order.setOrderNo("ORD" + request.getOrderId());
+        // Phase 2: replace with real orderNo from OrderClient Feign call
         order.setWarehouseId(request.getWarehouseId());
         order.setProviderId(request.getProviderId());
         order.setProviderCode(provider.getProviderCode());
@@ -144,6 +149,24 @@ public class ShippingServiceImpl implements ShippingService {
 
         Page<ShippingOrder> p = new Page<>(page, size);
         IPage<ShippingOrder> result = shippingOrderMapper.selectPage(p, wrapper);
+
+        // Batch-fetch items and providers to avoid N+1 queries in toVO
+        if (!result.getRecords().isEmpty()) {
+            List<Long> shippingIds = result.getRecords().stream()
+                    .map(ShippingOrder::getId).collect(Collectors.toList());
+            List<ShippingOrderItem> allItems = shippingOrderItemMapper.selectList(
+                    new LambdaQueryWrapper<ShippingOrderItem>().in(ShippingOrderItem::getShippingId, shippingIds));
+            Map<Long, List<ShippingOrderItem>> itemsByShippingId = allItems.stream()
+                    .collect(Collectors.groupingBy(ShippingOrderItem::getShippingId));
+
+            Set<Long> providerIds = result.getRecords().stream()
+                    .map(ShippingOrder::getProviderId).collect(Collectors.toSet());
+            Map<Long, LogisticsProvider> providerMap = providerMapper.selectBatchIds(providerIds).stream()
+                    .collect(Collectors.toMap(LogisticsProvider::getId, p2 -> p2));
+
+            return result.convert(order -> toVO(order, itemsByShippingId, providerMap));
+        }
+
         return result.convert(this::toVO);
     }
 
@@ -151,6 +174,9 @@ public class ShippingServiceImpl implements ShippingService {
     public ShippingOrderVO getShipping(Long id, String userType, Long merchantId) {
         ShippingOrder order = shippingOrderMapper.selectById(id);
         if (order == null) throw new BusinessException(LogisticsErrorCode.SHIPPING_NOT_FOUND);
+        if (merchantId != null && !merchantId.equals(order.getMerchantId())) {
+            throw new BusinessException(LogisticsErrorCode.SHIPPING_FORBIDDEN);
+        }
         return toVO(order);
     }
 
@@ -164,9 +190,12 @@ public class ShippingServiceImpl implements ShippingService {
     }
 
     @Override
-    public TrackingVO getTracking(Long shippingId) {
+    public TrackingVO getTracking(Long shippingId, Long merchantId) {
         ShippingOrder order = shippingOrderMapper.selectById(shippingId);
         if (order == null) throw new BusinessException(LogisticsErrorCode.SHIPPING_NOT_FOUND);
+        if (merchantId != null && !merchantId.equals(order.getMerchantId())) {
+            throw new BusinessException(LogisticsErrorCode.SHIPPING_FORBIDDEN);
+        }
 
         List<TrackingRecord> localTracks = trackingRecordMapper.selectList(
                 new LambdaQueryWrapper<TrackingRecord>()
@@ -218,14 +247,17 @@ public class ShippingServiceImpl implements ShippingService {
     }
 
     @Override
-    public TrackingVO getTrackingByTrackingNo(String trackingNo, String providerCode) {
+    public TrackingVO getTrackingByTrackingNo(String trackingNo, String providerCode, Long merchantId) {
         ShippingOrder order = shippingOrderMapper.selectOne(
                 new LambdaQueryWrapper<ShippingOrder>()
                         .eq(ShippingOrder::getTrackingNo, trackingNo)
                         .eq(ShippingOrder::getProviderCode, providerCode)
                         .orderByDesc(ShippingOrder::getCreatedAt).last("LIMIT 1"));
         if (order == null) throw new BusinessException(LogisticsErrorCode.SHIPPING_NOT_FOUND);
-        return getTracking(order.getId());
+        if (merchantId != null && !merchantId.equals(order.getMerchantId())) {
+            throw new BusinessException(LogisticsErrorCode.SHIPPING_FORBIDDEN);
+        }
+        return getTracking(order.getId(), merchantId);
     }
 
     @Override
@@ -313,6 +345,46 @@ public class ShippingServiceImpl implements ShippingService {
         }).toList());
 
         LogisticsProvider provider = providerMapper.selectById(order.getProviderId());
+        if (provider != null) vo.setProviderName(provider.getProviderName());
+
+        return vo;
+    }
+
+    private ShippingOrderVO toVO(ShippingOrder order, Map<Long, List<ShippingOrderItem>> itemsByShippingId, Map<Long, LogisticsProvider> providerMap) {
+        ShippingOrderVO vo = new ShippingOrderVO();
+        vo.setId(order.getId());
+        vo.setShippingNo(order.getShippingNo());
+        vo.setOrderId(order.getOrderId());
+        vo.setOrderNo(order.getOrderNo());
+        vo.setWarehouseId(order.getWarehouseId());
+        vo.setProviderId(order.getProviderId());
+        vo.setProviderCode(order.getProviderCode());
+        vo.setTrackingNo(order.getTrackingNo());
+        vo.setShippingStatus(order.getShippingStatus());
+        vo.setShippingStatusText(ShippingStatus.text(order.getShippingStatus()));
+        vo.setDispatchType(order.getDispatchType());
+        vo.setSourceType(order.getSourceType());
+        vo.setShippingFee(order.getShippingFee());
+        vo.setPackageWeight(order.getPackageWeight());
+        vo.setPackageSize(order.getPackageSize());
+        vo.setWaybillUrl(order.getWaybillUrl());
+        vo.setLastTraceTime(order.getLastTraceTime());
+        vo.setLastTraceDesc(order.getLastTraceDesc());
+        vo.setShippedAt(order.getShippedAt());
+        vo.setSignedAt(order.getSignedAt());
+        vo.setCreatedAt(order.getCreatedAt());
+
+        List<ShippingOrderItem> items = itemsByShippingId.getOrDefault(order.getId(), Collections.emptyList());
+        vo.setItems(items.stream().map(i -> {
+            ShippingOrderVO.ShippingItemVO iv = new ShippingOrderVO.ShippingItemVO();
+            iv.setId(i.getId());
+            iv.setOrderItemId(i.getOrderItemId());
+            iv.setSkuId(i.getSkuId());
+            iv.setQuantity(i.getQuantity());
+            return iv;
+        }).toList());
+
+        LogisticsProvider provider = providerMap.get(order.getProviderId());
         if (provider != null) vo.setProviderName(provider.getProviderName());
 
         return vo;

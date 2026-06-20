@@ -1,6 +1,7 @@
 package com.ecommerce.logistics.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.Version;
 import com.ecommerce.common.entity.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -33,5 +34,6 @@ public class ShippingOrder extends BaseEntity {
     private LocalDateTime shippedAt;
     private LocalDateTime signedAt;
     private Long merchantId;
+    @Version
     private Integer version;
 }

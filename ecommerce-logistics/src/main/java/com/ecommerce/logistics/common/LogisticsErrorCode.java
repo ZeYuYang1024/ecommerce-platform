@@ -13,7 +13,8 @@ public enum LogisticsErrorCode implements ErrorCode {
     TRACKING_SUBSCRIBE_FAILED(50020008, "物流轨迹订阅失败"),
     INVALID_STATUS_TRANSITION(50020009, "非法的状态变更"),
     CALLBACK_SIGNATURE_INVALID(50020010, "回调签名无效"),
-    QUANTITY_EXCEEDS_ORDER(50020011, "发货数量超过订单数量");
+    QUANTITY_EXCEEDS_ORDER(50020011, "发货数量超过订单数量"),
+    SHIPPING_FORBIDDEN(50020012, "无权访问该发货单");
 
     private final int code;
     private final String message;
