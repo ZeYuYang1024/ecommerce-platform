@@ -16,7 +16,9 @@ public enum LogisticsErrorCode implements ErrorCode {
     QUANTITY_EXCEEDS_ORDER(50020011, "发货数量超过订单数量"),
     SHIPPING_FORBIDDEN(50020012, "无权访问该发货单"),
     WAREHOUSE_OUTBOUND_FAILED(50020013, "仓储出库单创建失败"),
-    INSUFFICIENT_MANAGED_STOCK(50020014, "托管仓库存不足");
+    INSUFFICIENT_MANAGED_STOCK(50020014, "托管仓库存不足"),
+    TEMPLATE_NOT_FOUND(50020015, "运费模板不存在"),
+    TEMPLATE_CALC_FAILED(50020016, "运费计算失败");
 
     private final int code;
     private final String message;
