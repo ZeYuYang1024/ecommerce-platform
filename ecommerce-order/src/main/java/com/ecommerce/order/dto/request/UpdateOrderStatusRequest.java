@@ -1,14 +1,20 @@
 package com.ecommerce.order.dto.request;
 
+import com.ecommerce.common.constant.OrderStatus;
 import lombok.Data;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 
 @Data
 public class UpdateOrderStatusRequest {
     @NotNull(message = "status is required")
-    @Min(value = 0, message = "status must be between 0 and 5")
-    @Max(value = 5, message = "status must be between 0 and 5")
     private Integer status;
+
+    @AssertTrue(message = "status can only be 0, 1, or 4; shipping and completion are driven by logistics events")
+    public boolean isManualStatusAllowed() {
+        return status == null
+                || status == OrderStatus.PENDING
+                || status == OrderStatus.PAID
+                || status == OrderStatus.CANCELLED;
+    }
 }

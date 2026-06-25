@@ -12,5 +12,5 @@ public class WarehouseZone extends BaseEntity {
     private Long warehouseId;
     private String zoneName;
     private String zoneCode;
-    private String zoneType;
+    private Integer zoneType;
 }

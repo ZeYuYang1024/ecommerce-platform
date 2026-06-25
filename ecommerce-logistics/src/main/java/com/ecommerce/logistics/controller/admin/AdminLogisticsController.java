@@ -2,9 +2,12 @@ package com.ecommerce.logistics.controller.admin;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ecommerce.common.result.Result;
+import com.ecommerce.common.tenant.MerchantTenantSupport;
+import com.ecommerce.logistics.common.LogisticsErrorCode;
 import com.ecommerce.logistics.dto.request.BatchShipRequest;
 import com.ecommerce.logistics.dto.request.CreateShippingRequest;
 import com.ecommerce.logistics.dto.request.CreateShippingTemplateRequest;
+import com.ecommerce.logistics.dto.request.UpdateShippingTemplateRequest;
 import com.ecommerce.logistics.dto.response.LogisticsProviderVO;
 import com.ecommerce.logistics.dto.response.ShippingOrderVO;
 import com.ecommerce.logistics.dto.response.ShippingTemplateVO;
@@ -74,28 +77,55 @@ public class AdminLogisticsController {
     public Result<IPage<ShippingTemplateVO>> listTemplates(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) Long merchantId) {
-        return Result.ok(templateService.listTemplates(page, size, merchantId));
+            @RequestParam(required = false) Long merchantId,
+            @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+            @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        Long scopedMerchantId = MerchantTenantSupport.resolveScopedMerchantId(
+                userType, headerMerchantId, merchantId, LogisticsErrorCode.TEMPLATE_FORBIDDEN);
+        return Result.ok(templateService.listTemplates(page, size, scopedMerchantId));
     }
 
     @GetMapping("/templates/{id}")
-    public Result<ShippingTemplateVO> getTemplate(@PathVariable Long id) {
-        return Result.ok(templateService.getTemplate(id));
+    public Result<ShippingTemplateVO> getTemplate(@PathVariable Long id,
+                                                  @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                                                  @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        return Result.ok(templateService.getTemplate(
+                id, MerchantTenantSupport.resolveRequestMerchantId(
+                        userType, headerMerchantId, LogisticsErrorCode.TEMPLATE_FORBIDDEN)));
     }
 
     @PostMapping("/templates")
-    public Result<ShippingTemplateVO> createTemplate(@Valid @RequestBody CreateShippingTemplateRequest request) {
+    public Result<ShippingTemplateVO> createTemplate(@Valid @RequestBody CreateShippingTemplateRequest request,
+                                                     @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                                                     @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        Long scopedMerchantId = MerchantTenantSupport.resolveRequestMerchantId(
+                userType, headerMerchantId, LogisticsErrorCode.TEMPLATE_FORBIDDEN);
+        if (scopedMerchantId != null) {
+            request.setMerchantId(scopedMerchantId);
+        }
         return Result.ok(templateService.createTemplate(request));
     }
 
     @PutMapping("/templates/{id}")
-    public Result<ShippingTemplateVO> updateTemplate(@PathVariable Long id, @Valid @RequestBody CreateShippingTemplateRequest request) {
-        return Result.ok(templateService.updateTemplate(id, request));
+    public Result<ShippingTemplateVO> updateTemplate(@PathVariable Long id,
+                                                     @RequestBody UpdateShippingTemplateRequest request,
+                                                     @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                                                     @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        Long scopedMerchantId = MerchantTenantSupport.resolveRequestMerchantId(
+                userType, headerMerchantId, LogisticsErrorCode.TEMPLATE_FORBIDDEN);
+        if (scopedMerchantId != null) {
+            request.setMerchantId(scopedMerchantId);
+        }
+        return Result.ok(templateService.updateTemplate(id, request, scopedMerchantId));
     }
 
     @DeleteMapping("/templates/{id}")
-    public Result<Void> deleteTemplate(@PathVariable Long id) {
-        templateService.deleteTemplate(id);
+    public Result<Void> deleteTemplate(@PathVariable Long id,
+                                       @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                                       @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        templateService.deleteTemplate(
+                id, MerchantTenantSupport.resolveRequestMerchantId(
+                        userType, headerMerchantId, LogisticsErrorCode.TEMPLATE_FORBIDDEN));
         return Result.ok();
     }
 
@@ -103,8 +133,13 @@ public class AdminLogisticsController {
 
     @PostMapping("/shipping")
     public Result<ShippingOrderVO> createShipping(@Valid @RequestBody CreateShippingRequest request,
+                                                  @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
                                                   @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
-        return Result.ok(shippingService.createShipping(request, "admin", headerMerchantId));
+        return Result.ok(shippingService.createShipping(
+                request,
+                userType,
+                MerchantTenantSupport.resolveRequestMerchantId(
+                        userType, headerMerchantId, LogisticsErrorCode.SHIPPING_FORBIDDEN)));
     }
 
     @GetMapping("/shipping")
@@ -113,32 +148,56 @@ public class AdminLogisticsController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String orderNo,
             @RequestParam(required = false) Integer shippingStatus,
-            @RequestParam(required = false) Long merchantId) {
-        return Result.ok(shippingService.listShipping(page, size, orderNo, shippingStatus, merchantId));
+            @RequestParam(required = false) Long merchantId,
+            @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+            @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        Long scopedMerchantId = MerchantTenantSupport.resolveScopedMerchantId(
+                userType, headerMerchantId, merchantId, LogisticsErrorCode.SHIPPING_FORBIDDEN);
+        return Result.ok(shippingService.listShipping(page, size, orderNo, shippingStatus, scopedMerchantId));
     }
 
     @GetMapping("/shipping/{id}")
     public Result<ShippingOrderVO> getShipping(@PathVariable Long id,
-                                                @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
-        return Result.ok(shippingService.getShipping(id, "admin", headerMerchantId));
+                                               @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                                               @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        return Result.ok(shippingService.getShipping(
+                id,
+                userType,
+                MerchantTenantSupport.resolveRequestMerchantId(
+                        userType, headerMerchantId, LogisticsErrorCode.SHIPPING_FORBIDDEN)));
     }
 
     @PostMapping("/shipping/{id}/waybill")
-    public Result<String> generateWaybill(@PathVariable Long id) {
-        return Result.ok(shippingService.generateWaybill(id));
+    public Result<String> generateWaybill(@PathVariable Long id,
+                                          @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                                          @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        return Result.ok(shippingService.generateWaybill(
+                id, MerchantTenantSupport.resolveRequestMerchantId(
+                        userType, headerMerchantId, LogisticsErrorCode.SHIPPING_FORBIDDEN)));
     }
 
     @PostMapping("/shipping/batch")
-    public Result<List<ShippingOrderVO>> batchShip(@RequestBody BatchShipRequest request) {
-        return Result.ok(shippingService.batchShip(request, "admin", null));
+    public Result<List<ShippingOrderVO>> batchShip(@RequestBody BatchShipRequest request,
+                                                   @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                                                   @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        return Result.ok(shippingService.batchShip(
+                request,
+                userType,
+                MerchantTenantSupport.resolveRequestMerchantId(
+                        userType, headerMerchantId, LogisticsErrorCode.SHIPPING_FORBIDDEN)));
     }
 
     // ===== 排障用轨迹查询 =====
 
     @GetMapping("/tracking/no/{trackingNo}")
     public Result<TrackingVO> getTrackingByNo(@PathVariable String trackingNo,
-                                               @RequestParam String providerCode,
-                                               @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
-        return Result.ok(shippingService.getTrackingByTrackingNo(trackingNo, providerCode, headerMerchantId));
+                                              @RequestParam String providerCode,
+                                              @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                                              @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        return Result.ok(shippingService.getTrackingByTrackingNo(
+                trackingNo,
+                providerCode,
+                MerchantTenantSupport.resolveRequestMerchantId(
+                        userType, headerMerchantId, LogisticsErrorCode.SHIPPING_FORBIDDEN)));
     }
 }

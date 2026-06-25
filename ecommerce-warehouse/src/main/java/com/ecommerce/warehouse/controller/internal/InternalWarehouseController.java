@@ -4,6 +4,7 @@ import com.ecommerce.common.result.Result;
 import com.ecommerce.warehouse.dto.request.CreateOutboundRequest;
 import com.ecommerce.warehouse.dto.response.OutboundOrderVO;
 import com.ecommerce.warehouse.dto.response.PhysicalStockVO;
+import com.ecommerce.warehouse.dto.response.WarehouseVO;
 import com.ecommerce.warehouse.service.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,11 @@ public class InternalWarehouseController {
     private final OutboundService outboundService;
     private final StockService stockService;
     private final CheckService checkService;
+
+    @GetMapping("/{id}")
+    public Result<WarehouseVO> getWarehouse(@PathVariable Long id) {
+        return Result.ok(warehouseService.getWarehouse(id));
+    }
 
     @PostMapping("/stock/query")
     public Result<List<PhysicalStockVO>> queryStock(@RequestBody Map<String, Object> body) {

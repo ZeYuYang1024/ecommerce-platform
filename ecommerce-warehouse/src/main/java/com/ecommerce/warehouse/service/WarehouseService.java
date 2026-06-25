@@ -2,6 +2,7 @@ package com.ecommerce.warehouse.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ecommerce.warehouse.dto.request.CreateWarehouseRequest;
+import com.ecommerce.warehouse.dto.request.UpdateWarehouseRequest;
 import com.ecommerce.warehouse.dto.response.WarehouseBinVO;
 import com.ecommerce.warehouse.dto.response.WarehouseVO;
 import com.ecommerce.warehouse.dto.response.WarehouseZoneVO;
@@ -18,7 +19,7 @@ public interface WarehouseService {
 
     WarehouseVO createWarehouse(CreateWarehouseRequest req);
 
-    WarehouseVO updateWarehouse(Long id, CreateWarehouseRequest req);
+    WarehouseVO updateWarehouse(Long id, UpdateWarehouseRequest req);
 
     void deleteWarehouse(Long id);
 

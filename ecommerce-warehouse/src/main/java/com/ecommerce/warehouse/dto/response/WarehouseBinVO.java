@@ -8,6 +8,6 @@ public class WarehouseBinVO {
     private Long zoneId;
     private Long warehouseId;
     private String binCode;
-    private String binType;
+    private Integer binType;
     private String binTypeText;
 }

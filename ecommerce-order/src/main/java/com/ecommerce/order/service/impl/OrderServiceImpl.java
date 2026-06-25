@@ -2,6 +2,7 @@ package com.ecommerce.order.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.constant.OrderStatus;
 import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.OrderItemMessage;
 import com.ecommerce.common.dto.OrderPaidMessage;
@@ -16,8 +17,10 @@ import com.ecommerce.common.result.Result;
 import com.ecommerce.common.transaction.DistributedTransactionContext;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.order.client.CartClient;
+import com.ecommerce.order.client.LogisticsClient;
 import com.ecommerce.order.client.MemberClient;
 import com.ecommerce.order.client.ProductSpuClient;
+import com.ecommerce.order.client.dto.FulfillmentSummaryVO;
 import com.ecommerce.order.client.dto.MemberPointsReservationReleaseRequest;
 import com.ecommerce.order.client.dto.MemberPointsReserveRequest;
 import com.ecommerce.order.client.dto.MemberPointsReserveResponse;
@@ -58,6 +61,7 @@ public class OrderServiceImpl implements OrderService {
     private final CartClient cartClient;
     private final ProductSpuClient productSpuClient;
     private final MemberClient memberClient;
+    private final LogisticsClient logisticsClient;
     private final OutboxService outboxService;
 
     @Value("${member.points.deduction.enabled:true}")
@@ -67,12 +71,14 @@ public class OrderServiceImpl implements OrderService {
     private int pointsPerYuan;
 
     public OrderServiceImpl(OrderMapper orderMapper, OrderItemMapper itemMapper, ProductSpuClient productSpuClient,
-                            CartClient cartClient, MemberClient memberClient, OutboxService outboxService) {
+                            CartClient cartClient, MemberClient memberClient, LogisticsClient logisticsClient,
+                            OutboxService outboxService) {
         this.orderMapper = orderMapper;
         this.itemMapper = itemMapper;
         this.cartClient = cartClient;
         this.productSpuClient = productSpuClient;
         this.memberClient = memberClient;
+        this.logisticsClient = logisticsClient;
         this.outboxService = outboxService;
     }
 
@@ -103,7 +109,7 @@ public class OrderServiceImpl implements OrderService {
         order.setPointsUsed(deduction.pointsUsed());
         order.setPointsDeductionAmount(deduction.deductionAmount());
         order.setPointsDeductionRatio(deduction.pointsDeductionRatio());
-        order.setStatus(0);
+        order.setStatus(OrderStatus.PENDING);
         order.setReceiverName(request.getReceiverName());
         order.setReceiverPhone(request.getReceiverPhone());
         order.setReceiverAddress(request.getReceiverAddress());
@@ -144,7 +150,7 @@ public class OrderServiceImpl implements OrderService {
                 log.warn("cart refresh failed for userId={}", userId, e);
             }
 
-            return toVO(order, Collections.emptyMap());
+            return toVO(order, Collections.emptyMap(), Collections.emptyMap());
         } catch (RuntimeException ex) {
             releaseReservedPointsQuietly(order.getPointsReservationNo(), order.getOrderNo(), "ORDER_CREATE_FAILED");
             throw ex;
@@ -173,7 +179,7 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
         }
         Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(Collections.singletonList(order));
-        return toVO(order, itemsMap);
+        return toVO(order, itemsMap, loadFulfillmentSummaryMap(Collections.singletonList(order)));
     }
 
     @Override
@@ -184,7 +190,8 @@ public class OrderServiceImpl implements OrderService {
                         .eq(Order::getUserId, userId)
                         .orderByDesc(Order::getCreatedAt));
         Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(result.getRecords());
-        List<OrderVO> vos = result.getRecords().stream().map(o -> toVO(o, itemsMap)).collect(Collectors.toList());
+        Map<Long, FulfillmentSummaryVO> fulfillmentMap = loadFulfillmentSummaryMap(result.getRecords());
+        List<OrderVO> vos = result.getRecords().stream().map(o -> toVO(o, itemsMap, fulfillmentMap)).collect(Collectors.toList());
         Page<OrderVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         voPage.setRecords(vos);
         return voPage;
@@ -216,11 +223,11 @@ public class OrderServiceImpl implements OrderService {
         if (!Objects.equals(order.getUserId(), userId)) {
             throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
         }
-        if (order.getStatus() != 0) {
+        if (order.getStatus() != OrderStatus.PENDING) {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_PENDING);
         }
 
-        order.setStatus(4);
+        order.setStatus(OrderStatus.CANCELLED);
         orderMapper.updateById(order);
 
         List<OrderItem> items = itemMapper.selectList(
@@ -256,7 +263,8 @@ public class OrderServiceImpl implements OrderService {
         Page<Order> pageReq = new Page<>(page, size);
         Page<Order> result = orderMapper.selectPage(pageReq, wrapper);
         Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(result.getRecords());
-        List<OrderVO> vos = result.getRecords().stream().map(o -> toVO(o, itemsMap)).collect(Collectors.toList());
+        Map<Long, FulfillmentSummaryVO> fulfillmentMap = loadFulfillmentSummaryMap(result.getRecords());
+        List<OrderVO> vos = result.getRecords().stream().map(o -> toVO(o, itemsMap, fulfillmentMap)).collect(Collectors.toList());
         return new Page<OrderVO>(result.getCurrent(), result.getSize(), result.getTotal()).setRecords(vos);
     }
 
@@ -277,9 +285,10 @@ public class OrderServiceImpl implements OrderService {
         Page<Order> pageReq = new Page<>(page, size);
         Page<Order> result = orderMapper.selectPage(pageReq, wrapper);
         Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(result.getRecords());
+        Map<Long, FulfillmentSummaryVO> fulfillmentMap = loadFulfillmentSummaryMap(result.getRecords());
         List<OrderVO> vos = result.getRecords().stream().map(o -> {
             ensureMerchantOwnsOrder(o, "merchant", merchantId);
-            return toVO(o, itemsMap);
+            return toVO(o, itemsMap, fulfillmentMap);
         }).collect(Collectors.toList());
         return new Page<OrderVO>(result.getCurrent(), result.getSize(), result.getTotal()).setRecords(vos);
     }
@@ -307,12 +316,6 @@ public class OrderServiceImpl implements OrderService {
                 new LambdaQueryWrapper<Order>()
                         .between(start != null && end != null, Order::getCreatedAt, start, end)
                         .orderByAsc(Order::getCreatedAt));
-    }
-
-    @Override
-    @Transactional
-    public void markShipped(Long id, String userType, Long merchantId) {
-        throw new BusinessException(OrderErrorCode.SHIPPING_MUST_USE_LOGISTICS);
     }
 
     @Override
@@ -399,7 +402,7 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private OrderVO toVO(Order order, Map<Long, List<OrderItem>> itemsMap) {
+    private OrderVO toVO(Order order, Map<Long, List<OrderItem>> itemsMap, Map<Long, FulfillmentSummaryVO> fulfillmentMap) {
         OrderVO vo = new OrderVO();
         vo.setId(order.getId());
         vo.setOrderNo(order.getOrderNo());
@@ -411,6 +414,11 @@ public class OrderServiceImpl implements OrderService {
         vo.setPointsDeductionRatio(order.getPointsDeductionRatio());
         vo.setStatus(order.getStatus());
         vo.setStatusText(statusText(order.getStatus()));
+        FulfillmentSummaryVO fulfillment = fulfillmentMap.get(order.getId());
+        if (fulfillment != null) {
+            vo.setFulfillmentStatus(fulfillment.getFulfillmentStatus());
+            vo.setFulfillmentStatusText(fulfillment.getFulfillmentStatusText());
+        }
         vo.setReceiverName(order.getReceiverName());
         vo.setReceiverPhone(order.getReceiverPhone());
         vo.setReceiverAddress(order.getReceiverAddress());
@@ -485,6 +493,29 @@ public class OrderServiceImpl implements OrderService {
         return items.stream().collect(Collectors.groupingBy(OrderItem::getOrderId));
     }
 
+    private Map<Long, FulfillmentSummaryVO> loadFulfillmentSummaryMap(List<Order> orders) {
+        if (orders.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<Long> orderIds = orders.stream().map(Order::getId).filter(Objects::nonNull).toList();
+        if (orderIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        try {
+            Result<List<FulfillmentSummaryVO>> response = logisticsClient.getFulfillmentSummary(orderIds);
+            if (response == null || response.getCode() != 200 || response.getData() == null) {
+                return Collections.emptyMap();
+            }
+            return response.getData().stream()
+                    .filter(Objects::nonNull)
+                    .filter(summary -> summary.getOrderId() != null)
+                    .collect(Collectors.toMap(FulfillmentSummaryVO::getOrderId, summary -> summary, (left, right) -> left));
+        } catch (Exception e) {
+            log.warn("load fulfillment summary failed: orderIds={}", orderIds, e);
+            return Collections.emptyMap();
+        }
+    }
+
     private Map<Long, SkuBatchVO> loadSkuSnapshots(CreateOrderRequest request) {
         List<Long> skuIds = request.getItems().stream()
                 .map(CreateOrderRequest.OrderItemRequest::getSkuId)
@@ -524,13 +555,7 @@ public class OrderServiceImpl implements OrderService {
         if (currentStatus == null || targetStatus == null) {
             throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
         }
-        if (currentStatus == 0 && targetStatus == 4) {
-            return;
-        }
-        if (currentStatus == 1 && (targetStatus == 2 || targetStatus == 5)) {
-            return;
-        }
-        if (currentStatus == 2 && targetStatus == 3) {
+        if (currentStatus == OrderStatus.PENDING && targetStatus == OrderStatus.CANCELLED) {
             return;
         }
         throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
@@ -610,7 +635,8 @@ public class OrderServiceImpl implements OrderService {
         if (order == null) {
             return;
         }
-        if (!Objects.equals(currentStatus, 0) || !Objects.equals(targetStatus, 4)) {
+        if (!Objects.equals(currentStatus, OrderStatus.PENDING)
+                || !Objects.equals(targetStatus, OrderStatus.CANCELLED)) {
             return;
         }
         releaseReservedPointsQuietly(order.getPointsReservationNo(), order.getOrderNo(), reason);
@@ -643,18 +669,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private String statusText(Integer status) {
-        if (status == null) {
-            return "UNKNOWN";
-        }
-        return switch (status) {
-            case 0 -> "PENDING";
-            case 1 -> "PAID";
-            case 2 -> "SHIPPED";
-            case 3 -> "COMPLETED";
-            case 4 -> "CANCELLED";
-            case 5 -> "REFUNDED";
-            default -> "UNKNOWN";
-        };
+        return OrderStatus.text(status);
     }
 
     private OutboxMessageVO toOutboxVO(OutboxMessage message) {

@@ -65,7 +65,7 @@ class AdminOrderControllerValidationTest {
     }
 
     @Test
-    void updateStatusShouldAllowRefundedStatus() throws Exception {
+    void updateStatusShouldRejectLegacyRefundedStatus() throws Exception {
         mockMvc.perform(put("/api/v1/admin/orders/1/status")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -73,10 +73,67 @@ class AdminOrderControllerValidationTest {
                                   "status": 5
                                 }
                                 """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("status")));
 
-        verify(orderService).updateStatus(1L, 5, "super_admin", null);
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    void updateStatusShouldRejectManualShippedStatus() throws Exception {
+        mockMvc.perform(put("/api/v1/admin/orders/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": 2
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("status")));
+
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    void updateStatusShouldRejectManualCompletedStatus() throws Exception {
+        mockMvc.perform(put("/api/v1/admin/orders/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": 3
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("status")));
+
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    void updateStatusShouldRejectMerchantWithoutMerchantHeader() throws Exception {
+        mockMvc.perform(put("/api/v1/admin/orders/1/status")
+                        .header("X-User-Type", "merchant")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": 1
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(40010007));
+
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    void orderShipEndpointShouldNotExist() throws Exception {
+        mockMvc.perform(put("/api/v1/admin/orders/1/ship"))
+                .andExpect(status().isNotFound());
+
+        verifyNoInteractions(orderService);
     }
 
     @Test

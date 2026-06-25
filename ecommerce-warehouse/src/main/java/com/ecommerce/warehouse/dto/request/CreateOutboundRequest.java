@@ -11,11 +11,10 @@ public class CreateOutboundRequest {
     private Long warehouseId;
 
     @NotNull(message = "出库类型不能为空")
-    private String outboundType;
+    private Integer outboundType;
 
     private Long shippingId;
 
-    @NotNull(message = "商户ID不能为空")
     private Long merchantId;
 
     private String remark;

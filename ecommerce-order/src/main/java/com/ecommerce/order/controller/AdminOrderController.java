@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.outbox.OutboxQuery;
 import com.ecommerce.common.outbox.OutboxSummary;
 import com.ecommerce.common.result.Result;
+import com.ecommerce.common.tenant.MerchantTenantSupport;
+import com.ecommerce.order.common.OrderErrorCode;
 import com.ecommerce.order.dto.request.UpdateOrderStatusRequest;
 import com.ecommerce.common.dto.ReconOrderVO;
 import com.ecommerce.order.dto.request.OutboxRetryRequest;
@@ -72,14 +74,6 @@ public class AdminOrderController {
                 request.getLimit()));
     }
 
-    @PutMapping("/orders/{id}/ship")
-    public Result<Void> ship(@PathVariable Long id,
-                             @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
-                             @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
-        orderService.markShipped(id, userType, merchantId);
-        return Result.ok();
-    }
-
     @GetMapping("/merchant/orders")
     public Result<Page<OrderVO>> listByMerchant(@RequestParam(defaultValue = "1") int page,
                                                   @RequestParam(defaultValue = "10") int size,
@@ -92,8 +86,13 @@ public class AdminOrderController {
     public Result<Void> updateStatus(@PathVariable Long id,
                                      @Valid @RequestBody UpdateOrderStatusRequest request,
                                      @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
-                                     @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
-        orderService.updateStatus(id, request.getStatus(), userType, merchantId);
+                                     @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        orderService.updateStatus(
+                id,
+                request.getStatus(),
+                userType,
+                MerchantTenantSupport.resolveRequestMerchantId(
+                        userType, headerMerchantId, OrderErrorCode.ORDER_FORBIDDEN));
         return Result.ok();
     }
 

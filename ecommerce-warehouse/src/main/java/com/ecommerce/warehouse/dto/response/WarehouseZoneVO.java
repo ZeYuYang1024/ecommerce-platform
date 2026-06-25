@@ -8,6 +8,6 @@ public class WarehouseZoneVO {
     private Long warehouseId;
     private String zoneName;
     private String zoneCode;
-    private String zoneType;
+    private Integer zoneType;
     private String zoneTypeText;
 }

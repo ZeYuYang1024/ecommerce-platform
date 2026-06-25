@@ -3,9 +3,14 @@ package com.ecommerce.logistics.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.constant.WarehouseStockMode;
+import com.ecommerce.common.dto.OrderDeliveredMessage;
+import com.ecommerce.common.dto.OrderInternalVO;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.logistics.client.OrderClient;
 import com.ecommerce.logistics.client.WarehouseClient;
+import com.ecommerce.logistics.client.dto.WarehouseInfoVO;
 import com.ecommerce.logistics.common.FulfillmentStatus;
 import com.ecommerce.logistics.common.LogisticsErrorCode;
 import com.ecommerce.logistics.common.ShippingStatus;
@@ -31,6 +36,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -43,6 +49,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -71,6 +78,9 @@ class ShippingServiceImplTest {
     @Mock
     private WarehouseClient warehouseClient;
 
+    @Mock
+    private OrderClient orderClient;
+
     @InjectMocks
     private ShippingServiceImpl service;
 
@@ -79,7 +89,7 @@ class ShippingServiceImplTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(service, "trackingCacheMinutes", 30);
-
+        ReflectionTestUtils.setField(service, "jsonMapper", JsonMapper.builder().build());
         provider = new LogisticsProvider();
         provider.setId(1L);
         provider.setProviderCode("SF");
@@ -94,6 +104,7 @@ class ShippingServiceImplTest {
         void shouldCreateShippingOrder() {
             CreateShippingRequest req = buildCreateRequest();
             when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(orderClient.getShippingSnapshot(1001L)).thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot("ORD202606200001", 1, 9001L, itemSnapshot(100L, 200L, 1))));
             when(providerMapper.selectById(1L)).thenReturn(provider);
             when(shippingOrderMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
             when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
@@ -106,9 +117,65 @@ class ShippingServiceImplTest {
             assertThat(vo.getShippingNo()).startsWith("SH");
             assertThat(vo.getTrackingNo()).isEqualTo("SF1234567890");
             assertThat(vo.getOrderId()).isEqualTo(1001L);
+            assertThat(vo.getOrderNo()).isEqualTo("ORD202606200001");
             assertThat(vo.getShippingStatus()).isEqualTo(ShippingStatus.DISPATCHED);
             verify(shippingOrderMapper).insert(any(ShippingOrder.class));
             verify(shippingOrderItemMapper).insert(any(ShippingOrderItem.class));
+            verify(outboxService).enqueue(
+                    eq("shipping"),
+                    anyString(),
+                    eq("shipping-dispatched"),
+                    argThat(payload -> {
+                        if (!(payload instanceof com.ecommerce.common.dto.ShippingDispatchedMessage msg)) {
+                            return false;
+                        }
+                        return Long.valueOf(9001L).equals(msg.getUserId());
+                    }));
+        }
+
+        @Test
+        void shouldCreateOutboundForManagedWarehouse() {
+            CreateShippingRequest req = buildCreateRequest();
+            req.setWarehouseId(9L);
+            when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(orderClient.getShippingSnapshot(1001L)).thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot(
+                    "ORD202606200001", 1, 9001L, itemSnapshot(100L, 200L, 1, 700L))));
+            when(providerMapper.selectById(1L)).thenReturn(provider);
+            when(shippingOrderMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
+            when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+            when(shippingOrderMapper.insert(any(ShippingOrder.class))).thenReturn(1);
+            when(shippingOrderItemMapper.insert(any(ShippingOrderItem.class))).thenReturn(1);
+            when(warehouseClient.getWarehouse(9L)).thenReturn(com.ecommerce.common.result.Result.ok(managedWarehouse(9L)));
+            when(warehouseClient.createOutbound(any()))
+                    .thenReturn(com.ecommerce.common.result.Result.ok(new com.ecommerce.logistics.client.dto.OutboundOrderVO()));
+
+            ShippingOrderVO vo = service.createShipping(req, "admin", null);
+
+            assertThat(vo.getShippingStatus()).isEqualTo(ShippingStatus.PENDING);
+            verify(shippingOrderMapper).insert(argThat((ShippingOrder order) ->
+                    Long.valueOf(700L).equals(order.getMerchantId())));
+            verify(warehouseClient).createOutbound(argThat(request ->
+                    Long.valueOf(700L).equals(request.getMerchantId())));
+            verify(outboxService, never()).enqueue(eq("shipping"), anyString(), eq("shipping-dispatched"), any());
+        }
+
+        @Test
+        void shouldDispatchImmediatelyForSelfManagedWarehouse() {
+            CreateShippingRequest req = buildCreateRequest();
+            req.setWarehouseId(10L);
+            when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(orderClient.getShippingSnapshot(1001L)).thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot("ORD202606200001", 1, 9001L, itemSnapshot(100L, 200L, 1))));
+            when(providerMapper.selectById(1L)).thenReturn(provider);
+            when(shippingOrderMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
+            when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+            when(shippingOrderMapper.insert(any(ShippingOrder.class))).thenReturn(1);
+            when(shippingOrderItemMapper.insert(any(ShippingOrderItem.class))).thenReturn(1);
+            when(warehouseClient.getWarehouse(10L)).thenReturn(com.ecommerce.common.result.Result.ok(selfWarehouse(10L)));
+
+            ShippingOrderVO vo = service.createShipping(req, "admin", null);
+
+            assertThat(vo.getShippingStatus()).isEqualTo(ShippingStatus.DISPATCHED);
+            verify(warehouseClient, never()).createOutbound(any());
             verify(outboxService).enqueue(eq("shipping"), anyString(), eq("shipping-dispatched"), any());
         }
 
@@ -192,9 +259,25 @@ class ShippingServiceImplTest {
         }
 
         @Test
+        void shouldRejectWhenOrderIsNotPaid() {
+            CreateShippingRequest req = buildCreateRequest();
+            when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(providerMapper.selectById(1L)).thenReturn(provider);
+            when(shippingOrderMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
+            when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+            when(orderClient.getShippingSnapshot(1001L)).thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot("ORD202606200001", 0, 9001L, itemSnapshot(100L, 200L, 1))));
+
+            assertThatThrownBy(() -> service.createShipping(req, "admin", null))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(LogisticsErrorCode.ORDER_NOT_PAID.getCode());
+        }
+
+        @Test
         void shouldCreateShippingWithMerchantId() {
             CreateShippingRequest req = buildCreateRequest();
             when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(orderClient.getShippingSnapshot(1001L)).thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot("ORD202606200001", 1, 9001L, itemSnapshot(100L, 200L, 1))));
             when(providerMapper.selectById(1L)).thenReturn(provider);
             when(shippingOrderMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
             when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
@@ -204,7 +287,45 @@ class ShippingServiceImplTest {
             ShippingOrderVO vo = service.createShipping(req, "merchant", 500L);
 
             assertThat(vo.getShippingNo()).isNotNull();
-            verify(shippingOrderMapper).insert(any(ShippingOrder.class));
+            verify(shippingOrderMapper).insert(argThat((ShippingOrder order) ->
+                    Long.valueOf(500L).equals(order.getMerchantId())));
+        }
+
+        @Test
+        void shouldRejectWhenWarehouseBelongsToDifferentMerchant() {
+            CreateShippingRequest req = buildCreateRequest();
+            req.setWarehouseId(9L);
+            when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(orderClient.getShippingSnapshot(1001L)).thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot("ORD202606200001", 1, 9001L, itemSnapshot(100L, 200L, 1))));
+            when(providerMapper.selectById(1L)).thenReturn(provider);
+            when(shippingOrderMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
+            when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+            when(warehouseClient.getWarehouse(9L)).thenReturn(com.ecommerce.common.result.Result.ok(warehouse(9L, WarehouseStockMode.MANAGED, 999L)));
+
+            assertThatThrownBy(() -> service.createShipping(req, "merchant", 500L))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(LogisticsErrorCode.WAREHOUSE_FORBIDDEN.getCode());
+
+            verify(shippingOrderMapper, never()).insert(any(ShippingOrder.class));
+        }
+
+        @Test
+        void shouldRejectWhenOrderBelongsToDifferentMerchant() {
+            CreateShippingRequest req = buildCreateRequest();
+            when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(orderClient.getShippingSnapshot(1001L)).thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot(
+                    "ORD202606200001", 1, 9001L, itemSnapshot(100L, 200L, 1, 700L))));
+            when(providerMapper.selectById(1L)).thenReturn(provider);
+            when(shippingOrderMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
+            when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+
+            assertThatThrownBy(() -> service.createShipping(req, "merchant", 500L))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(LogisticsErrorCode.SHIPPING_FORBIDDEN.getCode());
+
+            verify(shippingOrderMapper, never()).insert(any(ShippingOrder.class));
         }
 
         @Test
@@ -212,6 +333,7 @@ class ShippingServiceImplTest {
             CreateShippingRequest req = buildCreateRequest();
             req.setItems(Collections.emptyList());
             when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(orderClient.getShippingSnapshot(1001L)).thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot("ORD202606200001", 1, 9001L, itemSnapshot(100L, 200L, 1))));
             when(providerMapper.selectById(1L)).thenReturn(provider);
             when(shippingOrderMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
             when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
@@ -228,6 +350,7 @@ class ShippingServiceImplTest {
             CreateShippingRequest req = buildCreateRequest();
             req.setPackageWeight(null);
             when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(orderClient.getShippingSnapshot(1001L)).thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot("ORD202606200001", 1, 9001L, itemSnapshot(100L, 200L, 1))));
             when(providerMapper.selectById(1L)).thenReturn(provider);
             when(shippingOrderMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
             when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
@@ -236,6 +359,36 @@ class ShippingServiceImplTest {
             ShippingOrderVO vo = service.createShipping(req, "admin", null);
 
             assertThat(vo.getPackageWeight()).isZero();
+        }
+
+        @Test
+        void shouldBuildBatchShippingFromOrderSnapshot() {
+            com.ecommerce.logistics.dto.request.BatchShipRequest request = new com.ecommerce.logistics.dto.request.BatchShipRequest();
+            com.ecommerce.logistics.dto.request.BatchShipRequest.BatchShipItem item = new com.ecommerce.logistics.dto.request.BatchShipRequest.BatchShipItem();
+            item.setOrderId(1001L);
+            item.setProviderId(1L);
+            item.setTrackingNo("SF1234567890");
+            item.setPackageWeight(500);
+            request.setItems(List.of(item));
+
+            when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            when(orderClient.getShippingSnapshot(1001L)).thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot(
+                    "ORD202606200001",
+                    1,
+                    9001L,
+                    itemSnapshot(100L, 200L, 1),
+                    itemSnapshot(101L, 201L, 2))));
+            when(providerMapper.selectById(1L)).thenReturn(provider);
+            when(shippingOrderMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
+            when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+            when(shippingOrderMapper.insert(any(ShippingOrder.class))).thenReturn(1);
+            when(shippingOrderItemMapper.insert(any(ShippingOrderItem.class))).thenReturn(1);
+
+            List<ShippingOrderVO> result = service.batchShip(request, "admin", null);
+
+            assertThat(result).hasSize(1);
+            assertThat(result.getFirst().getOrderNo()).isEqualTo("ORD202606200001");
+            verify(shippingOrderItemMapper, org.mockito.Mockito.times(2)).insert(any(ShippingOrderItem.class));
         }
     }
 
@@ -400,7 +553,7 @@ class ShippingServiceImplTest {
                     .thenReturn(List.of(staleRecord));
 
             when(trackingRecordMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
-            when(trackingRecordMapper.insert(any(TrackingRecord.class))).thenReturn(1);
+            when(trackingRecordMapper.insert(org.mockito.ArgumentMatchers.<TrackingRecord>any())).thenReturn(1);
             when(providerMapper.selectById(1L)).thenReturn(provider);
 
             TrackingQueryResponse resp = new TrackingQueryResponse();
@@ -417,6 +570,30 @@ class ShippingServiceImplTest {
 
             assertThat(vo.getTracks()).isNotEmpty();
             verify(trackingRecordMapper, atLeastOnce()).insert(any(TrackingRecord.class));
+        }
+
+        @Test
+        void shouldQueryTrackingWithAggregationCodeWhenAvailable() {
+            ShippingOrder order = buildShippingOrder(1L, ShippingStatus.IN_TRANSIT);
+            when(shippingOrderMapper.selectById(1L)).thenReturn(order);
+
+            TrackingRecord staleRecord = new TrackingRecord();
+            staleRecord.setTraceTime(LocalDateTime.now().minusHours(2));
+            staleRecord.setTraceDesc("宸叉徑鏀?");
+            when(trackingRecordMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(List.of(staleRecord));
+
+            provider.setAggregationCode("SF_KDN");
+            when(providerMapper.selectById(1L)).thenReturn(provider);
+
+            TrackingQueryResponse resp = new TrackingQueryResponse();
+            resp.setSuccess(true);
+            resp.setTraces(Collections.emptyList());
+            when(aggregationProvider.queryTracking(anyString(), anyString())).thenReturn(resp);
+
+            service.getTracking(1L, null);
+
+            verify(aggregationProvider).queryTracking("SF1234567890", "SF_KDN");
         }
 
         @Test
@@ -486,6 +663,25 @@ class ShippingServiceImplTest {
         }
 
         @Test
+        void shouldHandleNullProviderResponseGracefully() {
+            ShippingOrder order = buildShippingOrder(1L, ShippingStatus.IN_TRANSIT);
+            when(shippingOrderMapper.selectById(1L)).thenReturn(order);
+
+            TrackingRecord staleRecord = new TrackingRecord();
+            staleRecord.setTraceTime(LocalDateTime.now().minusHours(2));
+            staleRecord.setTraceDesc("宸叉徑鏀?");
+            when(trackingRecordMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(List.of(staleRecord));
+            when(providerMapper.selectById(1L)).thenReturn(provider);
+            when(aggregationProvider.queryTracking(anyString(), anyString())).thenReturn(null);
+
+            TrackingVO vo = service.getTracking(1L, null);
+
+            assertThat(vo.getTracks()).hasSize(1);
+            verify(trackingRecordMapper, never()).insert(any(TrackingRecord.class));
+        }
+
+        @Test
         void shouldGetTrackingByTrackingNo() {
             ShippingOrder order = buildShippingOrder(1L, ShippingStatus.IN_TRANSIT);
             when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(order);
@@ -512,6 +708,30 @@ class ShippingServiceImplTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
                     .isEqualTo(LogisticsErrorCode.SHIPPING_NOT_FOUND.getCode());
+        }
+
+        @Test
+        void shouldRejectTrackingAccessForDifferentMerchant() {
+            ShippingOrder order = buildShippingOrder(1L, ShippingStatus.IN_TRANSIT);
+            order.setMerchantId(999L);
+            when(shippingOrderMapper.selectById(1L)).thenReturn(order);
+
+            assertThatThrownBy(() -> service.getTracking(1L, 500L))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(LogisticsErrorCode.SHIPPING_FORBIDDEN.getCode());
+        }
+
+        @Test
+        void shouldRejectTrackingByTrackingNoForDifferentMerchant() {
+            ShippingOrder order = buildShippingOrder(1L, ShippingStatus.IN_TRANSIT);
+            order.setMerchantId(999L);
+            when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(order);
+
+            assertThatThrownBy(() -> service.getTrackingByTrackingNo("SF1234567890", "SF", 500L))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(LogisticsErrorCode.SHIPPING_FORBIDDEN.getCode());
         }
     }
 
@@ -594,6 +814,18 @@ class ShippingServiceImplTest {
         }
 
         @Test
+        void shouldRejectGetShippingForDifferentMerchant() {
+            ShippingOrder order = buildShippingOrder(1L, ShippingStatus.DISPATCHED);
+            order.setMerchantId(999L);
+            when(shippingOrderMapper.selectById(1L)).thenReturn(order);
+
+            assertThatThrownBy(() -> service.getShipping(1L, "merchant", 500L))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(LogisticsErrorCode.SHIPPING_FORBIDDEN.getCode());
+        }
+
+        @Test
         void shouldGetShippingByOrderId() {
             ShippingOrder order = buildShippingOrder(1L, ShippingStatus.DISPATCHED);
             when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(order);
@@ -622,10 +854,195 @@ class ShippingServiceImplTest {
 
         @Test
         void shouldLogAndIgnoreCallbackWithoutError() {
+            when(aggregationProvider.verifyCallbackSignature("SF", "{\"status\":\"delivered\"}", "signature-abc"))
+                    .thenReturn(true);
+
             // Phase 1 stub: processCallback should not throw
             service.processCallback("SF", "{\"status\":\"delivered\"}", "signature-abc");
 
             // No exception means success — no further assertions needed for stub
+        }
+        @Test
+        void shouldMarkShippingSignedAndPublishOrderDeliveredWhenAllShipmentsSigned() {
+            ShippingOrder current = buildShippingOrder(1L, ShippingStatus.DISPATCHED);
+            current.setOrderId(1001L);
+            current.setOrderNo("ORD202606200001");
+            current.setTrackingNo("SF1234567890");
+
+            ShippingOrder sibling = buildShippingOrder(2L, ShippingStatus.SIGNED);
+            sibling.setOrderId(1001L);
+            sibling.setOrderNo("ORD202606200001");
+
+            when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(current);
+            when(trackingRecordMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
+            when(trackingRecordMapper.insert(org.mockito.ArgumentMatchers.<TrackingRecord>any())).thenReturn(1);
+            when(shippingOrderMapper.updateById(any(ShippingOrder.class))).thenReturn(1);
+            when(shippingOrderMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(List.of(current, sibling));
+            when(orderClient.getShippingSnapshot(1001L))
+                    .thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot("ORD202606200001", 1, 9001L)));
+            when(aggregationProvider.verifyCallbackSignature(eq("SF"), anyString(), eq("signature-abc")))
+                    .thenReturn(true);
+            service.processCallback("SF", """
+                    {
+                      "trackingNo": "SF1234567890",
+                      "status": "SIGNED",
+                      "time": "2026-06-22 10:30:00",
+                      "desc": "Package signed",
+                      "location": "Shanghai"
+                    }
+                    """, "signature-abc");
+
+            assertThat(current.getShippingStatus()).isEqualTo(ShippingStatus.SIGNED);
+            assertThat(current.getSignedAt()).isEqualTo(LocalDateTime.of(2026, 6, 22, 10, 30, 0));
+            verify(trackingRecordMapper).insert(org.mockito.ArgumentMatchers.<TrackingRecord>argThat(record ->
+                    Long.valueOf(1L).equals(record.getShippingId())
+                            && "SIGNED".equals(record.getEventType())
+                            && "SIGNED".equals(record.getTraceStatus())));
+            verify(outboxService).enqueue(
+                    eq("shipping"),
+                    eq("ORD202606200001"),
+                    eq("order-delivered"),
+                    argThat(payload -> {
+                        if (!(payload instanceof OrderDeliveredMessage msg)) {
+                            return false;
+                        }
+                        return Long.valueOf(1L).equals(msg.getShippingId())
+                                && Long.valueOf(1001L).equals(msg.getOrderId())
+                                && "ORD202606200001".equals(msg.getOrderNo())
+                                && Long.valueOf(9001L).equals(msg.getUserId())
+                                && LocalDateTime.of(2026, 6, 22, 10, 30, 0).equals(msg.getSignedAt());
+                    }));
+        }
+
+        @Test
+        void shouldProcessCallbackWithCarrierCodeFromPayload() {
+            ShippingOrder current = buildShippingOrder(1L, ShippingStatus.DISPATCHED);
+            current.setOrderId(1001L);
+            current.setOrderNo("ORD202606200001");
+            current.setTrackingNo("SF1234567890");
+            current.setProviderCode("SF");
+
+            ShippingOrder sibling = buildShippingOrder(2L, ShippingStatus.SIGNED);
+            sibling.setOrderId(1001L);
+            sibling.setOrderNo("ORD202606200001");
+
+            when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(current);
+            when(trackingRecordMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
+            when(trackingRecordMapper.insert(org.mockito.ArgumentMatchers.<TrackingRecord>any())).thenReturn(1);
+            when(shippingOrderMapper.updateById(any(ShippingOrder.class))).thenReturn(1);
+            when(shippingOrderMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(List.of(current, sibling));
+            when(orderClient.getShippingSnapshot(1001L))
+                    .thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot("ORD202606200001", 1, 9001L)));
+            when(aggregationProvider.verifyCallbackSignature(eq("stub"), anyString(), eq("signature-abc")))
+                    .thenReturn(true);
+
+            service.processCallback("stub", """
+                    {
+                      "trackingNo": "SF1234567890",
+                      "expressCode": "SF",
+                      "status": "SIGNED",
+                      "time": "2026-06-22 10:30:00",
+                      "desc": "Package signed",
+                      "location": "Shanghai"
+                    }
+                    """, "signature-abc");
+
+            assertThat(current.getShippingStatus()).isEqualTo(ShippingStatus.SIGNED);
+            verify(trackingRecordMapper).insert(org.mockito.ArgumentMatchers.<TrackingRecord>argThat(record ->
+                    Long.valueOf(1L).equals(record.getShippingId())
+                            && "SF".equals(record.getProviderCode())
+                            && "SIGNED".equals(record.getEventType())));
+        }
+
+        @Test
+        void shouldVerifyCallbackSignatureWithAggregationProviderCode() {
+            when(aggregationProvider.verifyCallbackSignature("stub", "{\"status\":\"delivered\"}", "signature-abc"))
+                    .thenReturn(true);
+
+            service.processCallback("stub", "{\"status\":\"delivered\"}", "signature-abc");
+
+            verify(aggregationProvider).verifyCallbackSignature("stub", "{\"status\":\"delivered\"}", "signature-abc");
+        }
+
+        @Test
+        void shouldNotPublishOrderDeliveredWhenNotAllShipmentsSigned() {
+            ShippingOrder current = buildShippingOrder(1L, ShippingStatus.DISPATCHED);
+            current.setOrderId(1001L);
+            current.setOrderNo("ORD202606200001");
+            current.setTrackingNo("SF1234567890");
+
+            ShippingOrder sibling = buildShippingOrder(2L, ShippingStatus.DISPATCHED);
+            sibling.setOrderId(1001L);
+            sibling.setOrderNo("ORD202606200001");
+
+            when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(current);
+            when(trackingRecordMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
+            when(trackingRecordMapper.insert(org.mockito.ArgumentMatchers.<TrackingRecord>any())).thenReturn(1);
+            when(shippingOrderMapper.updateById(any(ShippingOrder.class))).thenReturn(1);
+            when(shippingOrderMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(List.of(current, sibling));
+            when(aggregationProvider.verifyCallbackSignature(eq("SF"), anyString(), eq("signature-abc")))
+                    .thenReturn(true);
+
+            service.processCallback("SF", """
+                    {
+                      "trackingNo": "SF1234567890",
+                      "status": "SIGNED",
+                      "time": "2026-06-22 10:30:00",
+                      "desc": "Package signed",
+                      "location": "Shanghai"
+                    }
+                    """, "signature-abc");
+
+            assertThat(current.getShippingStatus()).isEqualTo(ShippingStatus.SIGNED);
+            verify(outboxService, never()).enqueue(eq("shipping"), eq("ORD202606200001"), eq("order-delivered"), any());
+        }
+
+        @Test
+        void shouldRejectCallbackWhenSignatureInvalid() {
+            when(aggregationProvider.verifyCallbackSignature("SF", "{\"status\":\"delivered\"}", "bad-signature"))
+                    .thenReturn(false);
+
+            assertThatThrownBy(() -> service.processCallback("SF", "{\"status\":\"delivered\"}", "bad-signature"))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(LogisticsErrorCode.CALLBACK_SIGNATURE_INVALID.getCode());
+
+            verify(shippingOrderMapper, never()).selectOne(any(LambdaQueryWrapper.class));
+        }
+    }
+
+    @Nested
+    class GenerateWaybillTests {
+
+        @Test
+        void shouldGenerateWaybillForScopedMerchant() {
+            ShippingOrder order = buildShippingOrder(1L, ShippingStatus.DISPATCHED);
+            order.setMerchantId(500L);
+            when(shippingOrderMapper.selectById(1L)).thenReturn(order);
+            when(shippingOrderMapper.updateById(any(ShippingOrder.class))).thenReturn(1);
+
+            String waybillUrl = service.generateWaybill(1L, 500L);
+
+            assertThat(waybillUrl).isEqualTo("https://waybill.example.com/SF1234567890.pdf");
+            verify(shippingOrderMapper).updateById(argThat((ShippingOrder updated) ->
+                    "https://waybill.example.com/SF1234567890.pdf".equals(updated.getWaybillUrl())));
+        }
+
+        @Test
+        void shouldRejectWaybillGenerationForDifferentMerchant() {
+            ShippingOrder order = buildShippingOrder(1L, ShippingStatus.DISPATCHED);
+            order.setMerchantId(999L);
+            when(shippingOrderMapper.selectById(1L)).thenReturn(order);
+
+            assertThatThrownBy(() -> service.generateWaybill(1L, 500L))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
+                    .isEqualTo(LogisticsErrorCode.SHIPPING_FORBIDDEN.getCode());
+
+            verify(shippingOrderMapper, never()).updateById(any(ShippingOrder.class));
         }
     }
 
@@ -664,5 +1081,44 @@ class ShippingServiceImplTest {
         order.setVersion(0);
         order.setMerchantId(null);
         return order;
+    }
+
+    private WarehouseInfoVO managedWarehouse(Long id) {
+        return warehouse(id, WarehouseStockMode.MANAGED, null);
+    }
+
+    private WarehouseInfoVO selfWarehouse(Long id) {
+        return warehouse(id, WarehouseStockMode.LIGHT, null);
+    }
+
+    private WarehouseInfoVO warehouse(Long id, Integer stockMode, Long merchantId) {
+        WarehouseInfoVO warehouse = new WarehouseInfoVO();
+        warehouse.setId(id);
+        warehouse.setStockMode(stockMode);
+        warehouse.setMerchantId(merchantId);
+        return warehouse;
+    }
+
+    private OrderInternalVO orderSnapshot(String orderNo, int status, Long userId, OrderInternalVO.OrderItemSnapshot... items) {
+        OrderInternalVO order = new OrderInternalVO();
+        order.setId(1001L);
+        order.setOrderNo(orderNo);
+        order.setUserId(userId);
+        order.setStatus(status);
+        order.setItems(List.of(items));
+        return order;
+    }
+
+    private OrderInternalVO.OrderItemSnapshot itemSnapshot(Long orderItemId, Long skuId, Integer quantity) {
+        return itemSnapshot(orderItemId, skuId, quantity, null);
+    }
+
+    private OrderInternalVO.OrderItemSnapshot itemSnapshot(Long orderItemId, Long skuId, Integer quantity, Long merchantId) {
+        OrderInternalVO.OrderItemSnapshot item = new OrderInternalVO.OrderItemSnapshot();
+        item.setOrderItemId(orderItemId);
+        item.setSkuId(skuId);
+        item.setQuantity(quantity);
+        item.setMerchantId(merchantId);
+        return item;
     }
 }

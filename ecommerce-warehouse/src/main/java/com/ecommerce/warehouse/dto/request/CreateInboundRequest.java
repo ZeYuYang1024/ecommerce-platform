@@ -11,11 +11,10 @@ public class CreateInboundRequest {
     private Long warehouseId;
 
     @NotNull(message = "入库类型不能为空")
-    private String inboundType;
+    private Integer inboundType;
 
     private String sourceOrderNo;
 
-    @NotNull(message = "商户ID不能为空")
     private Long merchantId;
 
     private String remark;

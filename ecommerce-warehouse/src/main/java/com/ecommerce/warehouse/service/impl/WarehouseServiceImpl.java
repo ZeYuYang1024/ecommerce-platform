@@ -3,9 +3,14 @@ package com.ecommerce.warehouse.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.constant.WarehouseStockMode;
 import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.warehouse.common.WarehouseBinType;
 import com.ecommerce.warehouse.common.WarehouseErrorCode;
+import com.ecommerce.warehouse.common.WarehouseType;
+import com.ecommerce.warehouse.common.WarehouseZoneType;
 import com.ecommerce.warehouse.dto.request.CreateWarehouseRequest;
+import com.ecommerce.warehouse.dto.request.UpdateWarehouseRequest;
 import com.ecommerce.warehouse.dto.response.WarehouseBinVO;
 import com.ecommerce.warehouse.dto.response.WarehouseVO;
 import com.ecommerce.warehouse.dto.response.WarehouseZoneVO;
@@ -36,8 +41,6 @@ public class WarehouseServiceImpl implements WarehouseService {
         this.warehouseBinMapper = warehouseBinMapper;
     }
 
-    // ======================== Warehouse CRUD ========================
-
     @Override
     public IPage<WarehouseVO> listWarehouses(int page, int size, Long merchantId) {
         Page<Warehouse> p = new Page<>(page, size);
@@ -58,8 +61,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (merchantId != null) {
             wrapper.eq(Warehouse::getMerchantId, merchantId);
         }
-        List<Warehouse> list = warehouseMapper.selectList(wrapper);
-        return list.stream().map(this::toWarehouseVO).toList();
+        return warehouseMapper.selectList(wrapper).stream().map(this::toWarehouseVO).toList();
     }
 
     @Override
@@ -78,6 +80,9 @@ public class WarehouseServiceImpl implements WarehouseService {
                 .eq(Warehouse::getWarehouseCode, req.getWarehouseCode()))) {
             throw new BusinessException(WarehouseErrorCode.WAREHOUSE_CODE_EXISTS);
         }
+
+        validateWarehouseOwnership(req.getWarehouseType(), req.getStockMode(), req.getMerchantId());
+
         Warehouse entity = new Warehouse();
         entity.setWarehouseName(req.getWarehouseName());
         entity.setWarehouseCode(req.getWarehouseCode());
@@ -97,21 +102,45 @@ public class WarehouseServiceImpl implements WarehouseService {
 
     @Override
     @Transactional
-    public WarehouseVO updateWarehouse(Long id, CreateWarehouseRequest req) {
+    public WarehouseVO updateWarehouse(Long id, UpdateWarehouseRequest req) {
         Warehouse entity = warehouseMapper.selectById(id);
         if (entity == null) {
             throw new BusinessException(WarehouseErrorCode.WAREHOUSE_NOT_FOUND);
         }
-        if (req.getWarehouseName() != null) entity.setWarehouseName(req.getWarehouseName());
-        if (req.getWarehouseType() != null) entity.setWarehouseType(req.getWarehouseType());
-        if (req.getStockMode() != null) entity.setStockMode(req.getStockMode());
-        if (req.getMerchantId() != null) entity.setMerchantId(req.getMerchantId());
-        if (req.getProvince() != null) entity.setProvince(req.getProvince());
-        if (req.getCity() != null) entity.setCity(req.getCity());
-        if (req.getDistrict() != null) entity.setDistrict(req.getDistrict());
-        if (req.getAddress() != null) entity.setAddress(req.getAddress());
-        if (req.getContactName() != null) entity.setContactName(req.getContactName());
-        if (req.getContactPhone() != null) entity.setContactPhone(req.getContactPhone());
+
+        Integer warehouseType = req.getWarehouseType() != null ? req.getWarehouseType() : entity.getWarehouseType();
+        Integer stockMode = req.getStockMode() != null ? req.getStockMode() : entity.getStockMode();
+        Long merchantId = req.getMerchantId() != null ? req.getMerchantId() : entity.getMerchantId();
+        validateWarehouseOwnership(warehouseType, stockMode, merchantId);
+
+        if (req.getWarehouseName() != null) {
+            entity.setWarehouseName(req.getWarehouseName());
+        }
+        if (req.getWarehouseType() != null) {
+            entity.setWarehouseType(req.getWarehouseType());
+        }
+        if (req.getStockMode() != null) {
+            entity.setStockMode(req.getStockMode());
+        }
+        entity.setMerchantId(merchantId);
+        if (req.getProvince() != null) {
+            entity.setProvince(req.getProvince());
+        }
+        if (req.getCity() != null) {
+            entity.setCity(req.getCity());
+        }
+        if (req.getDistrict() != null) {
+            entity.setDistrict(req.getDistrict());
+        }
+        if (req.getAddress() != null) {
+            entity.setAddress(req.getAddress());
+        }
+        if (req.getContactName() != null) {
+            entity.setContactName(req.getContactName());
+        }
+        if (req.getContactPhone() != null) {
+            entity.setContactPhone(req.getContactPhone());
+        }
         warehouseMapper.updateById(entity);
         return toWarehouseVO(entity);
     }
@@ -136,15 +165,15 @@ public class WarehouseServiceImpl implements WarehouseService {
         warehouseMapper.updateById(entity);
     }
 
-    // ======================== Zone CRUD ========================
-
     @Override
     public List<WarehouseZoneVO> listZonesByWarehouse(Long warehouseId) {
-        List<WarehouseZone> list = warehouseZoneMapper.selectList(
+        return warehouseZoneMapper.selectList(
                 new LambdaQueryWrapper<WarehouseZone>()
                         .eq(WarehouseZone::getWarehouseId, warehouseId)
-                        .orderByAsc(WarehouseZone::getZoneCode));
-        return list.stream().map(this::toZoneVO).toList();
+                        .orderByAsc(WarehouseZone::getZoneCode))
+                .stream()
+                .map(this::toZoneVO)
+                .toList();
     }
 
     @Override
@@ -174,9 +203,15 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (entity == null) {
             throw new BusinessException(WarehouseErrorCode.ZONE_NOT_FOUND);
         }
-        if (vo.getZoneName() != null) entity.setZoneName(vo.getZoneName());
-        if (vo.getZoneCode() != null) entity.setZoneCode(vo.getZoneCode());
-        if (vo.getZoneType() != null) entity.setZoneType(vo.getZoneType());
+        if (vo.getZoneName() != null) {
+            entity.setZoneName(vo.getZoneName());
+        }
+        if (vo.getZoneCode() != null) {
+            entity.setZoneCode(vo.getZoneCode());
+        }
+        if (vo.getZoneType() != null) {
+            entity.setZoneType(vo.getZoneType());
+        }
         warehouseZoneMapper.updateById(entity);
         return toZoneVO(entity);
     }
@@ -190,24 +225,26 @@ public class WarehouseServiceImpl implements WarehouseService {
         warehouseZoneMapper.deleteById(id);
     }
 
-    // ======================== Bin CRUD ========================
-
     @Override
     public List<WarehouseBinVO> listBinsByWarehouse(Long warehouseId) {
-        List<WarehouseBin> list = warehouseBinMapper.selectList(
+        return warehouseBinMapper.selectList(
                 new LambdaQueryWrapper<WarehouseBin>()
                         .eq(WarehouseBin::getWarehouseId, warehouseId)
-                        .orderByAsc(WarehouseBin::getBinCode));
-        return list.stream().map(this::toBinVO).toList();
+                        .orderByAsc(WarehouseBin::getBinCode))
+                .stream()
+                .map(this::toBinVO)
+                .toList();
     }
 
     @Override
     public List<WarehouseBinVO> listBinsByZone(Long zoneId) {
-        List<WarehouseBin> list = warehouseBinMapper.selectList(
+        return warehouseBinMapper.selectList(
                 new LambdaQueryWrapper<WarehouseBin>()
                         .eq(WarehouseBin::getZoneId, zoneId)
-                        .orderByAsc(WarehouseBin::getBinCode));
-        return list.stream().map(this::toBinVO).toList();
+                        .orderByAsc(WarehouseBin::getBinCode))
+                .stream()
+                .map(this::toBinVO)
+                .toList();
     }
 
     @Override
@@ -240,8 +277,12 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (entity == null) {
             throw new BusinessException(WarehouseErrorCode.BIN_NOT_FOUND);
         }
-        if (vo.getBinCode() != null) entity.setBinCode(vo.getBinCode());
-        if (vo.getBinType() != null) entity.setBinType(vo.getBinType());
+        if (vo.getBinCode() != null) {
+            entity.setBinCode(vo.getBinCode());
+        }
+        if (vo.getBinType() != null) {
+            entity.setBinType(vo.getBinType());
+        }
         warehouseBinMapper.updateById(entity);
         return toBinVO(entity);
     }
@@ -255,16 +296,15 @@ public class WarehouseServiceImpl implements WarehouseService {
         warehouseBinMapper.deleteById(id);
     }
 
-    // ======================== Entity-to-VO converters ========================
-
     private WarehouseVO toWarehouseVO(Warehouse entity) {
         WarehouseVO vo = new WarehouseVO();
         vo.setId(entity.getId());
         vo.setWarehouseName(entity.getWarehouseName());
         vo.setWarehouseCode(entity.getWarehouseCode());
         vo.setWarehouseType(entity.getWarehouseType());
+        vo.setWarehouseTypeText(WarehouseType.text(entity.getWarehouseType()));
         vo.setStockMode(entity.getStockMode());
-        vo.setStockModeText(stockModeText(entity.getStockMode()));
+        vo.setStockModeText(WarehouseStockMode.text(entity.getStockMode()));
         vo.setMerchantId(entity.getMerchantId());
         vo.setProvince(entity.getProvince());
         vo.setCity(entity.getCity());
@@ -284,7 +324,7 @@ public class WarehouseServiceImpl implements WarehouseService {
         vo.setZoneName(entity.getZoneName());
         vo.setZoneCode(entity.getZoneCode());
         vo.setZoneType(entity.getZoneType());
-        vo.setZoneTypeText(zoneTypeText(entity.getZoneType()));
+        vo.setZoneTypeText(WarehouseZoneType.text(entity.getZoneType()));
         return vo;
     }
 
@@ -295,40 +335,25 @@ public class WarehouseServiceImpl implements WarehouseService {
         vo.setWarehouseId(entity.getWarehouseId());
         vo.setBinCode(entity.getBinCode());
         vo.setBinType(entity.getBinType());
-        vo.setBinTypeText(binTypeText(entity.getBinType()));
+        vo.setBinTypeText(WarehouseBinType.text(entity.getBinType()));
         return vo;
     }
 
-    // ======================== Text helpers ========================
-
-    private String stockModeText(String stockMode) {
-        if (stockMode == null) return null;
-        return switch (stockMode) {
-            case "MANAGED" -> "托管";
-            case "SELF" -> "自管";
-            default -> stockMode;
-        };
-    }
-
-    private String zoneTypeText(String zoneType) {
-        if (zoneType == null) return null;
-        return switch (zoneType) {
-            case "RECEIVING" -> "收货区";
-            case "STORAGE" -> "存储区";
-            case "PICKING" -> "拣货区";
-            case "SHIPPING" -> "发货区";
-            case "RETURN" -> "退货区";
-            default -> zoneType;
-        };
-    }
-
-    private String binTypeText(String binType) {
-        if (binType == null) return null;
-        return switch (binType) {
-            case "STANDARD" -> "标准货位";
-            case "OVERSIZE" -> "大件货位";
-            case "TEMP" -> "临时货位";
-            default -> binType;
-        };
+    private void validateWarehouseOwnership(Integer warehouseType, Integer stockMode, Long merchantId) {
+        if (warehouseType == null || stockMode == null) {
+            return;
+        }
+        if (warehouseType == WarehouseType.PLATFORM) {
+            if (merchantId != null) {
+                throw new IllegalArgumentException("platform warehouse must not bind merchantId");
+            }
+            return;
+        }
+        if (warehouseType == WarehouseType.MERCHANT && merchantId == null) {
+            throw new IllegalArgumentException("merchant warehouse must bind merchantId");
+        }
+        if (warehouseType == WarehouseType.MERCHANT && stockMode == WarehouseStockMode.MANAGED) {
+            throw new BusinessException(WarehouseErrorCode.WAREHOUSE_FORBIDDEN);
+        }
     }
 }

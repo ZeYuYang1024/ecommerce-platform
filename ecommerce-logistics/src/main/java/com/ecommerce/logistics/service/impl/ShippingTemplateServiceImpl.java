@@ -3,9 +3,11 @@ package com.ecommerce.logistics.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.tenant.MerchantTenantSupport;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.logistics.common.LogisticsErrorCode;
 import com.ecommerce.logistics.dto.request.CreateShippingTemplateRequest;
+import com.ecommerce.logistics.dto.request.UpdateShippingTemplateRequest;
 import com.ecommerce.logistics.dto.response.ShippingTemplateVO;
 import com.ecommerce.logistics.entity.ShippingTemplate;
 import com.ecommerce.logistics.mapper.ShippingTemplateMapper;
@@ -27,8 +29,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ShippingTemplateServiceImpl implements ShippingTemplateService {
 
-    private final ShippingTemplateMapper shippingTemplateMapper;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private final ShippingTemplateMapper shippingTemplateMapper;
 
     @Override
     public IPage<ShippingTemplateVO> listTemplates(int page, int size, Long merchantId) {
@@ -43,11 +46,13 @@ public class ShippingTemplateServiceImpl implements ShippingTemplateService {
     }
 
     @Override
-    public ShippingTemplateVO getTemplate(Long id) {
+    public ShippingTemplateVO getTemplate(Long id, Long merchantId) {
         ShippingTemplate template = shippingTemplateMapper.selectById(id);
         if (template == null) {
             throw new BusinessException(LogisticsErrorCode.TEMPLATE_NOT_FOUND);
         }
+        MerchantTenantSupport.requireOwnerAccess(
+                merchantId, template.getMerchantId(), LogisticsErrorCode.TEMPLATE_FORBIDDEN);
         return toVO(template);
     }
 
@@ -70,13 +75,15 @@ public class ShippingTemplateServiceImpl implements ShippingTemplateService {
 
     @Override
     @Transactional
-    public ShippingTemplateVO updateTemplate(Long id, CreateShippingTemplateRequest req) {
+    public ShippingTemplateVO updateTemplate(Long id, UpdateShippingTemplateRequest req, Long merchantId) {
         ShippingTemplate template = shippingTemplateMapper.selectById(id);
         if (template == null) {
             throw new BusinessException(LogisticsErrorCode.TEMPLATE_NOT_FOUND);
         }
+        MerchantTenantSupport.requireOwnerAccess(
+                merchantId, template.getMerchantId(), LogisticsErrorCode.TEMPLATE_FORBIDDEN);
         template.setTemplateName(req.getTemplateName());
-        template.setMerchantId(req.getMerchantId());
+        template.setMerchantId(req.getMerchantId() != null ? req.getMerchantId() : template.getMerchantId());
         template.setCalcType(req.getCalcType() != null ? req.getCalcType() : template.getCalcType());
         template.setFirstUnit(req.getFirstUnit() != null ? req.getFirstUnit() : template.getFirstUnit());
         template.setFirstFee(req.getFirstFee() != null ? req.getFirstFee() : template.getFirstFee());
@@ -90,11 +97,13 @@ public class ShippingTemplateServiceImpl implements ShippingTemplateService {
 
     @Override
     @Transactional
-    public void deleteTemplate(Long id) {
+    public void deleteTemplate(Long id, Long merchantId) {
         ShippingTemplate template = shippingTemplateMapper.selectById(id);
         if (template == null) {
             throw new BusinessException(LogisticsErrorCode.TEMPLATE_NOT_FOUND);
         }
+        MerchantTenantSupport.requireOwnerAccess(
+                merchantId, template.getMerchantId(), LogisticsErrorCode.TEMPLATE_FORBIDDEN);
         shippingTemplateMapper.deleteById(id);
     }
 
@@ -105,7 +114,6 @@ public class ShippingTemplateServiceImpl implements ShippingTemplateService {
             throw new BusinessException(LogisticsErrorCode.TEMPLATE_NOT_FOUND);
         }
 
-        // 1. Check free_condition for free shipping
         try {
             if (StringUtils.hasText(template.getFreeCondition())) {
                 Map<String, Object> freeCondition = OBJECT_MAPPER.readValue(
@@ -114,12 +122,13 @@ public class ShippingTemplateServiceImpl implements ShippingTemplateService {
                 Object thresholdObj = freeCondition.get("threshold");
                 if (type != null && thresholdObj != null) {
                     double threshold = ((Number) thresholdObj).doubleValue();
-                    if ("amount".equals(type)) {
-                        // orderAmount not available in this method; amount-based free
-                        // shipping should be checked by the caller before invoking calculateFee
+                    if ("amount".equals(type) && threshold < 0) {
+                        throw new BusinessException(LogisticsErrorCode.TEMPLATE_CALC_FAILED);
                     }
                 }
             }
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             log.warn("Failed to parse free_condition for template {}: {}", templateId, e.getMessage());
         }
@@ -129,7 +138,6 @@ public class ShippingTemplateServiceImpl implements ShippingTemplateService {
         int continueUnit = template.getContinueUnit();
         BigDecimal continueFee = template.getContinueFee();
 
-        // 2. Check region_rules for province-specific rates
         try {
             if (StringUtils.hasText(template.getRegionRules()) && StringUtils.hasText(provinceCode)) {
                 Map<String, Map<String, Object>> regionRules = OBJECT_MAPPER.readValue(
@@ -154,23 +162,13 @@ public class ShippingTemplateServiceImpl implements ShippingTemplateService {
             log.warn("Failed to parse region_rules for template {}: {}", templateId, e.getMessage());
         }
 
-        // 3. Determine total units based on calcType
         int calcType = template.getCalcType() != null ? template.getCalcType() : 0;
-        int totalUnits;
-        switch (calcType) {
-            case 1:
-                totalUnits = weight;
-                break;
-            case 2:
-                totalUnits = volume;
-                break;
-            case 0:
-            default:
-                totalUnits = quantity;
-                break;
-        }
+        int totalUnits = switch (calcType) {
+            case 1 -> weight;
+            case 2 -> volume;
+            default -> quantity;
+        };
 
-        // 4. Calculate fee: firstFee + ceil((total - firstUnit) / continueUnit) * continueFee
         if (totalUnits <= firstUnit || continueUnit <= 0) {
             return firstFee;
         }
@@ -203,14 +201,11 @@ public class ShippingTemplateServiceImpl implements ShippingTemplateService {
         if (calcType == null) {
             return "按件";
         }
-        switch (calcType) {
-            case 1:
-                return "按重量";
-            case 2:
-                return "按体积";
-            case 0:
-            default:
-                return "按件";
-        }
+        return switch (calcType) {
+            case 1 -> "按重量";
+            case 2 -> "按体积";
+            default -> "按件";
+        };
     }
+
 }

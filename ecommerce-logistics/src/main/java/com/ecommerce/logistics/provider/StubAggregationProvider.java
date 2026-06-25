@@ -41,4 +41,9 @@ public class StubAggregationProvider implements AggregationProvider {
         log.info("Stub tracking subscribe skipped: trackingNo={}", trackingNo);
         return false;
     }
+
+    @Override
+    public boolean verifyCallbackSignature(String aggregationProviderCode, String rawBody, String signature) {
+        return true;
+    }
 }

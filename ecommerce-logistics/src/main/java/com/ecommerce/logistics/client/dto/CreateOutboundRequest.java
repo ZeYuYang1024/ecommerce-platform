@@ -7,7 +7,7 @@ import java.util.List;
 @Data
 public class CreateOutboundRequest {
     private Long warehouseId;
-    private String outboundType;
+    private Integer outboundType;
     private Long shippingId;
     private Long merchantId;
     private List<OutboundItemRequest> items;

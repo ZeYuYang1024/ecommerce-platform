@@ -11,8 +11,8 @@ import lombok.EqualsAndHashCode;
 public class Warehouse extends BaseEntity {
     private String warehouseName;
     private String warehouseCode;
-    private String warehouseType;
-    private String stockMode;
+    private Integer warehouseType;
+    private Integer stockMode;
     private Long merchantId;
     private String province;
     private String city;

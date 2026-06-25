@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="warehouse-page">
     <el-tabs v-model="activeTab" type="border-card">
       <!-- 仓库管理 Tab -->
@@ -16,12 +16,12 @@
             <el-table-column prop="warehouseCode" label="仓库编码" width="120" />
             <el-table-column prop="warehouseTypeText" label="仓库类型" width="100">
               <template #default="{ row }">
-                <el-tag :type="row.warehouseType === 1 ? 'primary' : 'warning'">{{ row.warehouseTypeText }}</el-tag>
+                <el-tag :type="row.warehouseType === 'MAIN' ? 'primary' : 'warning'">{{ row.warehouseTypeText }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="stockModeText" label="库存模式" width="100">
               <template #default="{ row }">
-                <el-tag :type="row.stockMode === 1 ? 'success' : 'info'">{{ row.stockModeText }}</el-tag>
+                <el-tag :type="row.stockMode === 'MANAGED' ? 'success' : 'info'">{{ row.stockModeText }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="merchantId" label="商家ID" width="100" />
@@ -56,14 +56,14 @@
             </el-form-item>
             <el-form-item label="仓库类型" required>
               <el-select v-model="form.warehouseType" placeholder="请选择">
-                <el-option label="平台仓" :value="1" />
-                <el-option label="商家仓" :value="2" />
+                <el-option label="平台仓" value="MAIN" />
+                <el-option label="商家仓" value="MERCHANT" />
               </el-select>
             </el-form-item>
             <el-form-item label="库存模式" required>
               <el-select v-model="form.stockMode" placeholder="请选择">
-                <el-option label="轻仓" :value="1" />
-                <el-option label="托管" :value="2" />
+                <el-option label="自管" value="SELF" />
+                <el-option label="托管" value="MANAGED" />
               </el-select>
             </el-form-item>
             <el-form-item label="所属商家">

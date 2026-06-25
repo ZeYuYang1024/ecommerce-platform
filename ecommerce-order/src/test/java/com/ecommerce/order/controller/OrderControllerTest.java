@@ -1,10 +1,14 @@
 package com.ecommerce.order.controller;
 
+import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.common.exception.GlobalExceptionHandler;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
 import com.ecommerce.order.dto.response.OrderSummaryVO;
+import com.ecommerce.order.client.ProductSpuClient;
 import com.ecommerce.order.dto.response.OrderVO;
 import com.ecommerce.order.entity.Order;
+import com.ecommerce.order.entity.OrderItem;
+import com.ecommerce.order.mapper.OrderItemMapper;
 import com.ecommerce.order.mapper.OrderMapper;
 import com.ecommerce.order.service.OrderService;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,11 +41,17 @@ class OrderControllerTest {
     @Mock
     private OrderMapper orderMapper;
 
+    @Mock
+    private OrderItemMapper orderItemMapper;
+
+    @Mock
+    private ProductSpuClient productSpuClient;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(orderService, orderMapper))
+        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(orderService, orderMapper, orderItemMapper, productSpuClient))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -143,12 +153,49 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value(101))
                 .andExpect(jsonPath("$.data.orderNo").value("ORD-INT-001"))
+                .andExpect(jsonPath("$.data.userId").value(88))
                 .andExpect(jsonPath("$.data.totalAmount").value(256.80))
                 .andExpect(jsonPath("$.data.originalAmount").value(258.80))
                 .andExpect(jsonPath("$.data.pointsUsed").value(200))
                 .andExpect(jsonPath("$.data.pointsDeductionAmount").value(2.00))
                 .andExpect(jsonPath("$.data.pointsDeductionRatio").value(100))
                 .andExpect(jsonPath("$.data.status").value(1));
+    }
+
+    @Test
+    void shouldReturnShippingSnapshotByOrderId() throws Exception {
+        Order order = new Order();
+        order.setId(101L);
+        order.setOrderNo("ORD-INT-001");
+        order.setUserId(88L);
+        order.setStatus(1);
+        when(orderMapper.selectById(101L)).thenReturn(order);
+
+        OrderItem item = new OrderItem();
+        item.setId(1001L);
+        item.setOrderId(101L);
+        item.setSkuId(2001L);
+        item.setQuantity(2);
+        when(orderItemMapper.selectList(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(item));
+        SkuBatchVO sku = new SkuBatchVO();
+        sku.setSkuId(2001L);
+        sku.setSpuId(3001L);
+        sku.setMerchantId(4001L);
+        when(productSpuClient.batchQuerySkus(List.of(2001L)))
+                .thenReturn(com.ecommerce.common.result.Result.ok(List.of(sku)));
+
+        mockMvc.perform(get("/api/v1/internal/orders/101/shipping-snapshot"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value(101))
+                .andExpect(jsonPath("$.data.orderNo").value("ORD-INT-001"))
+                .andExpect(jsonPath("$.data.userId").value(88))
+                .andExpect(jsonPath("$.data.status").value(1))
+                .andExpect(jsonPath("$.data.merchantId").value(4001))
+                .andExpect(jsonPath("$.data.items[0].orderItemId").value(1001))
+                .andExpect(jsonPath("$.data.items[0].skuId").value(2001))
+                .andExpect(jsonPath("$.data.items[0].merchantId").value(4001))
+                .andExpect(jsonPath("$.data.items[0].quantity").value(2));
     }
 
     @Test

@@ -9,7 +9,7 @@ public class OutboundOrderVO {
     private Long id;
     private String outboundNo;
     private Long warehouseId;
-    private String outboundType;
+    private Integer outboundType;
     private String outboundTypeText;
     private Long shippingId;
     private Integer status;

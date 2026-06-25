@@ -12,13 +12,12 @@ public class CreateWarehouseRequest {
     @NotBlank(message = "仓库编码不能为空")
     private String warehouseCode;
 
-    @NotBlank(message = "仓库类型不能为空")
-    private String warehouseType;
+    @NotNull(message = "仓库类型不能为空")
+    private Integer warehouseType;
 
-    @NotBlank(message = "库存管理模式不能为空")
-    private String stockMode;
+    @NotNull(message = "库存管理模式不能为空")
+    private Integer stockMode;
 
-    @NotNull(message = "商户ID不能为空")
     private Long merchantId;
 
     private String province;

@@ -57,7 +57,7 @@ class OrderPaidConsumerTest {
     }
 
     @Test
-    void shouldUpdateOrderStatusForRefundedMessage() {
+    void shouldIgnoreLegacyRefundedMessageStatus() {
         Order order = new Order();
         order.setId(1L);
         order.setOrderNo("ORD-1");
@@ -66,7 +66,7 @@ class OrderPaidConsumerTest {
 
         consumer.onMessage(new OrderPaidMessage("ORD-1", 5, LocalDateTime.now()));
 
-        verify(orderMapper).updateById(order);
+        verify(orderMapper, never()).updateById(order);
     }
 
     @Test

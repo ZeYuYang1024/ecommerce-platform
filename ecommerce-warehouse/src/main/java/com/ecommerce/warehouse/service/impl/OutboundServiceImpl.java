@@ -3,6 +3,8 @@ package com.ecommerce.warehouse.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.constant.OutboundType;
+import com.ecommerce.common.constant.WarehouseStockMode;
 import com.ecommerce.common.dto.OutboundShippedMessage;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
@@ -24,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Service
@@ -46,8 +49,6 @@ public class OutboundServiceImpl implements OutboundService {
         this.stockService = stockService;
         this.outboxService = outboxService;
     }
-
-    // ======================== Query ========================
 
     @Override
     public IPage<OutboundOrderVO> listOutbounds(int page, int size, Long warehouseId, Long merchantId) {
@@ -73,12 +74,9 @@ public class OutboundServiceImpl implements OutboundService {
         return toVO(entity);
     }
 
-    // ======================== Mutations ========================
-
     @Override
     @Transactional
     public OutboundOrderVO createOutbound(CreateOutboundRequest req) {
-        // Validate warehouse
         Warehouse warehouse = warehouseMapper.selectById(req.getWarehouseId());
         if (warehouse == null) {
             throw new BusinessException(WarehouseErrorCode.WAREHOUSE_NOT_FOUND);
@@ -86,29 +84,26 @@ public class OutboundServiceImpl implements OutboundService {
         if (warehouse.getStatus() != null && warehouse.getStatus() != 1) {
             throw new BusinessException(WarehouseErrorCode.WAREHOUSE_DISABLED);
         }
-        if (!"MANAGED".equals(warehouse.getStockMode())) {
+        if (!Objects.equals(warehouse.getStockMode(), WarehouseStockMode.MANAGED)) {
             throw new BusinessException(WarehouseErrorCode.NOT_MANAGED_WAREHOUSE);
         }
 
-        // Lock stock for each item
         if (req.getItems() != null) {
             for (CreateOutboundRequest.OutboundItem item : req.getItems()) {
                 stockService.lockStock(req.getWarehouseId(), item.getSkuId(), item.getQuantity());
             }
         }
 
-        // Create outbound order
         OutboundOrder order = new OutboundOrder();
         order.setOutboundNo(generateOutboundNo());
         order.setWarehouseId(req.getWarehouseId());
         order.setOutboundType(req.getOutboundType());
         order.setShippingId(req.getShippingId());
         order.setStatus(OutboundStatus.PENDING);
-        order.setMerchantId(req.getMerchantId());
+        order.setMerchantId(req.getMerchantId() != null ? req.getMerchantId() : warehouse.getMerchantId());
         order.setRemark(req.getRemark());
         outboundOrderMapper.insert(order);
 
-        // Create outbound items
         if (req.getItems() != null) {
             for (CreateOutboundRequest.OutboundItem item : req.getItems()) {
                 OutboundOrderItem orderItem = new OutboundOrderItem();
@@ -150,7 +145,6 @@ public class OutboundServiceImpl implements OutboundService {
             throw new BusinessException(WarehouseErrorCode.INVALID_STATUS_TRANSITION);
         }
 
-        // Deduct stock for each item
         List<OutboundOrderItem> items = outboundOrderItemMapper.selectList(
                 new LambdaQueryWrapper<OutboundOrderItem>()
                         .eq(OutboundOrderItem::getOutboundId, id));
@@ -163,14 +157,12 @@ public class OutboundServiceImpl implements OutboundService {
         order.setStatus(OutboundStatus.SHIPPED);
         outboundOrderMapper.updateById(order);
 
-        // Send outbound-shipped message via outbox
         OutboundShippedMessage message = new OutboundShippedMessage();
         message.setShippingId(order.getShippingId() != null ? order.getShippingId() : 0L);
         message.setOutboundId(order.getId());
         message.setWarehouseId(order.getWarehouseId());
         message.setOccurredAt(LocalDateTime.now());
-        outboxService.enqueue("outbound_order", order.getOutboundNo(),
-                "outbound-shipped", message);
+        outboxService.enqueue("outbound_order", order.getOutboundNo(), "outbound-shipped", message);
     }
 
     @Override
@@ -187,8 +179,6 @@ public class OutboundServiceImpl implements OutboundService {
         outboundOrderMapper.updateById(order);
     }
 
-    // ======================== Private helpers ========================
-
     private String generateOutboundNo() {
         return "OUT" + System.currentTimeMillis()
                 + String.format("%04d", ThreadLocalRandom.current().nextInt(10000));
@@ -200,7 +190,7 @@ public class OutboundServiceImpl implements OutboundService {
         vo.setOutboundNo(entity.getOutboundNo());
         vo.setWarehouseId(entity.getWarehouseId());
         vo.setOutboundType(entity.getOutboundType());
-        vo.setOutboundTypeText(outboundTypeText(entity.getOutboundType()));
+        vo.setOutboundTypeText(OutboundType.text(entity.getOutboundType()));
         vo.setShippingId(entity.getShippingId());
         vo.setStatus(entity.getStatus());
         vo.setStatusText(OutboundStatus.text(entity.getStatus()));
@@ -208,7 +198,6 @@ public class OutboundServiceImpl implements OutboundService {
         vo.setRemark(entity.getRemark());
         vo.setCreatedAt(entity.getCreatedAt());
 
-        // Load items
         List<OutboundOrderItem> items = outboundOrderItemMapper.selectList(
                 new LambdaQueryWrapper<OutboundOrderItem>()
                         .eq(OutboundOrderItem::getOutboundId, entity.getId()));
@@ -225,16 +214,5 @@ public class OutboundServiceImpl implements OutboundService {
         }
         vo.setItems(voItems);
         return vo;
-    }
-
-    private String outboundTypeText(String outboundType) {
-        if (outboundType == null) return null;
-        return switch (outboundType) {
-            case "SALES" -> "销售出库";
-            case "TRANSFER" -> "调拨出库";
-            case "RETURN" -> "退货出库";
-            case "CHECK_OUT" -> "盘点出库";
-            default -> outboundType;
-        };
     }
 }

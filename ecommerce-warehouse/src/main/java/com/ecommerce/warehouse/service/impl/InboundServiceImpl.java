@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.warehouse.common.InboundStatus;
+import com.ecommerce.warehouse.common.InboundType;
 import com.ecommerce.warehouse.common.WarehouseErrorCode;
 import com.ecommerce.warehouse.dto.request.CreateInboundRequest;
 import com.ecommerce.warehouse.dto.response.InboundOrderVO;
@@ -41,8 +42,6 @@ public class InboundServiceImpl implements InboundService {
         this.stockService = stockService;
     }
 
-    // ======================== Query ========================
-
     @Override
     public IPage<InboundOrderVO> listInbounds(int page, int size, Long warehouseId, Long merchantId) {
         Page<InboundOrder> p = new Page<>(page, size);
@@ -67,12 +66,9 @@ public class InboundServiceImpl implements InboundService {
         return toVO(entity);
     }
 
-    // ======================== Mutations ========================
-
     @Override
     @Transactional
     public InboundOrderVO createInbound(CreateInboundRequest req) {
-        // Validate warehouse exists and is enabled
         Warehouse warehouse = warehouseMapper.selectById(req.getWarehouseId());
         if (warehouse == null) {
             throw new BusinessException(WarehouseErrorCode.WAREHOUSE_NOT_FOUND);
@@ -81,7 +77,6 @@ public class InboundServiceImpl implements InboundService {
             throw new BusinessException(WarehouseErrorCode.WAREHOUSE_DISABLED);
         }
 
-        // Create inbound order
         InboundOrder order = new InboundOrder();
         order.setInboundNo(generateInboundNo());
         order.setWarehouseId(req.getWarehouseId());
@@ -92,7 +87,6 @@ public class InboundServiceImpl implements InboundService {
         order.setRemark(req.getRemark());
         inboundOrderMapper.insert(order);
 
-        // Create inbound items
         if (req.getItems() != null) {
             for (CreateInboundRequest.InboundItem item : req.getItems()) {
                 InboundOrderItem orderItem = new InboundOrderItem();
@@ -120,7 +114,6 @@ public class InboundServiceImpl implements InboundService {
         order.setStatus(InboundStatus.RECEIVED);
         inboundOrderMapper.updateById(order);
 
-        // Update received quantity on items
         List<InboundOrderItem> items = inboundOrderItemMapper.selectList(
                 new LambdaQueryWrapper<InboundOrderItem>()
                         .eq(InboundOrderItem::getInboundId, id));
@@ -141,7 +134,6 @@ public class InboundServiceImpl implements InboundService {
             throw new BusinessException(WarehouseErrorCode.INVALID_STATUS_TRANSITION);
         }
 
-        // Add stock for each item with its assigned bin
         List<InboundOrderItem> items = inboundOrderItemMapper.selectList(
                 new LambdaQueryWrapper<InboundOrderItem>()
                         .eq(InboundOrderItem::getInboundId, id));
@@ -149,8 +141,7 @@ public class InboundServiceImpl implements InboundService {
             if (item.getBinId() == null) {
                 throw new BusinessException(WarehouseErrorCode.BIN_NOT_FOUND);
             }
-            stockService.addStock(order.getWarehouseId(), item.getSkuId(),
-                    item.getBinId(), item.getQuantity());
+            stockService.addStock(order.getWarehouseId(), item.getSkuId(), item.getBinId(), item.getQuantity());
         }
 
         order.setStatus(InboundStatus.SHELVED);
@@ -171,8 +162,6 @@ public class InboundServiceImpl implements InboundService {
         inboundOrderMapper.updateById(order);
     }
 
-    // ======================== Private helpers ========================
-
     private String generateInboundNo() {
         return "IN" + System.currentTimeMillis()
                 + String.format("%04d", ThreadLocalRandom.current().nextInt(10000));
@@ -184,7 +173,7 @@ public class InboundServiceImpl implements InboundService {
         vo.setInboundNo(entity.getInboundNo());
         vo.setWarehouseId(entity.getWarehouseId());
         vo.setInboundType(entity.getInboundType());
-        vo.setInboundTypeText(inboundTypeText(entity.getInboundType()));
+        vo.setInboundTypeText(InboundType.text(entity.getInboundType()));
         vo.setSourceOrderNo(entity.getSourceOrderNo());
         vo.setStatus(entity.getStatus());
         vo.setStatusText(InboundStatus.text(entity.getStatus()));
@@ -192,7 +181,6 @@ public class InboundServiceImpl implements InboundService {
         vo.setRemark(entity.getRemark());
         vo.setCreatedAt(entity.getCreatedAt());
 
-        // Load items
         List<InboundOrderItem> items = inboundOrderItemMapper.selectList(
                 new LambdaQueryWrapper<InboundOrderItem>()
                         .eq(InboundOrderItem::getInboundId, entity.getId()));
@@ -209,16 +197,5 @@ public class InboundServiceImpl implements InboundService {
         }
         vo.setItems(voItems);
         return vo;
-    }
-
-    private String inboundTypeText(String inboundType) {
-        if (inboundType == null) return null;
-        return switch (inboundType) {
-            case "PURCHASE" -> "采购入库";
-            case "RETURN" -> "退货入库";
-            case "TRANSFER" -> "调拨入库";
-            case "CHECK_IN" -> "盘点入库";
-            default -> inboundType;
-        };
     }
 }

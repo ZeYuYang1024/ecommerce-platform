@@ -12,5 +12,5 @@ public class WarehouseBin extends BaseEntity {
     private Long zoneId;
     private Long warehouseId;
     private String binCode;
-    private String binType;
+    private Integer binType;
 }

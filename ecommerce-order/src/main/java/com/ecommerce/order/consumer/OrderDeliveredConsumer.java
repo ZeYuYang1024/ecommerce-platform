@@ -1,5 +1,6 @@
 package com.ecommerce.order.consumer;
 
+import com.ecommerce.common.constant.OrderStatus;
 import com.ecommerce.common.dto.OrderDeliveredMessage;
 import com.ecommerce.order.entity.Order;
 import com.ecommerce.order.mapper.OrderMapper;
@@ -30,9 +31,8 @@ public class OrderDeliveredConsumer implements RocketMQListener<OrderDeliveredMe
             log.warn("Order not found: orderId={}", message.getOrderId());
             return;
         }
-        // status=2 (shipped) -> status=3 (completed)
-        if (order.getStatus() != null && order.getStatus() == 2) {
-            order.setStatus(3);
+        if (order.getStatus() != null && order.getStatus() == OrderStatus.SHIPPED) {
+            order.setStatus(OrderStatus.COMPLETED);
             orderMapper.updateById(order);
             log.info("Order status updated to completed: orderId={}", message.getOrderId());
         } else {

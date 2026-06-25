@@ -11,7 +11,7 @@ import lombok.EqualsAndHashCode;
 public class InboundOrder extends BaseEntity {
     private String inboundNo;
     private Long warehouseId;
-    private String inboundType;
+    private Integer inboundType;
     private String sourceOrderNo;
     private Integer status;
     private Long merchantId;

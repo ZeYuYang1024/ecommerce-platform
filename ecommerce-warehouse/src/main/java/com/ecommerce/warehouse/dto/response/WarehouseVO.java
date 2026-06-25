@@ -7,8 +7,9 @@ public class WarehouseVO {
     private Long id;
     private String warehouseName;
     private String warehouseCode;
-    private String warehouseType;
-    private String stockMode;
+    private Integer warehouseType;
+    private String warehouseTypeText;
+    private Integer stockMode;
     private String stockModeText;
     private Long merchantId;
     private String province;

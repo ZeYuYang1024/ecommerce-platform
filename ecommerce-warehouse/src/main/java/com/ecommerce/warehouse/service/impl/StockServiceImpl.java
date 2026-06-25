@@ -2,6 +2,7 @@ package com.ecommerce.warehouse.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.ecommerce.common.constant.WarehouseStockMode;
 import com.ecommerce.common.dto.WarehouseStockChangedMessage;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
@@ -261,7 +262,7 @@ public class StockServiceImpl implements StockService {
         if (warehouse.getStatus() != null && warehouse.getStatus() != 1) {
             throw new BusinessException(WarehouseErrorCode.WAREHOUSE_DISABLED);
         }
-        if (!"MANAGED".equals(warehouse.getStockMode())) {
+        if (!java.util.Objects.equals(warehouse.getStockMode(), WarehouseStockMode.MANAGED)) {
             throw new BusinessException(WarehouseErrorCode.NOT_MANAGED_WAREHOUSE);
         }
     }
