@@ -3,6 +3,7 @@ package com.ecommerce.order.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.Result;
+import com.ecommerce.order.client.LogisticsClient;
 import com.ecommerce.order.client.ProductSpuClient;
 import com.ecommerce.order.entity.Order;
 import com.ecommerce.order.entity.OrderItem;
@@ -34,6 +35,7 @@ class OrderServiceImplMerchantTest {
     @Mock private RocketMQTemplate rocketMQTemplate;
     @Mock private OrderItemMapper itemMapper;
     @Mock private ProductSpuClient productSpuClient;
+    @Mock private LogisticsClient logisticsClient;
     @InjectMocks private OrderServiceImpl service;
 
     @BeforeEach

@@ -1,6 +1,7 @@
 package com.ecommerce.order.consumer;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.ecommerce.common.constant.OrderStatus;
 import com.ecommerce.common.dto.OrderPaidMessage;
 import com.ecommerce.order.entity.Order;
 import com.ecommerce.order.mapper.OrderMapper;
@@ -44,7 +45,7 @@ public class OrderPaidConsumer implements RocketMQListener<OrderPaidMessage> {
                     message.getOrderNo(), order.getStatus(), message.getStatus());
             return;
         }
-        if (message.getStatus() == 4) {
+        if (message.getStatus() == OrderStatus.CANCELLED) {
             orderService.applyInventoryCompensation(message);
             return;
         }
@@ -57,14 +58,11 @@ public class OrderPaidConsumer implements RocketMQListener<OrderPaidMessage> {
         if (currentStatus == null || incomingStatus == null) {
             return false;
         }
-        if (incomingStatus == 1) {
-            return currentStatus == 0;
+        if (incomingStatus == OrderStatus.PAID) {
+            return currentStatus == OrderStatus.PENDING;
         }
-        if (incomingStatus == 5) {
-            return currentStatus == 1;
-        }
-        if (incomingStatus == 4) {
-            return currentStatus == 0;
+        if (incomingStatus == OrderStatus.CANCELLED) {
+            return currentStatus == OrderStatus.PENDING;
         }
         return false;
     }

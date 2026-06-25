@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 
 class MerchantTenantSupportTest {
 
@@ -31,6 +32,58 @@ class MerchantTenantSupportTest {
     @Test
     void shouldRejectMissingMerchantIdForMerchantUser() {
         assertThatThrownBy(() -> MerchantTenantSupport.requireMerchantId(null, TestErrorCode.DENIED))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage(TestErrorCode.DENIED.getMessage());
+    }
+
+    @Test
+    void shouldResolveScopedMerchantIdFromHeaderForMerchantUser() {
+        Long merchantId = MerchantTenantSupport.resolveScopedMerchantId(
+                "merchant", 2001L, 3001L, TestErrorCode.DENIED);
+
+        org.assertj.core.api.Assertions.assertThat(merchantId).isEqualTo(2001L);
+    }
+
+    @Test
+    void shouldResolveScopedMerchantIdFromRequestForPlatformAdmin() {
+        Long merchantId = MerchantTenantSupport.resolveScopedMerchantId(
+                "super_admin", null, 3001L, TestErrorCode.DENIED);
+
+        org.assertj.core.api.Assertions.assertThat(merchantId).isEqualTo(3001L);
+    }
+
+    @Test
+    void shouldRejectMissingHeaderWhenResolvingMerchantRequestScope() {
+        assertThatThrownBy(() -> MerchantTenantSupport.resolveRequestMerchantId(
+                "merchant", null, TestErrorCode.DENIED))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage(TestErrorCode.DENIED.getMessage());
+    }
+
+    @Test
+    void shouldReturnHeaderWhenResolvingPlatformRequestScope() {
+        Long merchantId = MerchantTenantSupport.resolveRequestMerchantId(
+                "super_admin", 4001L, TestErrorCode.DENIED);
+
+        org.assertj.core.api.Assertions.assertThat(merchantId).isEqualTo(4001L);
+    }
+
+    @Test
+    void shouldAllowOwnerAccessWhenCurrentMerchantScopeMissing() {
+        assertThatNoException().isThrownBy(() ->
+                MerchantTenantSupport.requireOwnerAccess(null, 3001L, TestErrorCode.DENIED));
+    }
+
+    @Test
+    void shouldAllowOwnerAccessWhenMerchantMatches() {
+        assertThatNoException().isThrownBy(() ->
+                MerchantTenantSupport.requireOwnerAccess(2001L, 2001L, TestErrorCode.DENIED));
+    }
+
+    @Test
+    void shouldRejectOwnerAccessWhenMerchantDiffers() {
+        assertThatThrownBy(() ->
+                MerchantTenantSupport.requireOwnerAccess(2001L, 3001L, TestErrorCode.DENIED))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage(TestErrorCode.DENIED.getMessage());
     }

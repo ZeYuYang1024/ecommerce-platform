@@ -24,7 +24,6 @@ public interface OrderService {
     Page<OrderVO> listByMerchant(Long merchantId, int page, int size, Integer status);
     List<String> listOrderNosByMerchant(Long merchantId);
     List<Order> listForRecon(LocalDateTime start, LocalDateTime end);
-    void markShipped(Long id, String userType, Long merchantId);
     void updateStatus(Long id, Integer status, String userType, Long merchantId);
     void applyInventoryCompensation(OrderPaidMessage message);
     Page<OutboxMessageVO> listOutbox(OutboxQuery query, int page, int size);

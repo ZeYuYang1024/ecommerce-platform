@@ -28,6 +28,9 @@
       <button class="btn-primary" @click="pay">去支付</button>
       <button class="btn-cancel" @click="cancel">取消订单</button>
     </view>
+    <view v-if="order.status >= 2" class="actions">
+      <button class="btn-primary" @click="viewLogistics">查看物流</button>
+    </view>
   </view>
 </template>
 
@@ -49,6 +52,15 @@ async function pay() { uni.navigateTo({ url: `/pages/payment/index?orderNo=${ord
 async function cancel() {
   const res = await request({ url: `/api/v1/orders/${order.value.id}/cancel`, method: 'PUT' })
   if (res.code === 200) { order.value.status = 4; order.value.statusText = '已取消' }
+}
+
+async function viewLogistics() {
+  const res = await request({ url: `/api/v1/internal/logistics/shipping/by-order/${order.value.id}` })
+  if (res.code === 200 && res.data) {
+    uni.navigateTo({ url: `/pages/logistics/detail?shippingId=${res.data.id}` })
+  } else {
+    uni.showToast({ title: '暂无物流信息', icon: 'none' })
+  }
 }
 </script>
 

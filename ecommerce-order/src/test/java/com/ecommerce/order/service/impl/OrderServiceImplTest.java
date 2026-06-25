@@ -11,8 +11,10 @@ import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.order.client.CartClient;
+import com.ecommerce.order.client.LogisticsClient;
 import com.ecommerce.order.client.MemberClient;
 import com.ecommerce.order.client.ProductSpuClient;
+import com.ecommerce.order.client.dto.FulfillmentSummaryVO;
 import com.ecommerce.order.common.OrderErrorCode;
 import com.ecommerce.order.dto.request.CreateOrderRequest;
 import com.ecommerce.order.dto.response.OrderSummaryVO;
@@ -69,6 +71,9 @@ class OrderServiceImplTest {
 
     @Mock
     private MemberClient memberClient;
+
+    @Mock
+    private LogisticsClient logisticsClient;
 
     @Mock
     private RocketMQTemplate rocketMQTemplate;
@@ -227,11 +232,15 @@ class OrderServiceImplTest {
         void shouldGetOrderWithItems() {
             when(orderMapper.selectById(1L)).thenReturn(order);
             when(itemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+            when(logisticsClient.getFulfillmentSummary(List.of(1L)))
+                    .thenReturn(Result.ok(List.of(buildFulfillmentSummary(1L, "WAITING_SHIP", "待发货"))));
 
             OrderVO vo = service.getOrder(1L, 1L);
 
             assertThat(vo.getOrderNo()).isEqualTo("202605091200000001");
             assertThat(vo.getStatusText()).isNotBlank();
+            assertThat(vo.getFulfillmentStatus()).isEqualTo("WAITING_SHIP");
+            assertThat(vo.getFulfillmentStatusText()).isEqualTo("待发货");
         }
 
         @Test
@@ -258,11 +267,14 @@ class OrderServiceImplTest {
             Page<Order> mockPage = new Page<>(1, 10, 1);
             mockPage.setRecords(Collections.singletonList(order));
             when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(mockPage);
+            when(logisticsClient.getFulfillmentSummary(List.of(1L)))
+                    .thenReturn(Result.ok(List.of(buildFulfillmentSummary(1L, "DISPATCHED", "已发货"))));
 
             Page<OrderVO> result = service.listByUser(1L, 1, 10);
 
             assertThat(result.getRecords()).hasSize(1);
             assertThat(result.getTotal()).isEqualTo(1);
+            assertThat(result.getRecords().getFirst().getFulfillmentStatus()).isEqualTo("DISPATCHED");
         }
 
         @Test
@@ -370,47 +382,6 @@ class OrderServiceImplTest {
     }
 
     @Nested
-    class ShipTests {
-        @Test
-        void shouldMarkShippedWhenPaid() {
-            order.setStatus(1);
-            when(orderMapper.selectById(1L)).thenReturn(order);
-            when(orderMapper.updateById(any(Order.class))).thenReturn(1);
-
-            service.markShipped(1L, "super_admin", null);
-
-            verify(orderMapper).updateById(any(Order.class));
-        }
-
-        @Test
-        void shouldRejectShipWhenNotPaid() {
-            order.setStatus(0);
-            when(orderMapper.selectById(1L)).thenReturn(order);
-
-            assertThatThrownBy(() -> service.markShipped(1L, "super_admin", null))
-                    .isInstanceOf(BusinessException.class)
-                    .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
-                    .isEqualTo(OrderErrorCode.ORDER_NOT_PAID.getCode());
-        }
-
-        @Test
-        void shouldRejectMerchantShipForOrderOutsideMerchantScope() {
-            order.setStatus(1);
-            when(orderMapper.selectById(1L)).thenReturn(order);
-            when(productSpuClient.getSpuIdsByMerchant(100L)).thenReturn(Result.ok(List.of(10L)));
-            OrderItem foreignItem = new OrderItem();
-            foreignItem.setOrderId(1L);
-            foreignItem.setSpuId(99L);
-            when(itemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(foreignItem));
-
-            assertThatThrownBy(() -> service.markShipped(1L, "merchant", 100L))
-                    .isInstanceOf(BusinessException.class);
-
-            verify(orderMapper, never()).updateById(any(Order.class));
-        }
-    }
-
-    @Nested
     class AdminAndBoundaryTests {
         @Test
         void shouldListAllAdminOrdersWithPagination() {
@@ -466,23 +437,49 @@ class OrderServiceImplTest {
         }
 
         @Test
-        void shouldShowRefundedStatusText() {
+        void shouldShowUnknownStatusTextForLegacyRefundedValue() {
             order.setStatus(5);
             when(orderMapper.selectById(1L)).thenReturn(order);
             when(itemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
 
-            assertThat(service.getOrder(1L, 1L).getStatusText()).isNotBlank();
+            assertThat(service.getOrder(1L, 1L).getStatusText()).isEqualTo("UNKNOWN");
         }
 
         @Test
-        void shouldUpdateStatusToValidTransition() {
+        void shouldRejectLegacyRefundedStatusTransition() {
+            order.setStatus(1);
+            when(orderMapper.selectById(1L)).thenReturn(order);
+
+            assertThatThrownBy(() -> service.updateStatus(1L, 5, "super_admin", null))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(OrderErrorCode.ORDER_FORBIDDEN);
+        }
+
+        @Test
+        void shouldRejectManualUpdateFromPaidToShipped() {
+            order.setStatus(1);
+            when(orderMapper.selectById(1L)).thenReturn(order);
+
+            assertThatThrownBy(() -> service.updateStatus(1L, 2, "super_admin", null))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(OrderErrorCode.ORDER_FORBIDDEN);
+
+            verify(orderMapper, never()).updateById(any(Order.class));
+        }
+
+        @Test
+        void shouldRejectManualUpdateFromShippedToCompleted() {
             order.setStatus(2);
             when(orderMapper.selectById(1L)).thenReturn(order);
-            when(orderMapper.updateById(any(Order.class))).thenReturn(1);
 
-            service.updateStatus(1L, 3, "super_admin", null);
+            assertThatThrownBy(() -> service.updateStatus(1L, 3, "super_admin", null))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(OrderErrorCode.ORDER_FORBIDDEN);
 
-            assertThat(order.getStatus()).isEqualTo(3);
+            verify(orderMapper, never()).updateById(any(Order.class));
         }
 
         @Test
@@ -612,5 +609,13 @@ class OrderServiceImplTest {
         sku.setImage(image);
         sku.setPrice(new BigDecimal(price));
         return sku;
+    }
+
+    private FulfillmentSummaryVO buildFulfillmentSummary(Long orderId, String status, String statusText) {
+        FulfillmentSummaryVO summary = new FulfillmentSummaryVO();
+        summary.setOrderId(orderId);
+        summary.setFulfillmentStatus(status);
+        summary.setFulfillmentStatusText(statusText);
+        return summary;
     }
 }

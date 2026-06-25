@@ -42,15 +42,20 @@
         <text>优惠券</text>
         <text class="discount">-¥{{ discount }}</text>
       </view>
+      <view class="row-between">
+        <text>运费</text>
+        <text v-if="shippingFee > 0" class="shipping-fee">¥{{ shippingFee.toFixed(2) }}</text>
+        <text v-else class="free-shipping">包邮</text>
+      </view>
       <view class="row-between total-row">
         <text>应付</text>
-        <text class="final-price">¥{{ (totalAmount - discount).toFixed(2) }}</text>
+        <text class="final-price">¥{{ (totalAmount - discount + shippingFee).toFixed(2) }}</text>
       </view>
     </view>
 
     <!-- Submit -->
     <view class="submit-bar">
-      <text class="final">合计 ¥{{ (totalAmount - discount).toFixed(2) }}</text>
+      <text class="final">合计 ¥{{ (totalAmount - discount + shippingFee).toFixed(2) }}</text>
       <button class="btn-primary" @click="submitOrder">提交订单</button>
     </view>
   </view>
@@ -69,6 +74,7 @@ const availableCoupons = ref([])
 const selectedCoupon = ref(null)
 const discount = ref(0)
 const showCoupons = ref(false)
+const shippingFee = ref(0)
 
 onMounted(async () => {
   await cartStore.fetchCart()
@@ -77,6 +83,17 @@ onMounted(async () => {
 
   const res = await request({ url: '/api/v1/coupons?status=0' })
   if (res.code === 200) availableCoupons.value = res.data || []
+
+  // Calculate shipping fee
+  try {
+    const totalQty = items.value.reduce((sum, i) => sum + (i.quantity || 0), 0)
+    const feeRes = await request({
+      url: '/api/v1/internal/logistics/shipping-fee',
+      method: 'POST',
+      data: { templateId: 1, quantity: totalQty, weight: 0, volume: 0, provinceCode: '' }
+    })
+    if (feeRes.code === 200) shippingFee.value = feeRes.data?.shippingFee || 0
+  } catch (e) { /* keep default 0 */ }
 })
 
 function discountText(c) { return c.type === 'FLAT' ? `立减¥${c.discountAmount}` : `¥${c.discountAmount}` }
@@ -115,6 +132,8 @@ async function submitOrder() {
 .total-row { border-top: 1px solid #E5E7EB; margin-top: 8rpx; padding-top: 16rpx; font-size: 30rpx; font-weight: bold; }
 .final-price { color: #EF4444; font-size: 36rpx; }
 .discount { color: #EF4444; }
+.shipping-fee { color: #333; }
+.free-shipping { color: #10B981; font-weight: 600; }
 .coupon-list { margin-top: 12rpx; }
 .coupon-item { padding: 16rpx; background: #FEF3C7; border-radius: 12rpx; margin-top: 8rpx; font-size: 26rpx; }
 .submit-bar { position: fixed; bottom: 0; left: 0; right: 0; display: flex; align-items: center; padding: 16rpx 24rpx; padding-bottom: calc(16rpx + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid #E5E7EB; gap: 16rpx; }

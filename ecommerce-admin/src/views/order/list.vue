@@ -53,7 +53,7 @@
         </el-table-column>
         <el-table-column label="操作" width="140" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="row.status === 1" size="small" type="primary" @click="doShip(row)">发货</el-button>
+            <el-button v-if="row.status === 1" size="small" type="warning" @click="openShipDialog(row)">发货</el-button>
             <span v-else style="font-size:12px;color:var(--text-muted)">--</span>
           </template>
         </el-table-column>
@@ -72,11 +72,33 @@
           />
         </div>
     </el-card>
+
+    <!-- 发货弹窗 -->
+    <el-dialog v-model="shipDialogVisible" title="订单发货" width="500px">
+      <el-form :model="shipForm" label-width="100px">
+        <el-form-item label="订单号"><span>{{ shipForm.orderNo }}</span></el-form-item>
+        <el-form-item label="物流公司" required>
+          <el-select v-model="shipForm.providerId" placeholder="选择物流公司">
+            <el-option v-for="p in providers" :key="p.id" :label="p.providerName" :value="p.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="运单号" required>
+          <el-input v-model="shipForm.trackingNo" placeholder="输入运单号" />
+        </el-form-item>
+        <el-form-item label="包裹重量(克)">
+          <el-input-number v-model="shipForm.packageWeight" :min="0" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="shipDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="shipSubmitting" @click="submitShip">确认发货</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 
@@ -86,6 +108,20 @@ const statusFilter = ref(null)
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
+
+// 发货弹窗状态
+const shipDialogVisible = ref(false)
+const shipSubmitting = ref(false)
+const providers = ref([])
+const shipForm = reactive({
+  orderId: null,
+  orderNo: '',
+  providerId: null,
+  trackingNo: '',
+  packageWeight: 0,
+  clientRequestId: '',
+  items: []
+})
 
 function handleSizeChange() {
   page.value = 1
@@ -110,12 +146,49 @@ async function fetchData() {
   } finally { loading.value = false }
 }
 
-async function doShip(row) {
+const openShipDialog = async (row) => {
+  // 加载物流公司列表
+  if (providers.value.length === 0) {
+    const { data } = await axios.get('/api/v1/admin/logistics/providers/all')
+    if (data.code === 200) providers.value = data.data || []
+  }
+  shipForm.orderId = row.id
+  shipForm.orderNo = row.orderNo
+  shipForm.providerId = null
+  shipForm.trackingNo = ''
+  shipForm.packageWeight = 0
+  shipForm.clientRequestId = 'ship-' + row.id + '-' + Date.now()
+  shipForm.items = (row.items || []).map(item => ({
+    orderItemId: item.id, skuId: item.skuId, quantity: item.quantity
+  }))
+  shipDialogVisible.value = true
+}
+
+const submitShip = async () => {
+  if (!shipForm.providerId || !shipForm.trackingNo) {
+    ElMessage.warning('请选择物流公司并填写运单号')
+    return
+  }
+  shipSubmitting.value = true
   try {
-    await axios.put(`/api/v1/admin/orders/${row.id}/ship`)
-    ElMessage.success('发货成功')
-    fetchData()
-  } catch { ElMessage.error('发货失败') }
+    const { data } = await axios.post('/api/v1/admin/logistics/shipping', {
+      clientRequestId: shipForm.clientRequestId,
+      orderId: shipForm.orderId,
+      providerId: shipForm.providerId,
+      trackingNo: shipForm.trackingNo,
+      packageWeight: shipForm.packageWeight,
+      items: shipForm.items
+    })
+    if (data.code === 200) {
+      ElMessage.success('发货成功')
+      shipDialogVisible.value = false
+      fetchData()
+    } else {
+      ElMessage.error(data.message || '发货失败')
+    }
+  } catch (e) {
+    ElMessage.error('发货失败')
+  } finally { shipSubmitting.value = false }
 }
 
 onMounted(fetchData)

@@ -60,7 +60,16 @@ const routes = [
       { path: 'permissions', name: 'Permissions', component: () => import('@/views/permission/index.vue'), meta: { title: '权限管理' } },
       { path: 'member/levels', name: 'MemberLevels', component: () => import('@/views/member/levels.vue'), meta: { title: '会员等级' } },
       { path: 'member/profiles', name: 'MemberProfiles', component: () => import('@/views/member/profiles.vue'), meta: { title: '会员列表' } },
-      { path: 'member/points', name: 'MemberPoints', component: () => import('@/views/member/points.vue'), meta: { title: '积分流水' } }
+      { path: 'member/points', name: 'MemberPoints', component: () => import('@/views/member/points.vue'), meta: { title: '积分流水' } },
+      { path: 'logistics/providers', name: 'LogisticsProviders', component: () => import('@/views/logistics/providers.vue'), meta: { title: '物流公司', icon: 'Van' } },
+      { path: 'logistics/template', name: 'LogisticsTemplate', component: () => import('@/views/logistics/template.vue'), meta: { title: '运费模板', icon: 'Money' } },
+      { path: 'logistics/shipping', name: 'LogisticsShipping', component: () => import('@/views/logistics/shipping.vue'), meta: { title: '发货单管理', icon: 'List' } },
+      { path: 'logistics/batch', name: 'LogisticsBatch', component: () => import('@/views/logistics/batch.vue'), meta: { title: '批量发货', icon: 'List' } },
+      { path: 'warehouse/list', name: 'WarehouseList', component: () => import('@/views/warehouse/list.vue'), meta: { title: '仓库管理', icon: 'OfficeBuilding' } },
+      { path: 'warehouse/inbound', name: 'WarehouseInbound', component: () => import('@/views/warehouse/inbound.vue'), meta: { title: '入库单', icon: 'Download' } },
+      { path: 'warehouse/outbound', name: 'WarehouseOutbound', component: () => import('@/views/warehouse/outbound.vue'), meta: { title: '出库单', icon: 'Upload' } },
+      { path: 'warehouse/stock', name: 'WarehouseStock', component: () => import('@/views/warehouse/stock.vue'), meta: { title: '库存查询', icon: 'Box' } },
+      { path: 'warehouse/check', name: 'WarehouseCheck', component: () => import('@/views/warehouse/check.vue'), meta: { title: '盘点管理', icon: 'Check' } }
     ]
   }
 ]

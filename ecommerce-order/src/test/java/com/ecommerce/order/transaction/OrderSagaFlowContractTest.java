@@ -16,6 +16,7 @@ import com.ecommerce.inventory.service.StockService;
 import com.ecommerce.inventory.service.impl.InventoryMessageServiceImpl;
 import com.ecommerce.inventory.transaction.InventoryTransactionExecutor;
 import com.ecommerce.order.client.CartClient;
+import com.ecommerce.order.client.LogisticsClient;
 import com.ecommerce.order.client.MemberClient;
 import com.ecommerce.order.client.ProductSpuClient;
 import com.ecommerce.order.consumer.OrderPaidConsumer;
@@ -160,6 +161,7 @@ class OrderSagaFlowContractTest {
                 mock(ProductSpuClient.class),
                 mock(CartClient.class),
                 mock(MemberClient.class),
+                mock(LogisticsClient.class),
                 mock(OutboxService.class));
 
         orderService.applyInventoryCompensation(compensationMessage);
@@ -181,7 +183,8 @@ class OrderSagaFlowContractTest {
                 .thenReturn(Result.ok(List.of(sku(11L, 101L, "Phone", "phone.png", "10.00"))));
 
         OrderServiceImpl orderService = new OrderServiceImpl(
-                orderMapper, itemMapper, productSpuClient, cartClient, mock(MemberClient.class), orderOutboxService);
+                orderMapper, itemMapper, productSpuClient, cartClient, mock(MemberClient.class),
+                mock(LogisticsClient.class), orderOutboxService);
         orderService.createOrder(1L, orderRequest());
 
         ArgumentCaptor<OrderInventoryMessage> inventoryCaptor = ArgumentCaptor.forClass(OrderInventoryMessage.class);

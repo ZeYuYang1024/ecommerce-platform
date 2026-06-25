@@ -28,6 +28,8 @@
         <module>ecommerce-knowledge</module>
         <module>ecommerce-monitor</module>
         <module>ecommerce-member</module>
+        <module>ecommerce-logistics</module>
+        <module>ecommerce-warehouse</module>
     </modules>
 
     <properties>
