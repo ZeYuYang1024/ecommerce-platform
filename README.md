@@ -32,10 +32,10 @@
 | 技术 | 版本 | 说明 |
 |---|---|---|
 | Java | 21 | 运行时 |
-| Spring Boot | 4.0.0 | 主工程基础框架 |
-| Spring Cloud | 2025.1.1 | 微服务治理 |
+| Spring Boot | 4.2.0 | 主工程基础框架 |
+| Spring Cloud | 2026.0.0 | 微服务治理 |
 | Spring Cloud Alibaba Nacos | 2025.1.0.0 / 2.4.0 | 注册中心与配置中心 |
-| MyBatis-Plus | 3.5.16 | ORM |
+| MyBatis-Plus | 3.5.18.1 | ORM |
 | MySQL | 8.0.33 / 8.0 | 关系型数据库 |
 | Redis | 7.2 | 缓存 |
 | RocketMQ | 5.2.0 / 2.3.0 | 消息队列 |
@@ -51,8 +51,8 @@
 
 | 技术 | 版本 | 说明 |
 |---|---|---|
-| Spring Boot | 4.0.0 | 知识库服务基础框架 |
-| Spring Cloud | 2025.1.1 | 微服务能力 |
+| Spring Boot | 4.2.0 | 知识库服务基础框架 |
+| Spring Cloud | 2026.0.0 | 微服务能力 |
 | LangChain4j | 1.14.1 | RAG 与 Agent 编排 |
 | Milvus | 2.4.0 | 向量数据库 |
 | Ollama | latest | 本地 Embedding 服务 |
@@ -121,7 +121,7 @@ graph TB
         GW["Spring Cloud Gateway :8080<br/>AuthFilter (JWT 鉴权 / RBAC)"]
     end
 
-    subgraph Services["微服务层 (Spring Boot 4.0 + Spring Cloud)"]
+    subgraph Services["微服务层 (Spring Boot 4.2 + Spring Cloud)"]
         direction TB
         subgraph Core["核心业务"]
             AUTH["认证服务<br/>:8091<br/>登录/注册/RBAC"]
