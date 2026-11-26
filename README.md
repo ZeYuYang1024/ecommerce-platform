@@ -1,5 +1,7 @@
 # E-Commerce Platform
 
+[English](README.en.md) · [快速开始](#快速开始) · [服务端口](#服务端口) · [系统架构图](#系统架构图)
+
 基于 `Spring Boot 4 + Spring Cloud` 的微服务电商平台，包含：
 
 - PC Web 商城（Nuxt 3）
@@ -8,6 +10,427 @@
 - AI 知识库 / 智能客服模块（`ecommerce-knowledge`）
 
 当前仓库不仅包含传统电商链路，也已经接入了 `Ollama + Milvus + DeepSeek + LangChain4j`，支持平台知识库、商家私有知识库，以及面向 C 端用户的智能客服问答。
+
+## 快速开始
+
+本文以**本机开发环境**为例。Docker 运行中间件，Java 服务和两个 Web 前端在宿主机运行。首次启动按下面的顺序执行，后续启动可以直接复用镜像、数据卷和 JAR。示例服务绑定本机地址，内含演示账号与宽松的开发配置。
+
+### 1. 安装工具并克隆仓库
+
+| 工具 | 建议 |
+|---|---|
+| Git | 用来克隆仓库 |
+| Docker + Compose v2 | macOS、Windows 安装并启动 Docker Desktop；Linux 启动 Docker Engine，并安装 Compose 插件。见 [Docker 安装指南](https://docs.docker.com/compose/install/) |
+| JDK 21 | 安装 [Temurin JDK 21](https://adoptium.net/temurin/releases/?version=21) 或等效 JDK；让 `JAVA_HOME` 和 `PATH` 指向该版本 |
+| Maven | 使用 [Maven 3.9+](https://maven.apache.org/install.html)，本地启动流程用 Maven 3.9.12 验证过 |
+| Node.js 和 npm | 建议 [Node.js 24 LTS](https://nodejs.org/en/download)；使用 22 时至少为 22.12，见 [Vite 8 要求](https://vite.dev/blog/announcing-vite8#node-js-support) |
+| 命令行 | Linux/macOS 用 Bash，Windows 示例用 PowerShell 7.2+；Python 3 仅用于下文的可选 Python 命令 |
+
+完整环境建议至少预留 **16 GB 内存和 20 GB 磁盘空间**。首次构建会下载容器镜像、Maven/npm 依赖和可选的模型。当前中间件组合在 Linux/amd64 验证过；ARM 主机遇到 `no matching manifest` 时，先检查对应镜像的架构支持。
+
+克隆后先检查工具版本。`docker version` 应显示客户端和服务端信息，`mvn -v` 应显示 Java 21。
+
+```bash
+git clone https://github.com/ZeYuYang1024/ecommerce-platform.git
+cd ecommerce-platform
+
+docker version
+docker compose version
+java -version
+mvn -v
+node -v
+npm -v
+```
+
+以下命令默认从仓库根目录执行，除非步骤指定了子目录。PowerShell 中若 `curl` 被解析成别名，请用 `curl.exe`；命令里的 `/dev/null` 换成 `NUL`。
+
+### 2. 拉取镜像、构建 MinIO 和 RocketMQ、启动 Docker 中间件
+
+先拉取五个已有镜像，再构建仓库内的两个镜像。RocketMQ 的 NameServer 和 Broker 共用一个镜像，构建一次即可。
+
+```bash
+docker compose pull mysql redis nacos elasticsearch milvus
+docker compose build minio
+docker compose build rocketmq-namesrv
+docker compose up -d --no-build --pull never
+docker compose ps
+```
+
+| Compose 服务名 | 容器名 | 版本 | 本机端口与用途 |
+|---|---|---|---|
+| `mysql` | `ecommerce-mysql` | 26.10.0.1 | 3306，业务数据库，`root / root` |
+| `redis` | `ecommerce-redis` | 8.12.0 | 6379，购物车和秒杀缓存，密码 `root` |
+| `nacos` | `ecommerce-nacos` | 3.3.0 | 8848 注册发现，9848 gRPC，8849 控制台 |
+| `rocketmq-namesrv` | `ecommerce-rmq-namesrv` | 5.5.1 | 9876，RocketMQ NameServer |
+| `rocketmq-broker` | `ecommerce-rmq-broker` | 5.5.1 | 10911、10909，消息 Broker |
+| `minio` | `ecommerce-minio` | RELEASE.2025-10-15T17-29-55Z | 9000 S3 API，9001 控制台，`minio / minioadmin` |
+| `elasticsearch` | `ecommerce-es` | 9.5.7 | 9200，商品搜索 |
+| `milvus` | `ecommerce-milvus` | 3.0.6 | 19530 向量接口，9091 健康检查；自带嵌入式 etcd |
+
+`docker compose ps` 应显示 **8 个容器**在运行。容器显示 `Up` 后，还需要等待服务完成初始化。按下面的命令检查，MySQL 应返回 `1`、Redis 返回 `PONG`、RocketMQ 列出 `DefaultCluster`，Nacos 返回 `"data":"ok"`，其余 HTTP 检查应成功。
+
+```bash
+docker compose exec -T mysql mysql -h127.0.0.1 -uroot -proot -Nse "SELECT 1"
+docker compose exec -T redis redis-cli -a root ping
+docker compose exec -T rocketmq-broker sh mqadmin clusterList -n rocketmq-namesrv:9876
+curl --noproxy "*" -fsS http://127.0.0.1:8848/nacos/v3/admin/core/state/readiness
+curl --noproxy "*" -fsS http://127.0.0.1:9200/_cluster/health
+curl --noproxy "*" -fsS -o /dev/null http://127.0.0.1:9000/minio/health/live
+curl --noproxy "*" -fsS http://127.0.0.1:9091/healthz
+```
+
+首次打开 [Nacos 控制台](http://127.0.0.1:8849/) 时，为 `nacos` 用户设置密码。应用注册使用 `8848/9848`，本地 Compose 已为应用客户端关闭认证；设置控制台密码无需修改 Java 配置。如果某项检查失败，先查看 `docker compose ps -a`，再用 `docker compose logs --tail=100 <服务名>` 看该服务的日志。
+
+#### MinIO 怎么打包和使用
+
+[docker/minio/Dockerfile](docker/minio/Dockerfile) 下载固定标签的 [MinIO 社区版源码](https://github.com/minio/minio/releases/tag/RELEASE.2025-10-15T17-29-55Z)，校验 SHA-256，在 Go 容器内编译，再把可执行文件复制到 Debian slim 运行镜像。本机只需要 Docker。RocketMQ 则由 [docker/rocketmq/Dockerfile](docker/rocketmq/Dockerfile) 下载并校验 Apache 的 5.5.1 二进制发行包。
+
+想单独构建或查看 MinIO 时执行：
+
+```bash
+docker compose build minio
+docker compose up -d --no-build --pull never minio
+docker compose exec -T minio minio --version
+docker compose logs --tail=60 minio
+```
+
+S3 API 地址为 `http://127.0.0.1:9000`，浏览器管理界面在 [9001](http://127.0.0.1:9001/)。用 `minio / minioadmin` 登录。Java 文件服务配置在 [ecommerce-file/application.yml](ecommerce-file/src/main/resources/application.yml)，首次成功上传图片时会创建 `ecommerce` 桶，也可以提前在控制台创建同名桶。试用时可在后台商品编辑页上传一张不大于 10 MB 的图片，再到 MinIO 查看该对象。
+
+需要把镜像传给另一台机器时，第一行在构建机执行，后两行在**相同 CPU 架构**的目标机仓库根目录执行：
+
+```bash
+docker save -o ecommerce-minio.tar ecommerce-local/minio:RELEASE.2025-10-15T17-29-55Z
+docker load -i ecommerce-minio.tar
+docker compose up -d --no-build --pull never minio
+```
+
+镜像 tar 只包含软件。上传的文件在 `minio-2025-data` 命名卷里，需要单独备份。
+
+### 3. 首次初始化 MySQL 和 RocketMQ
+
+下面的完整流程只针对**新建的空数据卷**。已有数据先备份并参考[中间件升级指南](docs/middleware-upgrade.md)。仓库里的 `scripts/start-middleware.sh` 和 `scripts/start-middleware.ps1` 只做基础初始化，首次部署请使用这一节的完整步骤。出现 SQL 错误时先看第一条报错；物流和仓储建表脚本不能在同一个库里整段反复执行。
+
+**Linux/macOS（Bash）**
+
+```bash
+(
+  set -e
+  db() { docker compose exec -T mysql mysql -uroot -proot --default-character-set=utf8mb4 "$@"; }
+  migrations=docs/sql/migrations
+
+  db < docs/init.sql
+  db < ecommerce-knowledge/sql/init.sql
+  db < "$migrations/2026-05-17-merchant-marketing-tenant-columns.sql"
+  db ecommerce_inventory < "$migrations/2026-05-28-inventory-event-log.sql"
+  db < "$migrations/2026-06-01-member-init.sql"
+  db < "$migrations/2026-06-02-member-phase2a-init.sql"
+  db < "$migrations/2026-06-02-order-points-reservation.sql"
+
+  db -e "CREATE DATABASE IF NOT EXISTS ecommerce_logistics CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE DATABASE IF NOT EXISTS ecommerce_warehouse CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+  db ecommerce_logistics < "$migrations/2026-06-20-logistics-init.sql"
+  db ecommerce_logistics < "$migrations/2026-06-20-shipping-template.sql"
+  db ecommerce_logistics < docs/sql/seeds/2026-06-20-logistics-provider-seed.sql
+  db ecommerce_warehouse < "$migrations/2026-06-20-warehouse-init.sql"
+
+  for schema in ecommerce_inventory ecommerce_order ecommerce_payment ecommerce_logistics ecommerce_warehouse; do
+    db "$schema" < "$migrations/2026-05-28-transactional-outbox.sql"
+  done
+  db -Nse "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'ecommerce%';"
+)
+```
+
+**Windows（PowerShell 7.2+）**
+
+```powershell
+function Import-ProjectSql([string]$Path, [string]$Schema) {
+  $dbArgs = @('compose', 'exec', '-T', 'mysql', 'mysql', '-uroot', '-proot', '--default-character-set=utf8mb4')
+  if ($Schema) { $dbArgs += $Schema }
+  Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | docker @dbArgs
+  if ($LASTEXITCODE -ne 0) { throw "SQL import failed: $Path" }
+}
+
+$migrations = 'docs/sql/migrations'
+Import-ProjectSql 'docs/init.sql'
+Import-ProjectSql 'ecommerce-knowledge/sql/init.sql'
+Import-ProjectSql "$migrations/2026-05-17-merchant-marketing-tenant-columns.sql"
+Import-ProjectSql "$migrations/2026-05-28-inventory-event-log.sql" ecommerce_inventory
+Import-ProjectSql "$migrations/2026-06-01-member-init.sql"
+Import-ProjectSql "$migrations/2026-06-02-member-phase2a-init.sql"
+Import-ProjectSql "$migrations/2026-06-02-order-points-reservation.sql"
+
+docker compose exec -T mysql mysql -uroot -proot -e "CREATE DATABASE IF NOT EXISTS ecommerce_logistics CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE DATABASE IF NOT EXISTS ecommerce_warehouse CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+if ($LASTEXITCODE -ne 0) { throw 'Could not create databases' }
+Import-ProjectSql "$migrations/2026-06-20-logistics-init.sql" ecommerce_logistics
+Import-ProjectSql "$migrations/2026-06-20-shipping-template.sql" ecommerce_logistics
+Import-ProjectSql 'docs/sql/seeds/2026-06-20-logistics-provider-seed.sql' ecommerce_logistics
+Import-ProjectSql "$migrations/2026-06-20-warehouse-init.sql" ecommerce_warehouse
+
+foreach ($schema in 'ecommerce_inventory', 'ecommerce_order', 'ecommerce_payment', 'ecommerce_logistics', 'ecommerce_warehouse') {
+  Import-ProjectSql "$migrations/2026-05-28-transactional-outbox.sql" $schema
+}
+docker compose exec -T mysql mysql -uroot -proot -Nse "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'ecommerce%';"
+```
+
+最后应列出 **15 个 `ecommerce_*` 数据库**。基础 SQL 已包含支付表的订单号唯一索引，空库无需再执行 `2026-05-29-payment-order-unique.sql`。会员等级由会员服务启动时初始化。知识库 SQL 会先建库和分类，是否启动知识库服务可以稍后决定。
+
+确认 `clusterList` 已有 Broker，再创建项目使用的 13 个 RocketMQ Topic。每个 Topic 配置 4 个读队列和 4 个写队列。
+
+**Linux/macOS（Bash）**
+
+```bash
+(
+  set -e
+  for topic in order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed; do
+    docker compose exec -T rocketmq-broker sh mqadmin updateTopic -n rocketmq-namesrv:9876 -c DefaultCluster -t "$topic" -r 4 -w 4
+  done
+  docker compose exec -T rocketmq-broker sh mqadmin topicList -n rocketmq-namesrv:9876
+)
+```
+
+**Windows（PowerShell）**
+
+```powershell
+$topics = 'order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed'.Split(' ')
+foreach ($topic in $topics) {
+  docker compose exec -T rocketmq-broker sh mqadmin updateTopic -n rocketmq-namesrv:9876 -c DefaultCluster -t $topic -r 4 -w 4
+  if ($LASTEXITCODE -ne 0) { throw "Topic creation failed: $topic" }
+}
+docker compose exec -T rocketmq-broker sh mqadmin topicList -n rocketmq-namesrv:9876
+```
+
+### 4. 可选：安装 Ollama，并准备知识库
+
+只研究商城、后台或订单链路，可以直接进入下一步。知识库功能需要在**运行 Java 的同一台主机**启动 Ollama，Compose 已包含 Milvus。
+
+| 系统 | 安装与启动 |
+|---|---|
+| Linux | 按 [Ollama Linux 指南](https://docs.ollama.com/linux) 安装，可执行 `curl -fsSL https://ollama.com/install.sh \| sh`。安装后先请求下面的版本接口，服务没有运行时再执行 `ollama serve`，保持终端打开 |
+| macOS | 按 [Ollama macOS 指南](https://docs.ollama.com/macos) 安装并打开 Ollama 应用，照提示启用命令行 |
+| Windows | 按 [Ollama Windows 指南](https://docs.ollama.com/windows) 安装并启动 Ollama，重新打开 PowerShell，确认后台程序继续运行 |
+
+拉取 [BGE-M3](https://ollama.com/library/bge-m3)，下载约 1.2 GB。等 `ollama pull` 完成，`ollama list` 应显示 `bge-m3`。
+
+```bash
+ollama --version
+ollama pull bge-m3
+ollama list
+```
+
+再调用 [Ollama Embedding API](https://docs.ollama.com/api/embed)，确认返回 **1024 维**，这与仓库里的 Milvus 集合配置一致。
+
+**Linux/macOS（Bash，打印长度需 Python 3）**
+
+```bash
+curl --noproxy "*" -fsS http://127.0.0.1:11434/api/version
+curl --noproxy "*" -fsS http://127.0.0.1:11434/api/embed \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"bge-m3","input":"E-commerce documentation smoke check"}' \
+  | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["embeddings"][0]))'
+```
+
+**Windows（PowerShell 7.2+）**
+
+```powershell
+Invoke-RestMethod -NoProxy http://127.0.0.1:11434/api/version
+$body = @{ model = 'bge-m3'; input = 'E-commerce documentation smoke check' } | ConvertTo-Json
+$result = Invoke-RestMethod -NoProxy http://127.0.0.1:11434/api/embed -Method Post -ContentType 'application/json' -Body $body
+$result.embeddings[0].Count
+```
+
+本项目的 Ollama 负责生成向量，默认对话模型由 DeepSeek 提供。需要体验完整问答时，在**启动后端所用的同一个终端**设置 `DEEPSEEK_API_KEY`，IDEA 则填在知识库模块的运行配置里。配置项见 [ecommerce-knowledge/application.yml](ecommerce-knowledge/src/main/resources/application.yml)，API 接入说明见 [DeepSeek 文档](https://api-docs.deepseek.com/)。
+
+**Linux/macOS**
+
+```bash
+read -rsp 'DeepSeek API key: ' DEEPSEEK_API_KEY
+printf '\n'
+export DEEPSEEK_API_KEY
+```
+
+**Windows（PowerShell 7.2+）**
+
+```powershell
+$env:DEEPSEEK_API_KEY = Read-Host 'DeepSeek API key' -MaskInput
+```
+
+有 Ollama 和 Milvus 即可尝试上传文档并生成向量。启动知识库服务后，用后台管理员登录 [平台知识库](http://localhost:5173/knowledge)，选择一个分类，创建一篇短文档，等分段数大于 0。配置了有效的对话模型密钥后，再到 [商城智能客服](http://localhost:3000/knowledge) 登录测试问答。密钥只放环境变量或本地运行配置中。
+
+### 5. 构建和启动 Java 服务
+
+回到仓库根目录打包。根 POM 会构建所有模块，随后从每个模块的 `target/` 取可运行 JAR。首次体验建议用下面的参数跳过测试编译，仓库的全量测试里有已知的用户模块测试编译问题与知识库测试失败。
+
+```bash
+mvn '-Dmaven.test.skip=true' clean package
+```
+
+在一个专用终端中从根目录运行下面对应的启动块。启用对话时，先在该终端设置 DeepSeek 密钥。默认启动 **18 个**服务。已经完成 Ollama 配置时，按注释启用知识库，共 **19 个**服务。启动日志写到 `.build-local/`。这组命令把物流服务覆盖为 `8098`，避开会员服务的 `8096`，同时向 Nacos 注册本机地址并提供 Redis 密码。
+
+**Linux/macOS（Bash）**
+
+```bash
+with_knowledge=0   # 1 = enable AI knowledge service
+repo="$PWD"
+log_dir="$repo/.build-local"
+mkdir -p "$log_dir"
+
+modules=(auth user product inventory cart order payment merchant coupon notification file search seckill member warehouse logistics monitor)
+if [[ "$with_knowledge" == 1 ]]; then modules+=(knowledge); fi
+modules+=(gateway)
+
+backend_pids=()
+for module in "${modules[@]}"; do
+  name="ecommerce-$module"
+  jar="$repo/$name/target/$name-1.0-SNAPSHOT.jar"
+  if [[ ! -f "$jar" ]]; then printf 'Missing JAR: %s\n' "$jar"; break; fi
+  args=(--server.address=127.0.0.1 --spring.cloud.nacos.discovery.ip=127.0.0.1 --spring.data.redis.password=root)
+  if [[ "$module" == logistics ]]; then args+=(--server.port=8098); fi
+  (cd "$repo/$name" && exec java -XX:ActiveProcessorCount=4 -Xms64m -Xmx384m -jar "$jar" "${args[@]}") \
+    >"$log_dir/$name.log" 2>&1 &
+  backend_pids+=("$!")
+done
+```
+
+**Windows（PowerShell）**
+
+```powershell
+$withKnowledge = $false   # $true = enable AI knowledge service
+$repo = (Get-Location).Path
+$logDir = Join-Path $repo '.build-local'
+New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+$modules = 'auth user product inventory cart order payment merchant coupon notification file search seckill member warehouse logistics monitor'.Split(' ')
+if ($withKnowledge) { $modules += 'knowledge' }
+$modules += 'gateway'
+
+$backendProcesses = @()
+foreach ($module in $modules) {
+  $name = "ecommerce-$module"
+  $moduleDir = Join-Path $repo $name
+  $jar = Join-Path $moduleDir "target/$name-1.0-SNAPSHOT.jar"
+  if (-not (Test-Path -LiteralPath $jar)) { throw "Missing JAR: $jar" }
+  $javaArgs = @('-XX:ActiveProcessorCount=4', '-Xms64m', '-Xmx384m', '-jar', ('"{0}"' -f $jar),
+    '--server.address=127.0.0.1', '--spring.cloud.nacos.discovery.ip=127.0.0.1',
+    '--spring.data.redis.password=root')
+  if ($module -eq 'logistics') { $javaArgs += '--server.port=8098' }
+  $backendProcesses += Start-Process java -ArgumentList $javaArgs -WorkingDirectory $moduleDir `
+    -RedirectStandardOutput (Join-Path $logDir "$name.log") `
+    -RedirectStandardError (Join-Path $logDir "$name.err.log") -PassThru
+}
+```
+
+也可在 IDEA 导入根 `pom.xml`，分别启动模块的 `*Application`。给运行配置增加上面相同的程序参数，尤其是物流的 `--server.port=8098`。例如在根目录单独启动物流服务：
+
+```bash
+java -jar ecommerce-logistics/target/ecommerce-logistics-1.0-SNAPSHOT.jar --server.address=127.0.0.1 --spring.cloud.nacos.discovery.ip=127.0.0.1 --spring.data.redis.password=root --server.port=8098
+```
+
+先等 Gateway 和商品服务就绪，再验证网关与业务接口：
+
+```bash
+curl --noproxy "*" -fsS http://127.0.0.1:8080/actuator/health
+curl --noproxy "*" -fsS "http://127.0.0.1:8080/api/v1/products?page=1&size=5"
+```
+
+健康检查应显示 `"status":"UP"`；商品接口应返回业务码 `200` 和样例商品。Gateway 健康时，下游仍可能在启动；如果返回 `503`，先查 `.build-local/ecommerce-product.log`，确认商品服务在 Nacos 的健康实例已注册，再重试。
+
+单独排查服务时，按[服务端口](#服务端口)找到该模块，访问 `http://127.0.0.1:端口/actuator/health`，再看对应的 `.build-local/ecommerce-服务名.log`。PowerShell 启动时，标准错误会单独写入 `ecommerce-服务名.err.log`。
+
+### 6. 启动两个前端并登录
+
+在**两个独立终端**从仓库根目录分别执行。`npm ci` 按仓库锁文件安装依赖，启动后保持终端运行。
+
+**商城**
+
+```bash
+cd ecommerce-web
+npm ci
+npm run dev
+```
+
+**管理后台**
+
+```bash
+cd ecommerce-admin
+npm ci
+npm run dev
+```
+
+两个开发服务器都将 `/api` 请求转发到本机的 Gateway。使用终端显示的地址访问，正常情况下是：
+
+| 页面 | 地址 | 演示账号 |
+|---|---|---|
+| PC 商城 | [http://localhost:3000](http://localhost:3000) | `testuser / test123` |
+| 管理后台 | [http://localhost:5173](http://localhost:5173) | `admin / admin123` |
+| 平台知识库 | [http://localhost:5173/knowledge](http://localhost:5173/knowledge) | 平台管理员 |
+| 商家知识库 | [http://localhost:5173/merchant/knowledge](http://localhost:5173/merchant/knowledge) | 审核通过的商家管理员 |
+| Spring Boot Admin | [http://localhost:8094/admin/](http://localhost:8094/admin/) | 本地服务监控 |
+
+初次使用建议试一次：商城登录、查看商品详情、加入购物车；后台打开商品和库存页；有需要再试文件上传、模拟支付和知识库。默认支付适合本地演示，不代表已接入真实支付渠道。
+
+### 7. 可选：给样例商品建立搜索索引
+
+`docs/init.sql` 向 MySQL 写入目录和样例商品。直接导入 SQL 不会产生 `product-created` 事件，所以空的 Elasticsearch 卷上，目录能看到商品，但搜索可能为空或提示索引不存在。研究异步同步时，可以在后台新建一个带 SKU 的上架商品，并在 `ecommerce-search` 日志里查看消费记录。要直接搜索 SQL 中的样例商品，可在**全新的本地搜索环境**中把以下 Python 3 代码保存成 `index-demo-products.py`，然后 运行 `python3 index-demo-products.py`（Windows 可用 `py -3 index-demo-products.py`）。
+
+这个示例读取商品接口的第一页（最多 100 条，足够覆盖默认样例），写入 `products` 索引。Elasticsearch 的同名文档 ID 会被覆盖，适合本地演示。
+
+```python
+import json
+from urllib.request import ProxyHandler, Request, build_opener
+
+client = build_opener(ProxyHandler({}))
+with client.open("http://127.0.0.1:8080/api/v1/products?page=1&size=100", timeout=20) as response:
+    page = json.load(response)
+assert page["code"] == 200 and page["data"]["records"], page
+fields = ("id", "name", "description", "mainImage", "categoryId", "brandId", "merchantId",
+          "minPrice", "maxPrice", "status", "avgRating", "reviewCount", "createdAt")
+lines = []
+for product in page["data"]["records"]:
+    doc = {field: product[field] for field in fields if product.get(field) is not None}
+    if "createdAt" in doc:
+        doc["createdAt"] = doc["createdAt"].replace(" ", "T")
+    doc["salesCount"] = 0
+    lines.extend((json.dumps({"index": {"_index": "products", "_id": str(doc["id"])}}), json.dumps(doc)))
+bulk = ("\n".join(lines) + "\n").encode()
+request = Request("http://127.0.0.1:9200/_bulk?refresh=true", data=bulk,
+                  headers={"Content-Type": "application/x-ndjson"})
+with client.open(request, timeout=30) as response:
+    result = json.load(response)
+assert not result["errors"], [item for item in result["items"] if item["index"].get("error")]
+print("Indexed", len(result["items"]), "products")
+```
+
+```bash
+curl --noproxy "*" -fsS http://127.0.0.1:9200/products/_count
+curl --noproxy "*" -fsS "http://127.0.0.1:8080/api/v1/search?page=1&size=5&sort=price_asc"
+```
+
+### 8. 可选：运行微信小程序
+
+用 HBuilderX 打开 [ecommerce-miniprogram](ecommerce-miniprogram/)，在 [manifest.json](ecommerce-miniprogram/manifest.json) 填写自己的小程序 AppID，并安装微信开发者工具。运行前把 [utils/api.js](ecommerce-miniprogram/utils/api.js) 里的网关地址替换成调试器能访问的地址。调试 H5 时改 [vite.config.js](ecommerce-miniprogram/vite.config.js) 的代理目标。手机真机不能通过自己的 `localhost` 连接电脑上的服务，本指南的环回地址用于本机开发。
+
+### 9. 关闭、重启和排错
+
+前端终端按 `Ctrl+C`。在启动 Java 服务的**同一个终端**停止本次启动的后台进程：
+
+- Bash：`kill "${backend_pids[@]}"`
+- PowerShell：`$backendProcesses | Where-Object { -not $_.HasExited } | Stop-Process`
+
+停中间件用 `docker compose stop`。下次从根目录执行 `docker compose up -d --no-build --pull never`，检查就绪后重新启动 Java 和前端即可，已有卷无需重做 SQL。`docker compose down` 会移除容器和网络但保留命名卷；`docker compose down -v` 会删除这些卷和数据。
+
+| 问题 | 怎么检查 |
+|---|---|
+| 镜像下载成功，但 MinIO 或 RocketMQ 构建超时 | `docker compose --progress plain build minio` 或把最后一个参数换成 `rocketmq-namesrv`。拉镜像和构建时的网络是两条链路；构建还需要访问 GitHub 源码、Go 模块代理与校验服务，或 Apache 下载站。按 [Docker 构建代理文档](https://docs.docker.com/engine/cli/proxy/) 配置，可分别给构建传 `HTTP_PROXY`、`HTTPS_PROXY` 参数。代理地址要能从构建容器访问 |
+| Elasticsearch 提示 `vm.max_map_count` 太低 | Linux Docker 主机可执行 `sudo sysctl -w vm.max_map_count=1048576`。Docker Desktop 或 WSL 2 按 [Elastic 平台说明](https://www.elastic.co/docs/deploy-manage/deploy/self-managed/install-elasticsearch-docker-prod) 在 Docker 所在环境设置 |
+| MySQL 报表不存在、字段不存在 | 检查第 3 步 SQL 和对应 schema，特别是物流、仓储、会员和 Outbox 迁移 |
+| Redis 返回 `NOAUTH` | 核对 Redis 密码和 Java 启动参数 `--spring.data.redis.password=root` |
+| 启动时报端口已占用 | 先排查是否有上次残留进程；会员用 8096，物流覆盖为 8098。前端换端口时用终端输出的实际地址 |
+| 知识库提示 Ollama 连不上或模型不存在 | 请求本机 `11434/api/version`，运行 `ollama list`，确认 `bge-m3` 已下载，并通过 `/api/embed` 实测向量 |
+| 知识库 HTTP 401/403 或对话模型故障 | 商城问答需要用户登录，平台和商家管理页需要对应管理员角色；对话服务另查 DeepSeek 密钥、模型配置和出站网络 |
+
+如果已经把构建容器能访问的代理地址导出为 `HTTP_PROXY` 和 `HTTPS_PROXY`，可用下面的 Bash 命令单独重试构建。RocketMQ 构建失败时，把最后的 `minio` 换成 `rocketmq-namesrv`。
+
+```bash
+docker compose --progress plain build --build-arg HTTP_PROXY="$HTTP_PROXY" --build-arg HTTPS_PROXY="$HTTPS_PROXY" minio
+```
 
 ## 项目亮点
 
@@ -545,310 +968,20 @@ sequenceDiagram
 
 ## 服务端口
 
-### 业务服务
-
-| 服务 | 端口 |
-|---|---|
-| Gateway | 8080 |
-| User | 8081 |
-| Product | 8082 |
-| Inventory | 8083 |
-| Order | 8084 |
-| Payment | 8085 |
-| Cart | 8086 |
-| Merchant | 8087 |
-| Coupon | 8088 |
-| Notification | 8089 |
-| File | 8090 |
-| Auth | 8091 |
-| Search | 8092 |
-| Seckill | 8093 |
-| Monitor | 8094 |
-| Knowledge | 8095 |
-
-### 前端
-
-| 应用 | 端口 |
-|---|---|
-| PC Web | 3000 |
-| Admin | 5173 |
-
-### 中间件
-
-| 中间件 | 端口 | 默认账号 / 密码 |
-|---|---|---|
-| MySQL | 3306 | `root / root` |
-| Redis | 6379 | 密码 `root` |
-| Nacos | 8848 / 9848（服务端），8849（控制台） | 首次打开控制台时初始化 `nacos` 密码 |
-| RocketMQ NameServer | 9876 | - |
-| RocketMQ Broker | 10911 / 10909 | - |
-| MinIO API | 9000 | `minio / minioadmin` |
-| MinIO Console | 9001 | `minio / minioadmin` |
-| Elasticsearch | 9200 | - |
-| Milvus | 19530 / 9091 | - |
-| Ollama | 11434 | - |
-
-## 快速开始
-
-### 1. 环境准备
-
-建议先准备以下环境：
-
-- Docker Desktop / Colima / Podman（至少能执行 `docker compose`）
-- JDK 21
-- Maven 3.9+
-- Node.js 22+
-- HBuilderX（仅微信小程序需要）
-- Ollama（仅 AI 知识库功能需要）
-- Python 3（仅导入知识库种子数据时需要）
-
-如果你暂时不使用 AI 知识库，可以先跳过 `Ollama / DeepSeek / ecommerce-knowledge` 相关步骤。
-
-### 2. 启动中间件
-
-#### 方式一：使用项目脚本
-
-macOS / Linux：
-
-```bash
-bash scripts/start-middleware.sh
-```
-
-Windows PowerShell：
-
-```powershell
-.\scripts\start-middleware.ps1
-```
-
-脚本会完成这些事情：
-
-- `docker compose up -d`
-- 等待 MySQL、Redis、Nacos、RocketMQ、Elasticsearch、MinIO、Milvus 就绪
-- 创建 RocketMQ topics
-- 执行 `docs/init.sql`
-
-#### 方式二：手动启动
-
-```bash
-docker compose up -d
-```
-
-首次启动会构建 RocketMQ 和 MinIO 镜像。中间件端口绑定在本机 `127.0.0.1`。已有旧版数据时，先阅读[中间件升级指南](docs/middleware-upgrade.md)。
-
-然后初始化主工程数据库：
-
-```bash
-docker exec -i ecommerce-mysql mysql -uroot -proot < docs/init.sql
-```
-
-> 注意：`docs/init.sql` 不包含知识库库表，`ecommerce_knowledge` 需要单独初始化。
-
-### 3. 安装并启动 Ollama
-
-> `Ollama` 不在本项目的 `docker-compose.yml` 中，知识库模块依赖本机本地运行的 Ollama 服务。
-
-官方文档：
-
-- 官网文档：https://docs.ollama.com/
-- Windows：https://docs.ollama.com/windows
-- macOS：https://docs.ollama.com/macos
-- Linux：https://docs.ollama.com/linux
-- `bge-m3` 模型页：https://ollama.com/library/bge-m3
-
-#### Windows
-
-按官方文档安装 Ollama Desktop/Installer，安装完成后确认后台服务已启动。
-
-#### macOS
-
-按官方文档安装 Ollama，启动后保持服务在线。
-
-#### Linux
-
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-```
-
-#### 验证 Ollama 是否可用
-
-```bash
-ollama --version
-```
-
-如果你的系统没有自动拉起 Ollama 服务，再手动启动：
-
-```bash
-ollama serve
-```
-
-#### 拉取本项目所需模型
-
-```bash
-ollama pull bge-m3
-```
-
-检查模型是否已经下载：
-
-```bash
-ollama list
-```
-
-可选：检查本地 API 是否可访问。
-
-```bash
-curl http://localhost:11434/api/tags
-```
-
-### 4. 初始化知识库数据库
-
-知识库使用独立数据库 `ecommerce_knowledge`，需要单独执行：
-
-```bash
-docker exec -i ecommerce-mysql mysql -uroot -proot < ecommerce-knowledge/sql/init.sql
-```
-
-### 5. 配置 DeepSeek API Key
-
-`ecommerce-knowledge` 默认通过 DeepSeek 提供对话模型能力。启动前先设置环境变量。
-
-PowerShell：
-
-```powershell
-$env:DEEPSEEK_API_KEY="sk-xxxxxx"
-```
-
-macOS / Linux：
-
-```bash
-export DEEPSEEK_API_KEY="sk-xxxxxx"
-```
-
-### 6. 编译并启动后端服务
-
-#### 6.1 编译主工程
-
-```bash
-mvn -DskipTests compile
-```
-
-#### 6.2 编译知识库模块
-
-```bash
-mvn -pl ecommerce-knowledge -am compile
-```
-
-> `ecommerce-knowledge` 已纳入根工程模块，可以通过根工程直接编译；如果只想编它自己，使用 `-pl ecommerce-knowledge -am` 即可。
-
-#### 6.3 启动顺序建议
-
-建议顺序：
-
-1. `ecommerce-auth`
-2. `ecommerce-user`
-3. `ecommerce-product`
-4. `ecommerce-inventory`
-5. `ecommerce-order`
-6. `ecommerce-payment`
-7. `ecommerce-cart`
-8. `ecommerce-merchant`
-9. `ecommerce-coupon`
-10. `ecommerce-notification`
-11. `ecommerce-file`
-12. `ecommerce-search`
-13. `ecommerce-seckill`
-14. `ecommerce-monitor`
-15. `ecommerce-knowledge`
-16. `ecommerce-gateway`
-
-各模块都可以用同样方式启动：
-
-```bash
-cd <module>
-mvn spring-boot:run
-```
-
-例如：
-
-```bash
-cd ecommerce-auth && mvn spring-boot:run
-cd ecommerce-product && mvn spring-boot:run
-cd ecommerce-gateway && mvn spring-boot:run
-```
-
-知识库模块启动方式：
-
-```bash
-mvn -pl ecommerce-knowledge spring-boot:run
-```
-
-### 7. 启动前端
-
-#### PC Web
-
-```bash
-cd ecommerce-web
-npm install
-npm run dev
-```
-
-#### Admin 后台
-
-```bash
-cd ecommerce-admin
-npm install
-npm run dev
-```
-
-### 8. 启动微信小程序
-
-使用 HBuilderX 打开 `ecommerce-miniprogram`，配置 `manifest.json` 中的小程序信息后运行。
-
-### 9. 可选：导入知识库种子数据
-
-在 `ecommerce-knowledge` 已经启动后，可以执行：
-
-```bash
-python ecommerce-knowledge/sql/seed_data.py
-```
-
-这个脚本会通过 `http://localhost:8095` 向知识库服务写入示例文档。
-
-### 10. 访问地址
-
-| 页面 / 服务 | 地址 |
-|---|---|
-| PC Web | http://localhost:3000 |
-| PC 智能客服 | http://localhost:3000/knowledge |
-| Admin 后台 | http://localhost:5173 |
-| 平台知识库管理 | http://localhost:5173/knowledge |
-| 商家知识库管理 | http://localhost:5173/merchant/knowledge |
-| API Gateway | http://localhost:8080 |
-| Nacos | http://127.0.0.1:8849/ |
-| MinIO Console | http://localhost:9001 |
-| Elasticsearch | http://localhost:9200 |
-| Spring Boot Admin | http://localhost:8094/admin |
-| Druid | `http://localhost:{服务端口}/druid/sql.html` |
-
-## 默认账号
-
-主工程初始化脚本 `docs/init.sql` 默认写入：
-
-| 角色 | 账号 | 密码 |
-|---|---|---|
-| 超级管理员 | `admin` | `admin123` |
-| 测试用户 | `testuser` | `test123` |
-
-## RocketMQ Topics
-
-项目默认初始化以下 topics：
-
-| Topic | 队列数 | 说明 |
-|---|---|---|
-| `order-created` | 4 | 订单创建 |
-| `order-cancelled` | 4 | 订单取消 |
-| `order-paid` | 4 | 支付成功 |
-| `product-created` | 4 | 商品创建后同步搜索索引 |
-| `merchant-approved` | 4 | 商家审核通过后创建账号 / 发送通知 |
+| 端口 | 服务 | 端口 | 服务 |
+|---|---|---|---|
+| 8080 | Gateway | 8090 | File |
+| 8081 | User | 8091 | Auth |
+| 8082 | Product | 8092 | Search |
+| 8083 | Inventory | 8093 | Seckill |
+| 8084 | Order | 8094 | Monitor |
+| 8085 | Payment | 8095 | Knowledge |
+| 8086 | Cart | 8096 | Member |
+| 8087 | Merchant | 8097 | Warehouse |
+| 8088 | Coupon | 8098 | Logistics，由启动命令覆盖 |
+| 8089 | Notification | 11434 | Ollama |
+
+中间件端口和 Web 地址见[快速开始](#快速开始)。
 
 ## 分布式事务现状
 
@@ -882,63 +1015,3 @@ python ecommerce-knowledge/sql/seed_data.py
 - 服务重启中的恢复行为
 - broker 故障后的自动重试与堆积恢复
 - 更大规模的乱序消息和长期积压
-
-## 常见问题
-
-### 1. 知识库服务报错，连不上 `localhost:11434`
-
-说明本机 Ollama 没启动。
-
-处理方式：
-
-```bash
-ollama serve
-```
-
-如果是 Windows / macOS 图形安装版，确认 Ollama 桌面程序仍在后台运行。
-
-### 2. `model 'bge-m3' not found`
-
-说明模型还没拉下来：
-
-```bash
-ollama pull bge-m3
-```
-
-### 3. `DEEPSEEK_API_KEY` 未配置
-
-知识库模块会在调用对话模型时失败。先设置环境变量，再启动 `ecommerce-knowledge`。
-
-### 4. 执行了 `docs/init.sql` 但知识库还是起不来
-
-因为 `docs/init.sql` 不包含知识库库表。必须再执行一次：
-
-```bash
-docker exec -i ecommerce-mysql mysql -uroot -proot < ecommerce-knowledge/sql/init.sql
-```
-
-### 5. `ecommerce-knowledge` 如何单独编译或启动
-
-它已经在根 `pom.xml` 的 `<modules>` 里，由父 POM 统一管理。
-
-常用命令：
-
-```bash
-mvn -pl ecommerce-knowledge -am compile
-mvn -pl ecommerce-knowledge spring-boot:run
-```
-
-### 6. 知识库页面返回 401 / 403
-
-说明当前接口需要登录态或管理员权限：
-
-- `/knowledge`：需要管理员登录
-- `/merchant/knowledge`：需要商家管理员登录
-- `/api/v1/knowledge/chat`：需要普通用户登录后使用
-
-## 补充说明
-
-- 中间件脚本已经包含 `Milvus`，所以你只需要额外处理 `Ollama`
-- `Ollama` 在本项目中负责 embedding，不负责大模型对话
-- 当前对话模型默认走 `DeepSeek Chat`
-- 如果你要替换 `Ollama` 地址、模型名或 `DeepSeek` 模型名，可以修改 `ecommerce-knowledge/src/main/resources/application.yml`
