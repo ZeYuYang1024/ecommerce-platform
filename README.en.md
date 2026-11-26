@@ -4,6 +4,8 @@
 
 A Spring Boot 4 and Spring Cloud e-commerce project with a Nuxt storefront, a Vue/Element Plus admin console, a uni-app WeChat Mini Program, and an optional AI knowledge base. The backend uses Nacos for discovery, RocketMQ for asynchronous events, Elasticsearch for product search, and MinIO for file storage. The knowledge module adds Ollama embeddings, Milvus vector search, and DeepSeek chat.
 
+The Java build uses Spring Boot `4.2.0`, Spring Cloud `2026.0.0`, Hutool `5.8.48`, Lombok `1.18.48`, Druid `1.2.28`, and Spring Boot Admin `4.1.5`. The knowledge service uses LangChain4j `1.24.0`. Its BOM selects `1.24.0-beta34` for the Milvus and Easy RAG modules. The exact dependency versions are in the [root POM](pom.xml).
+
 ## Local setup
 
 Docker runs the middleware. Java and the two Web development servers run on your host. Follow the steps in order for a fresh installation. The sample credentials and loopback addresses are intended for local development.

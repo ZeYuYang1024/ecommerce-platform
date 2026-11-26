@@ -459,6 +459,8 @@ docker compose --progress plain build --build-arg HTTP_PROXY="$HTTP_PROXY" --bui
 | Spring Cloud | 2026.0.0 | 微服务治理 |
 | Spring Cloud Alibaba Nacos | 2025.1.0.0 / 3.3.0 | 注册中心与配置中心 |
 | MyBatis-Plus | 3.5.18.1 | ORM |
+| Hutool | 5.8.48 | ID、字符串与 JSON 工具 |
+| Lombok | 1.18.48 | Java 注解处理 |
 | MySQL | 26.10.0.1 / Connector/J 26.10.0 | 关系型数据库 |
 | Redis | 8.12.0 | 缓存 |
 | RocketMQ | 5.5.1 / Spring Starter 2.3.0 | 消息队列 |
@@ -466,7 +468,7 @@ docker compose --progress plain build --build-arg HTTP_PROXY="$HTTP_PROXY" --bui
 | MinIO | RELEASE.2025-10-15T17-29-55Z / Java SDK 8.6.0 | 对象存储 |
 | Druid | 1.2.28 | 数据源与 SQL 监控 |
 | JJWT | 0.12.6 | JWT |
-| Spring Boot Admin | 4.0.4 | 服务监控 |
+| Spring Boot Admin | 4.1.5 | 服务监控 |
 
 ### AI 知识库模块（`ecommerce-knowledge`）
 
@@ -476,7 +478,7 @@ docker compose --progress plain build --build-arg HTTP_PROXY="$HTTP_PROXY" --bui
 |---|---|---|
 | Spring Boot | 4.2.0 | 知识库服务基础框架 |
 | Spring Cloud | 2026.0.0 | 微服务能力 |
-| LangChain4j | 1.14.1 | RAG 与 Agent 编排 |
+| LangChain4j | 1.24.0 | RAG 与 Agent 编排，BOM 管理的 Milvus 和 Easy RAG 模块为 1.24.0-beta34 |
 | Milvus | 3.0.6 | 向量数据库 |
 | Ollama | 0.40.18（本地验证版本） | 本地 Embedding 服务 |
 | BGE-M3 | latest | Embedding 模型，默认 `1024` 维 |
