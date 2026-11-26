@@ -11,6 +11,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,7 +38,7 @@ class OrderDeliveredConsumerTest {
                 10L, 1L, "ORD-1", null, "tx-1", "idem-1",
                 LocalDateTime.now(), LocalDateTime.now()));
 
-        verify(orderMapper).updateById(order);
+        verify(orderMapper).transitionStatus(1L, 2, 3);
     }
 
     @Test
@@ -51,7 +53,7 @@ class OrderDeliveredConsumerTest {
                 10L, 1L, "ORD-1", null, "tx-1", "idem-1",
                 LocalDateTime.now(), LocalDateTime.now()));
 
-        verify(orderMapper, never()).updateById(order);
+        verify(orderMapper, never()).transitionStatus(any(), anyInt(), anyInt());
     }
 
     @Test
@@ -62,6 +64,6 @@ class OrderDeliveredConsumerTest {
                 10L, 1L, "ORD-1", null, "tx-1", "idem-1",
                 LocalDateTime.now(), LocalDateTime.now()));
 
-        verify(orderMapper, never()).updateById(org.mockito.ArgumentMatchers.any(Order.class));
+        verify(orderMapper, never()).transitionStatus(any(), anyInt(), anyInt());
     }
 }

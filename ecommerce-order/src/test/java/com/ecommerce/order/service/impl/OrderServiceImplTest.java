@@ -41,6 +41,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -321,12 +322,12 @@ class OrderServiceImplTest {
         void shouldCancelPendingOrderAndEnqueueReleaseMessage() {
             order.setPointsReservationNo("PR-CANCEL-1");
             when(orderMapper.selectById(1L)).thenReturn(order);
-            when(orderMapper.updateById(any(Order.class))).thenReturn(1);
+            when(orderMapper.transitionStatus(1L, 0, 4)).thenReturn(true);
             when(itemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
 
             service.cancelOrder(1L, 1L);
 
-            verify(orderMapper).updateById(any(Order.class));
+            verify(orderMapper).transitionStatus(1L, 0, 4);
             verify(outboxService).enqueue(eq("order"), eq("202605091200000001"), eq("order-cancelled"),
                     any(OrderInventoryMessage.class));
             verify(memberClient).releasePoints(eq("PR-CANCEL-1"),
@@ -342,6 +343,20 @@ class OrderServiceImplTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(OrderErrorCode.ORDER_NOT_PENDING);
+        }
+
+        @Test
+        void shouldNotReleaseInventoryOrPointsIfPaymentWinsTheStatusUpdate() {
+            order.setPointsReservationNo("PR-RACE");
+            when(orderMapper.selectById(1L)).thenReturn(order);
+            when(orderMapper.transitionStatus(1L, 0, 4)).thenReturn(false);
+
+            assertThatThrownBy(() -> service.cancelOrder(1L, 1L))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(OrderErrorCode.ORDER_NOT_PENDING);
+            verify(outboxService, never()).enqueue(anyString(), anyString(), anyString(), any());
+            verify(memberClient, never()).releasePoints(anyString(), any());
         }
 
         @Test
@@ -362,12 +377,11 @@ class OrderServiceImplTest {
         void shouldCancelPendingOrderWhenInventoryCompensationMessageArrives() {
             order.setStatus(0);
             when(orderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(order);
-            when(orderMapper.updateById(any(Order.class))).thenReturn(1);
+            when(orderMapper.transitionStatus(1L, 0, 4)).thenReturn(true);
 
             service.applyInventoryCompensation(new OrderPaidMessage("202605091200000001", 4, LocalDateTime.now()));
 
-            assertThat(order.getStatus()).isEqualTo(4);
-            verify(orderMapper).updateById(order);
+            verify(orderMapper).transitionStatus(1L, 0, 4);
         }
 
         @Test
@@ -377,7 +391,7 @@ class OrderServiceImplTest {
 
             service.applyInventoryCompensation(new OrderPaidMessage("202605091200000001", 4, LocalDateTime.now()));
 
-            verify(orderMapper, never()).updateById(order);
+            verify(orderMapper, never()).transitionStatus(any(), anyInt(), anyInt());
         }
     }
 
@@ -466,7 +480,7 @@ class OrderServiceImplTest {
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(OrderErrorCode.ORDER_FORBIDDEN);
 
-            verify(orderMapper, never()).updateById(any(Order.class));
+            verify(orderMapper, never()).transitionStatus(any(), anyInt(), anyInt());
         }
 
         @Test
@@ -479,7 +493,7 @@ class OrderServiceImplTest {
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(OrderErrorCode.ORDER_FORBIDDEN);
 
-            verify(orderMapper, never()).updateById(any(Order.class));
+            verify(orderMapper, never()).transitionStatus(any(), anyInt(), anyInt());
         }
 
         @Test
@@ -490,7 +504,7 @@ class OrderServiceImplTest {
             assertThatThrownBy(() -> service.updateStatus(1L, 3, "super_admin", null))
                     .isInstanceOf(BusinessException.class);
 
-            verify(orderMapper, never()).updateById(any(Order.class));
+            verify(orderMapper, never()).transitionStatus(any(), anyInt(), anyInt());
         }
 
         @Test
@@ -505,7 +519,7 @@ class OrderServiceImplTest {
             assertThatThrownBy(() -> service.updateStatus(1L, 3, "merchant", 100L))
                     .isInstanceOf(BusinessException.class);
 
-            verify(orderMapper, never()).updateById(any(Order.class));
+            verify(orderMapper, never()).transitionStatus(any(), anyInt(), anyInt());
         }
 
         @Test

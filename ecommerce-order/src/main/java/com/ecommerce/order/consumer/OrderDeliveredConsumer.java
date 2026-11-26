@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RocketMQMessageListener(
     topic = "order-delivered",
-    consumerGroup = "${spring.application.name}-consumer"
+    consumerGroup = "${spring.application.name}-order-delivered"
 )
 public class OrderDeliveredConsumer implements RocketMQListener<OrderDeliveredMessage> {
 
@@ -31,9 +31,8 @@ public class OrderDeliveredConsumer implements RocketMQListener<OrderDeliveredMe
             log.warn("Order not found: orderId={}", message.getOrderId());
             return;
         }
-        if (order.getStatus() != null && order.getStatus() == OrderStatus.SHIPPED) {
-            order.setStatus(OrderStatus.COMPLETED);
-            orderMapper.updateById(order);
+        if (order.getStatus() != null && order.getStatus() == OrderStatus.SHIPPED
+                && orderMapper.transitionStatus(order.getId(), OrderStatus.SHIPPED, OrderStatus.COMPLETED)) {
             log.info("Order status updated to completed: orderId={}", message.getOrderId());
         } else {
             log.info("Order not in shipped status, skip: orderId={}, status={}",

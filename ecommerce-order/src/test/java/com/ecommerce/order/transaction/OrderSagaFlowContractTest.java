@@ -109,6 +109,7 @@ class OrderSagaFlowContractTest {
         OrderMapper consumerOrderMapper = mock(OrderMapper.class);
         OrderService consumerOrderService = mock(OrderService.class);
         Order pendingOrder = new Order();
+        pendingOrder.setId(1L);
         pendingOrder.setOrderNo(inventoryMessage.getOrderNo());
         pendingOrder.setStatus(0);
         when(consumerOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(pendingOrder);
@@ -116,8 +117,7 @@ class OrderSagaFlowContractTest {
         OrderPaidConsumer consumer = new OrderPaidConsumer(consumerOrderMapper, consumerOrderService);
         consumer.onMessage(paidMessage);
 
-        verify(consumerOrderMapper).updateById(pendingOrder);
-        assertThat(pendingOrder.getStatus()).isEqualTo(1);
+        verify(consumerOrderMapper).transitionStatus(1L, 0, 1);
         verifyNoInteractions(consumerOrderService);
     }
 
@@ -150,10 +150,11 @@ class OrderSagaFlowContractTest {
 
         OrderMapper orderMapper = mock(OrderMapper.class);
         Order order = new Order();
+        order.setId(1L);
         order.setOrderNo(inventoryMessage.getOrderNo());
         order.setStatus(0);
         when(orderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(order);
-        when(orderMapper.updateById(any(Order.class))).thenReturn(1);
+        when(orderMapper.transitionStatus(1L, 0, 4)).thenReturn(true, false);
 
         OrderServiceImpl orderService = new OrderServiceImpl(
                 orderMapper,
@@ -167,8 +168,7 @@ class OrderSagaFlowContractTest {
         orderService.applyInventoryCompensation(compensationMessage);
         orderService.applyInventoryCompensation(compensationMessage);
 
-        verify(orderMapper, times(1)).updateById(order);
-        assertThat(order.getStatus()).isEqualTo(4);
+        verify(orderMapper, times(2)).transitionStatus(1L, 0, 4);
     }
 
     private OrderInventoryMessage createOrderAndCaptureInventoryMessage() {

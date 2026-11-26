@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RocketMQMessageListener(
     topic = "order-paid",
-    consumerGroup = "${spring.application.name}-consumer"
+    consumerGroup = "${spring.application.name}-order-paid"
 )
 public class OrderPaidConsumer implements RocketMQListener<OrderPaidMessage> {
 
@@ -49,9 +49,9 @@ public class OrderPaidConsumer implements RocketMQListener<OrderPaidMessage> {
             orderService.applyInventoryCompensation(message);
             return;
         }
-        order.setStatus(message.getStatus());
-        orderMapper.updateById(order);
-        log.info("Order status updated: {} -> {}", message.getOrderNo(), message.getStatus());
+        if (orderMapper.transitionStatus(order.getId(), OrderStatus.PENDING, OrderStatus.PAID)) {
+            log.info("Order status updated: {} -> {}", message.getOrderNo(), OrderStatus.PAID);
+        }
     }
 
     private boolean shouldApply(Integer currentStatus, Integer incomingStatus) {

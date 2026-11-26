@@ -223,12 +223,10 @@ public class OrderServiceImpl implements OrderService {
         if (!Objects.equals(order.getUserId(), userId)) {
             throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
         }
-        if (order.getStatus() != OrderStatus.PENDING) {
+        if (!Objects.equals(order.getStatus(), OrderStatus.PENDING)
+                || !orderMapper.transitionStatus(id, OrderStatus.PENDING, OrderStatus.CANCELLED)) {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_PENDING);
         }
-
-        order.setStatus(OrderStatus.CANCELLED);
-        orderMapper.updateById(order);
 
         List<OrderItem> items = itemMapper.selectList(
                 new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, id));
@@ -249,8 +247,9 @@ public class OrderServiceImpl implements OrderService {
         if (Objects.equals(order.getStatus(), status)) {
             return;
         }
-        order.setStatus(status);
-        orderMapper.updateById(order);
+        if (!orderMapper.transitionStatus(order.getId(), order.getStatus(), status)) {
+            throw new BusinessException(OrderErrorCode.ORDER_NOT_PENDING);
+        }
     }
 
     @Override
@@ -331,8 +330,9 @@ public class OrderServiceImpl implements OrderService {
         if (Objects.equals(currentStatus, status)) {
             return;
         }
-        order.setStatus(status);
-        orderMapper.updateById(order);
+        if (!orderMapper.transitionStatus(id, currentStatus, status)) {
+            throw new BusinessException(OrderErrorCode.ORDER_NOT_PENDING);
+        }
         releaseReservedPointsIfPendingCancellation(order, currentStatus, status, "STATUS_UPDATE_CANCELLED");
     }
 
@@ -354,9 +354,9 @@ public class OrderServiceImpl implements OrderService {
             return;
         }
         Integer currentStatus = order.getStatus();
-        order.setStatus(message.getStatus());
-        orderMapper.updateById(order);
-        releaseReservedPointsIfPendingCancellation(order, currentStatus, message.getStatus(), "INVENTORY_COMPENSATION");
+        if (orderMapper.transitionStatus(order.getId(), currentStatus, message.getStatus())) {
+            releaseReservedPointsIfPendingCancellation(order, currentStatus, message.getStatus(), "INVENTORY_COMPENSATION");
+        }
     }
 
     @Override
