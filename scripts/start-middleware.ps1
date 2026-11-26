@@ -3,7 +3,15 @@
 # 用法: .\scripts\start-middleware.ps1
 # ============================================================
 $ErrorActionPreference = "Stop"
-$ProjectDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$ProjectDir = Split-Path -Parent $PSScriptRoot
+
+function Test-ServiceHttp($Url) {
+    try {
+        return (Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5).StatusCode -eq 200
+    } catch {
+        return $false
+    }
+}
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  E-Commerce 中间件启动" -ForegroundColor Cyan
@@ -30,11 +38,14 @@ do { Start-Sleep 1 } until ((docker exec ecommerce-redis redis-cli -a root ping 
 Write-Host "OK" -ForegroundColor Green
 
 Write-Host -NoNewline "  Nacos ... "
-do { Start-Sleep 3 } until ((Invoke-WebRequest -Uri "http://localhost:8848/nacos/v1/console/health/readiness" -UseBasicParsing 2>$null).Content -match "ok")
+do { Start-Sleep 3 } until (Test-ServiceHttp "http://127.0.0.1:8848/nacos/v3/admin/core/state/readiness")
 Write-Host "OK" -ForegroundColor Green
 
 Write-Host -NoNewline "  RocketMQ NameServer ... "
-do { Start-Sleep 3 } until ((docker logs ecommerce-rmq-namesrv 2>$null) -match "Started")
+do {
+    Start-Sleep 3
+    docker exec ecommerce-rmq-namesrv sh mqadmin clusterList -n 127.0.0.1:9876 2>$null | Out-Null
+} until ($LASTEXITCODE -eq 0)
 Write-Host "OK" -ForegroundColor Green
 
 Write-Host -NoNewline "  RocketMQ Broker ... "
@@ -42,11 +53,15 @@ do { Start-Sleep 3 } until ((docker exec ecommerce-rmq-broker ./mqadmin clusterL
 Write-Host "OK" -ForegroundColor Green
 
 Write-Host -NoNewline "  Elasticsearch ... "
-do { Start-Sleep 3 } until ((Invoke-WebRequest -Uri "http://localhost:9200/_cluster/health" -UseBasicParsing 2>$null).Content -match '"status"')
+do { Start-Sleep 3 } until (Test-ServiceHttp "http://127.0.0.1:9200/_cluster/health")
 Write-Host "OK" -ForegroundColor Green
 
 Write-Host -NoNewline "  MinIO ... "
-do { Start-Sleep 2 } until ((Invoke-WebRequest -Uri "http://localhost:9000/minio/health/live" -UseBasicParsing 2>$null).Content -match "OK")
+do { Start-Sleep 2 } until (Test-ServiceHttp "http://127.0.0.1:9000/minio/health/live")
+Write-Host "OK" -ForegroundColor Green
+
+Write-Host -NoNewline "  Milvus ... "
+do { Start-Sleep 2 } until (Test-ServiceHttp "http://127.0.0.1:9091/healthz")
 Write-Host "OK" -ForegroundColor Green
 
 # --------------- RocketMQ Topics ---------------
@@ -88,7 +103,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  中间件全部就绪！" -ForegroundColor Green
 Write-Host ""
 Write-Host "  访问地址:"
-Write-Host "    Nacos:    http://localhost:8848/nacos"
+Write-Host "    Nacos:    http://127.0.0.1:8849/"
 Write-Host "    MinIO:    http://localhost:9001"
 Write-Host "    ES:       http://localhost:9200"
 Write-Host "    Druid:    http://localhost:{服务端口}/druid/sql.html"

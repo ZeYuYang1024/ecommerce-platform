@@ -1,116 +1,133 @@
-# Start all middleware:  docker-compose up -d
-# Start specific:  docker-compose up -d mysql redis
+# Start all middleware: docker compose up -d
+# Start specific services: docker compose up -d mysql redis
 
 services:
   mysql:
-    image: mysql:8.0
+    image: mysql:26.10.0.1
     container_name: ecommerce-mysql
     restart: unless-stopped
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: root
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     volumes:
-      - mysql-data:/var/lib/mysql
+      - mysql-26-data:/var/lib/mysql
 
   redis:
-    image: redis:7.2
+    image: redis:8.12.0
     container_name: ecommerce-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     command: redis-server --requirepass root
     volumes:
-      - redis-data:/data
+      - redis-8-data:/data
 
   nacos:
-    image: nacos/nacos-server:v2.4.0
+    image: nacos/nacos-server:v3.3.0
     container_name: ecommerce-nacos
     restart: unless-stopped
     ports:
-      - "8848:8848"
-      - "9848:9848"
+      - "127.0.0.1:8848:8848"
+      - "127.0.0.1:9848:9848"
+      - "127.0.0.1:8849:8080"
+    entrypoint: ["bash", "/home/nacos/bin/start-local.sh"]
     environment:
       MODE: standalone
       PREFER_HOST_MODE: hostname
+      NACOS_AUTH_ENABLE: "false"
+      JVM_XMS: 256m
+      JVM_XMX: 384m
     volumes:
-      - nacos-data:/home/nacos/data
+      - nacos-3-data:/home/nacos/data
+      - ./docker/nacos/start-local.sh:/home/nacos/bin/start-local.sh:ro
 
   rocketmq-namesrv:
-    image: apache/rocketmq:5.2.0
+    image: ecommerce-local/rocketmq:5.5.1
+    build: ./docker/rocketmq
     container_name: ecommerce-rmq-namesrv
     restart: unless-stopped
     ports:
-      - "9876:9876"
+      - "127.0.0.1:9876:9876"
+    environment:
+      JAVA_OPT_EXT: -Xms256m -Xmx512m -Xmn128m -XX:ActiveProcessorCount=4
     command: sh mqnamesrv
     volumes:
       - rocketmq-namesrv-data:/home/rocketmq/logs
 
   rocketmq-broker:
-    image: apache/rocketmq:5.2.0
+    image: ecommerce-local/rocketmq:5.5.1
+    build: ./docker/rocketmq
     container_name: ecommerce-rmq-broker
     restart: unless-stopped
     ports:
-      - "10911:10911"
-      - "10909:10909"
+      - "127.0.0.1:10911:10911"
+      - "127.0.0.1:10909:10909"
     environment:
       NAMESRV_ADDR: rocketmq-namesrv:9876
-      JAVA_OPT_EXT: -XX:-UseContainerSupport
+      JAVA_OPT_EXT: -Xms512m -Xmx1024m -XX:ActiveProcessorCount=4
     command: sh mqbroker -n rocketmq-namesrv:9876 -c /home/rocketmq/conf/broker.conf
     depends_on:
       - rocketmq-namesrv
     volumes:
       - rocketmq-broker-data:/home/rocketmq/logs
-      - ./docker/rocketmq/broker.conf:/home/rocketmq/conf/broker.conf
+      - rocketmq-5-store:/home/rocketmq/store
+      - ./docker/rocketmq/broker.conf:/home/rocketmq/conf/broker.conf:ro
 
   minio:
-    image: minio/minio:latest
+    image: ecommerce-local/minio:RELEASE.2025-10-15T17-29-55Z
+    build: ./docker/minio
     container_name: ecommerce-minio
     restart: unless-stopped
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minioadmin
     command: server /data --console-address ":9001"
     volumes:
-      - minio-data:/data
+      - minio-2025-data:/data
 
   elasticsearch:
-    image: elasticsearch:7.17.28
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.7
     container_name: ecommerce-es
     restart: unless-stopped
     ports:
-      - "9200:9200"
+      - "127.0.0.1:9200:9200"
     environment:
       discovery.type: single-node
       ES_JAVA_OPTS: -Xms512m -Xmx512m
       xpack.security.enabled: "false"
     volumes:
-      - es-data:/usr/share/elasticsearch/data
+      - es-9-data:/usr/share/elasticsearch/data
 
   milvus:
-    image: milvusdb/milvus:v2.4.0
+    image: milvusdb/milvus:v3.0.6
     container_name: ecommerce-milvus
     restart: unless-stopped
     command: ["milvus", "run", "standalone"]
     ports:
-      - "19530:19530"
-      - "9091:9091"
+      - "127.0.0.1:19530:19530"
+      - "127.0.0.1:9091:9091"
     environment:
       ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      ETCD_CONFIG_PATH: /milvus/configs/embedEtcd.yaml
+      DEPLOY_MODE: STANDALONE
       COMMON_STORAGETYPE: local
     volumes:
-      - milvus-data:/var/lib/milvus
+      - milvus-3-data:/var/lib/milvus
+      - ./docker/milvus/embed-etcd.yml:/milvus/configs/embedEtcd.yaml:ro
 
 volumes:
-  mysql-data:
-  redis-data:
-  nacos-data:
+  mysql-26-data:
+  redis-8-data:
+  nacos-3-data:
   rocketmq-namesrv-data:
   rocketmq-broker-data:
-  minio-data:
-  es-data:
-  milvus-data:
+  rocketmq-5-store:
+  minio-2025-data:
+  es-9-data:
+  milvus-3-data:

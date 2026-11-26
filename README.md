@@ -34,13 +34,13 @@
 | Java | 21 | 运行时 |
 | Spring Boot | 4.2.0 | 主工程基础框架 |
 | Spring Cloud | 2026.0.0 | 微服务治理 |
-| Spring Cloud Alibaba Nacos | 2025.1.0.0 / 2.4.0 | 注册中心与配置中心 |
+| Spring Cloud Alibaba Nacos | 2025.1.0.0 / 3.3.0 | 注册中心与配置中心 |
 | MyBatis-Plus | 3.5.18.1 | ORM |
-| MySQL | 8.0.33 / 8.0 | 关系型数据库 |
-| Redis | 7.2 | 缓存 |
-| RocketMQ | 5.2.0 / 2.3.0 | 消息队列 |
-| Elasticsearch | 7.17.28 / 8.16.0 | 商品搜索 |
-| MinIO | latest / 8.6.0 | 对象存储 |
+| MySQL | 26.10.0.1 / Connector/J 26.10.0 | 关系型数据库 |
+| Redis | 8.12.0 | 缓存 |
+| RocketMQ | 5.5.1 / Spring Starter 2.3.0 | 消息队列 |
+| Elasticsearch | 9.5.7 / Java Client 9.5.7 | 商品搜索 |
+| MinIO | RELEASE.2025-10-15T17-29-55Z / Java SDK 8.6.0 | 对象存储 |
 | Druid | 1.2.28 | 数据源与 SQL 监控 |
 | JJWT | 0.12.6 | JWT |
 | Spring Boot Admin | 4.0.4 | 服务监控 |
@@ -54,8 +54,8 @@
 | Spring Boot | 4.2.0 | 知识库服务基础框架 |
 | Spring Cloud | 2026.0.0 | 微服务能力 |
 | LangChain4j | 1.14.1 | RAG 与 Agent 编排 |
-| Milvus | 2.4.0 | 向量数据库 |
-| Ollama | latest | 本地 Embedding 服务 |
+| Milvus | 3.0.6 | 向量数据库 |
+| Ollama | 0.40.18（本地验证版本） | 本地 Embedding 服务 |
 | BGE-M3 | latest | Embedding 模型，默认 `1024` 维 |
 | DeepSeek Chat | `deepseek-chat` | LLM 对话模型 |
 
@@ -147,12 +147,12 @@ graph TB
     end
 
     subgraph Infra["基础设施层 (Docker Compose)"]
-        MYSQL["MySQL 8.0<br/>:3306<br/>12个业务数据库"]
-        MILVUS["Milvus 2.4.0<br/>:19530<br/>向量数据库"]
-        REDIS["Redis 7.2<br/>:6379<br/>购物车/秒杀缓存"]
-        NACOS["Nacos 2.4.0<br/>:8848<br/>服务注册与发现"]
-        MQ["RocketMQ 5.2.0<br/>:9876<br/>异步消息"]
-        ES["Elasticsearch 7.17<br/>:9200<br/>商品搜索"]
+        MYSQL["MySQL 26.10<br/>:3306<br/>业务数据库"]
+        MILVUS["Milvus 3.0.6<br/>:19530<br/>向量数据库"]
+        REDIS["Redis 8.12.0<br/>:6379<br/>购物车/秒杀缓存"]
+        NACOS["Nacos 3.3.0<br/>:8848<br/>服务注册与发现"]
+        MQ["RocketMQ 5.5.1<br/>:9876<br/>异步消息"]
+        ES["Elasticsearch 9.5.7<br/>:9200<br/>商品搜索"]
         MINIO["MinIO<br/>:9000<br/>对象存储"]
     end
 
@@ -579,7 +579,7 @@ sequenceDiagram
 |---|---|---|
 | MySQL | 3306 | `root / root` |
 | Redis | 6379 | 密码 `root` |
-| Nacos | 8848 / 9848 | `nacos / nacos` |
+| Nacos | 8848 / 9848（服务端），8849（控制台） | 首次打开控制台时初始化 `nacos` 密码 |
 | RocketMQ NameServer | 9876 | - |
 | RocketMQ Broker | 10911 / 10909 | - |
 | MinIO API | 9000 | `minio / minioadmin` |
@@ -623,7 +623,7 @@ Windows PowerShell：
 脚本会完成这些事情：
 
 - `docker compose up -d`
-- 等待 MySQL、Redis、Nacos、RocketMQ、Elasticsearch、MinIO 就绪
+- 等待 MySQL、Redis、Nacos、RocketMQ、Elasticsearch、MinIO、Milvus 就绪
 - 创建 RocketMQ topics
 - 执行 `docs/init.sql`
 
@@ -632,6 +632,8 @@ Windows PowerShell：
 ```bash
 docker compose up -d
 ```
+
+首次启动会构建 RocketMQ 和 MinIO 镜像。中间件端口绑定在本机 `127.0.0.1`。已有旧版数据时，先阅读[中间件升级指南](docs/middleware-upgrade.md)。
 
 然后初始化主工程数据库：
 
@@ -821,7 +823,7 @@ python ecommerce-knowledge/sql/seed_data.py
 | 平台知识库管理 | http://localhost:5173/knowledge |
 | 商家知识库管理 | http://localhost:5173/merchant/knowledge |
 | API Gateway | http://localhost:8080 |
-| Nacos | http://localhost:8848/nacos |
+| Nacos | http://127.0.0.1:8849/ |
 | MinIO Console | http://localhost:9001 |
 | Elasticsearch | http://localhost:9200 |
 | Spring Boot Admin | http://localhost:8094/admin |

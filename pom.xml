@@ -39,12 +39,12 @@
         <mybatis-plus.version>3.5.18.1</mybatis-plus.version>
         <hutool.version>5.8.44</hutool.version>
         <jjwt.version>0.12.6</jjwt.version>
-        <mysql.version>8.0.33</mysql.version>
+        <mysql.version>26.10.0</mysql.version>
         <minio.version>8.6.0</minio.version>
         <nacos.version>2025.1.0.0</nacos.version>
         <rocketmq.version>2.3.0</rocketmq.version>
         <lombok.version>1.18.46</lombok.version>
-        <elasticsearch.version>8.16.0</elasticsearch.version>
+        <elasticsearch.version>9.5.7</elasticsearch.version>
         <druid.version>1.2.28</druid.version>
         <spring-boot-admin.version>4.0.4</spring-boot-admin.version>
         <langchain4j.version>1.14.1</langchain4j.version>

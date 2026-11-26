@@ -32,11 +32,11 @@ until docker exec ecommerce-redis redis-cli -a root ping 2>/dev/null | grep -q P
 echo "OK"
 
 echo -n "  Nacos ... "
-until curl -s http://localhost:8848/nacos/v1/console/health/readiness 2>/dev/null | grep -q "ok"; do sleep 3; done
+until curl --noproxy '*' -fsS http://127.0.0.1:8848/nacos/v3/admin/core/state/readiness 2>/dev/null | grep -q '"data":"ok"'; do sleep 3; done
 echo "OK"
 
 echo -n "  RocketMQ NameServer ... "
-until docker logs ecommerce-rmq-namesrv 2>/dev/null | grep -q "Started"; do sleep 3; done
+until docker exec ecommerce-rmq-namesrv sh mqadmin clusterList -n 127.0.0.1:9876 >/dev/null 2>&1; do sleep 3; done
 echo "OK"
 
 echo -n "  RocketMQ Broker ... "
@@ -44,11 +44,15 @@ until docker exec ecommerce-rmq-broker ./mqadmin clusterList -n rocketmq-namesrv
 echo "OK"
 
 echo -n "  Elasticsearch ... "
-until curl -s http://localhost:9200/_cluster/health 2>/dev/null | grep -q '"status"'; do sleep 3; done
+until curl --noproxy '*' -fsS http://127.0.0.1:9200/_cluster/health 2>/dev/null | grep -q '"status"'; do sleep 3; done
 echo "OK"
 
 echo -n "  MinIO ... "
-until curl -s http://localhost:9000/minio/health/live 2>/dev/null | grep -q "OK"; do sleep 2; done
+until curl --noproxy '*' -fsS -o /dev/null http://127.0.0.1:9000/minio/health/live 2>/dev/null; do sleep 2; done
+echo "OK"
+
+echo -n "  Milvus ... "
+until curl --noproxy '*' -fsS -o /dev/null http://127.0.0.1:9091/healthz 2>/dev/null; do sleep 2; done
 echo "OK"
 
 # --------------- RocketMQ Topics ---------------
@@ -85,7 +89,7 @@ echo "========================================"
 echo "  中间件全部就绪！"
 echo ""
 echo "  访问地址:"
-echo "    Nacos:    http://localhost:8848/nacos"
+echo "    Nacos:    http://127.0.0.1:8849/"
 echo "    MinIO:    http://localhost:9001"
 echo "    ES:       http://localhost:9200"
 echo "    Druid:    http://localhost:{服务端口}/druid/sql.html"
