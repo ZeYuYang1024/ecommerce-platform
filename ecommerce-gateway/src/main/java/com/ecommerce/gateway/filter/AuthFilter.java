@@ -31,10 +31,13 @@ public class AuthFilter implements GlobalFilter, Ordered {
             "/api/v1/categories",
             "/api/v1/reviews",
             "/api/v1/files",
-            "/api/v1/search",
-            "/api/v1/coupons"
+            "/api/v1/search"
     );
 
+    private static final String COUPONS_PATH = "/api/v1/coupons";
+    private static final String USER_ID_HEADER = "X-User-Id";
+    private static final String USER_TYPE_HEADER = "X-User-Type";
+    private static final String MERCHANT_ID_HEADER = "X-Merchant-Id";
     private static final Set<String> WRITE_METHODS = Set.of("POST", "PUT", "DELETE", "PATCH");
 
     @Override
@@ -47,7 +50,15 @@ public class AuthFilter implements GlobalFilter, Ordered {
         }
 
         boolean isAdminPath = path.startsWith("/api/v1/admin");
+        String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
         if (!isAdminPath && "GET".equalsIgnoreCase(method)) {
+            // The legacy list uses the authenticated identity when the caller supplies a token.
+            if ((COUPONS_PATH + "/available").equals(path) || (COUPONS_PATH.equals(path) && authHeader == null)) {
+                ServerWebExchange anonymous = exchange.mutate()
+                        .request(request -> request.headers(this::removeIdentityHeaders))
+                        .build();
+                return chain.filter(anonymous);
+            }
             for (String prefix : PUBLIC_GET_PREFIXES) {
                 if (path.startsWith(prefix)) {
                     return chain.filter(exchange);
@@ -55,7 +66,6 @@ public class AuthFilter implements GlobalFilter, Ordered {
             }
         }
 
-        String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
@@ -70,13 +80,14 @@ public class AuthFilter implements GlobalFilter, Ordered {
             Long merchantId = merchantIdClaim instanceof Number number ? number.longValue() : null;
 
             exchange = exchange.mutate()
-                    .request(request -> {
-                        request.header("X-User-Id", String.valueOf(userId));
-                        request.header("X-User-Type", userType != null ? userType : "user");
+                    .request(request -> request.headers(headers -> {
+                        removeIdentityHeaders(headers);
+                        headers.set(USER_ID_HEADER, String.valueOf(userId));
+                        headers.set(USER_TYPE_HEADER, userType != null ? userType : "user");
                         if (merchantId != null) {
-                            request.header("X-Merchant-Id", String.valueOf(merchantId));
+                            headers.set(MERCHANT_ID_HEADER, String.valueOf(merchantId));
                         }
-                    })
+                    }))
                     .build();
 
             if (isAdminPath && !"admin".equals(claims.get("role"))) {
@@ -101,6 +112,12 @@ public class AuthFilter implements GlobalFilter, Ordered {
     @Override
     public int getOrder() {
         return -100;
+    }
+
+    private void removeIdentityHeaders(HttpHeaders headers) {
+        headers.remove(USER_ID_HEADER);
+        headers.remove(USER_TYPE_HEADER);
+        headers.remove(MERCHANT_ID_HEADER);
     }
 
     private boolean isAllowedAdminRoute(String userType, String method, String path) {

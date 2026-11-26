@@ -21,7 +21,7 @@
 
     <section>
       <h2 class="text-lg font-semibold text-gray-800 mb-4">我的优惠券</h2>
-      <div v-if="!auth.isLogin" class="text-center py-8 text-gray-400">请先登录</div>
+      <div v-if="!auth.isLoggedIn" class="text-center py-8 text-gray-400">请先登录</div>
       <div v-else-if="myCoupons.length===0" class="text-center py-8 text-gray-400">暂无优惠券</div>
       <div v-else class="grid gap-4">
         <div v-for="c in myCoupons" :key="c.userCouponId" class="bg-white rounded-2xl border border-gray-100 p-5 flex justify-between items-center" :class="{'opacity-50': c.status !== 0}">
@@ -60,14 +60,14 @@ function statusLabel(s: number) { return ['可使用','已使用','已过期'][s
 
 onMounted(async () => {
   await fetchAvailable()
-  if (auth.isLogin) await fetchMy()
+  if (auth.isLoggedIn) await fetchMy()
 })
 
 async function fetchAvailable() {
   loading.value = true
   try {
     const api = useApi()
-    const res: any = await api.get('/coupons', { page: availablePage.value, size: size.value })
+    const res: any = await api.get('/coupons/available', { page: availablePage.value, size: size.value })
     if (res.code === 200) {
       available.value = res.data?.records || []
       availableTotal.value = res.data?.total || 0
@@ -78,7 +78,7 @@ async function fetchAvailable() {
 async function fetchMy() {
   const api = useApi()
   try {
-    const res: any = await api.get('/coupons', { page: myPage.value, size: size.value })
+    const res: any = await api.get('/coupons/mine', { page: myPage.value, size: size.value })
     if (res.code === 200) {
       myCoupons.value = res.data?.records || []
       myTotal.value = res.data?.total || 0
@@ -87,11 +87,16 @@ async function fetchMy() {
 }
 
 async function claim(templateId: number) {
-  if (!auth.isLogin) { navigateTo('/login'); return }
+  if (!auth.isLoggedIn) { navigateTo('/login'); return }
   try {
     const api = useApi()
-    await api.post(`/coupons/claim?templateId=${templateId}`)
+    const res: any = await api.post(`/coupons/claim?templateId=${templateId}`)
+    if (res.code !== 200) {
+      alert(res.message || '领取失败')
+      return
+    }
     alert('领取成功')
+    await Promise.all([fetchAvailable(), fetchMy()])
   } catch { alert('领取失败') }
 }
 </script>

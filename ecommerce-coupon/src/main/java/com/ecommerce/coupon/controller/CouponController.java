@@ -23,14 +23,31 @@ public class CouponController {
     }
 
     @GetMapping("/coupons")
-    public Result<Page<CouponVO>> myCoupons(@RequestParam(required = false) Integer status,
-                                             @RequestParam(defaultValue = "1") int page,
-                                             @RequestParam(defaultValue = "10") int size,
-                                             @RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        if (userId != null) {
-            return Result.ok(couponService.listUserCoupons(userId, status, page, size));
+    public Result<Page<CouponVO>> legacyCoupons(@RequestParam(required = false) Integer status,
+                                                @RequestParam(defaultValue = "1") int page,
+                                                @RequestParam(defaultValue = "10") int size,
+                                                @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) {
+            return availableCoupons(page, size);
         }
+        return myCoupons(status, page, size, userId);
+    }
+
+    @GetMapping("/coupons/available")
+    public Result<Page<CouponVO>> availableCoupons(@RequestParam(defaultValue = "1") int page,
+                                                    @RequestParam(defaultValue = "10") int size) {
         return Result.ok(couponService.listAvailableCoupons(page, size));
+    }
+
+    @GetMapping("/coupons/mine")
+    public Result<Page<CouponVO>> myCoupons(@RequestParam(required = false) Integer status,
+                                            @RequestParam(defaultValue = "1") int page,
+                                            @RequestParam(defaultValue = "10") int size,
+                                            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) {
+            return Result.fail(401, "unauthorized");
+        }
+        return Result.ok(couponService.listUserCoupons(userId, status, page, size));
     }
 
     @GetMapping("/coupons/mine/summaries")

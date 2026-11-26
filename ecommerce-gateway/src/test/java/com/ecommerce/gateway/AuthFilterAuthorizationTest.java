@@ -3,6 +3,8 @@ package com.ecommerce.gateway;
 import com.ecommerce.common.util.JwtUtils;
 import com.ecommerce.gateway.filter.AuthFilter;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -162,6 +164,49 @@ class AuthFilterAuthorizationTest {
         assertThat(chain.invoked).isFalse();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/v1/coupons", "/api/v1/coupons/available"})
+    void guestsCanReadAvailableCouponsWithoutInjectingAnIdentity(String path) {
+        RecordingChain chain = new RecordingChain();
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get(path).header("X-User-Id", "999"));
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(chain.invoked).isTrue();
+        assertThat(chain.headers.getFirst("X-User-Id")).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/v1/coupons/mine", "/api/v1/coupons/mine/summaries",
+            "/api/v1/coupons/available/extra"})
+    void privateCouponRoutesRequireAuthentication(String path) {
+        RecordingChain chain = new RecordingChain();
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get(path).header("X-User-Id", "999"));
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(chain.invoked).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/v1/coupons", "/api/v1/coupons/mine", "/api/v1/coupons/mine/summaries"})
+    void authenticatedCouponReadsUseOnlyTheJwtIdentity(String path) {
+        RecordingChain chain = new RecordingChain();
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get(path)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + JwtUtils.generate(42L, "customer", "user", "user", null))
+                .header("X-User-Id", "999", "1000")
+                .header("X-Merchant-Id", "999"));
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(chain.invoked).isTrue();
+        assertThat(chain.headers.get("X-User-Id")).containsExactly("42");
+        assertThat(chain.headers.getFirst("X-Merchant-Id")).isNull();
+    }
+
     private MockServerWebExchange exchange(String method, String path, String token) {
         MockServerHttpRequest request = MockServerHttpRequest.method(HttpMethod.valueOf(method), path)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
@@ -171,10 +216,12 @@ class AuthFilterAuthorizationTest {
 
     private static final class RecordingChain implements GatewayFilterChain {
         private boolean invoked;
+        private HttpHeaders headers;
 
         @Override
         public Mono<Void> filter(ServerWebExchange exchange) {
             this.invoked = true;
+            this.headers = exchange.getRequest().getHeaders();
             return Mono.empty();
         }
     }
