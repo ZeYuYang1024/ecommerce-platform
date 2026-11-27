@@ -6,6 +6,7 @@ import com.ecommerce.common.constant.OrderStatus;
 import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.OrderItemMessage;
 import com.ecommerce.common.dto.OrderPaidMessage;
+import com.ecommerce.common.dto.RecommendationSignal;
 import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.common.outbox.OutboxMessage;
 import com.ecommerce.common.outbox.OutboxQuery;
@@ -50,6 +51,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.time.ZoneId;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -334,6 +336,23 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_PENDING);
         }
         releaseReservedPointsIfPendingCancellation(order, currentStatus, status, "STATUS_UPDATE_CANCELLED");
+    }
+
+    @Override
+    @Transactional
+    public boolean confirmPayment(Order order, OrderPaidMessage message) {
+        if (!orderMapper.transitionStatus(order.getId(), OrderStatus.PENDING, OrderStatus.PAID)) return false;
+        List<Long> spuIds = itemMapper.selectList(new LambdaQueryWrapper<OrderItem>()
+                        .select(OrderItem::getSpuId).eq(OrderItem::getOrderId, order.getId())).stream()
+                .map(OrderItem::getSpuId).filter(Objects::nonNull).distinct().toList();
+        if (!spuIds.isEmpty()) {
+            long occurredAt = message.getPaidAt() == null ? System.currentTimeMillis()
+                    : message.getPaidAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            outboxService.enqueue("order", order.getOrderNo(), RecommendationSignal.TOPIC,
+                    new RecommendationSignal(order.getOrderNo(), RecommendationSignal.Type.PAID,
+                            order.getUserId(), spuIds, null, occurredAt));
+        }
+        return true;
     }
 
     @Override

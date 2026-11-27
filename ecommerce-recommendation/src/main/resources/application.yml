@@ -1,0 +1,34 @@
+server:
+  address: ${RECOMMENDATION_BIND_ADDRESS:127.0.0.1}
+  port: 8099
+spring:
+  application:
+    name: ecommerce-recommendation
+  datasource:
+    url: ${RECOMMENDATION_DB_URL:jdbc:mysql://localhost:3306/ecommerce_recommendation?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true}
+    username: ${RECOMMENDATION_DB_USER:root}
+    password: ${RECOMMENDATION_DB_PASSWORD:root}
+  data:
+    redis:
+      host: ${RECOMMENDATION_REDIS_HOST:localhost}
+      port: ${RECOMMENDATION_REDIS_PORT:6379}
+      password: ${RECOMMENDATION_REDIS_PASSWORD:root}
+      timeout: 1s
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 600
+            readTimeout: 1200
+rocketmq:
+  name-server: ${ROCKETMQ_NAME_SERVER:localhost:9876}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

@@ -1,6 +1,7 @@
 package com.ecommerce.product.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.dto.RecommendationProduct;
 import com.ecommerce.product.dto.request.CreateProductRequest;
 import com.ecommerce.product.dto.response.ProductDetailVO;
 import com.ecommerce.product.dto.response.SpuVO;
@@ -25,6 +26,7 @@ public interface ProductService {
     List<Spu> getSpusByIds(List<Long> ids);
     ProductDetailVO getProductDetail(Long id);
     SpuVO toSpuVO(Spu spu);
+    List<RecommendationProduct> recommendationProducts(RecommendationProduct.Query query);
     Spu createProduct(CreateProductRequest request);
     Spu updateSpu(Spu spu);
     void updateStatus(Long id, Integer status);

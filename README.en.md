@@ -115,6 +115,7 @@ Use these steps with **fresh data volumes**. For an existing installation, back 
 
   db < docs/init.sql
   db < ecommerce-knowledge/sql/init.sql
+  db < ecommerce-recommendation/sql/init.sql
   db < "$migrations/2026-05-17-merchant-marketing-tenant-columns.sql"
   db ecommerce_inventory < "$migrations/2026-05-28-inventory-event-log.sql"
   db < "$migrations/2026-06-01-member-init.sql"
@@ -147,6 +148,7 @@ function Import-ProjectSql([string]$Path, [string]$Schema) {
 $migrations = 'docs/sql/migrations'
 Import-ProjectSql 'docs/init.sql'
 Import-ProjectSql 'ecommerce-knowledge/sql/init.sql'
+Import-ProjectSql 'ecommerce-recommendation/sql/init.sql'
 Import-ProjectSql "$migrations/2026-05-17-merchant-marketing-tenant-columns.sql"
 Import-ProjectSql "$migrations/2026-05-28-inventory-event-log.sql" ecommerce_inventory
 Import-ProjectSql "$migrations/2026-06-01-member-init.sql"
@@ -166,16 +168,16 @@ foreach ($schema in 'ecommerce_inventory', 'ecommerce_order', 'ecommerce_payment
 docker compose exec -T mysql mysql -uroot -proot -Nse "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'ecommerce%';"
 ```
 
-The final command should list **15 `ecommerce_*` databases**. The initial schema already includes the unique payment order index, so skip `2026-05-29-payment-order-unique.sql` on a fresh install. The member service initializes membership levels at startup. The knowledge SQL creates its database and categories even if you start the knowledge service later.
+The final command should list **16 `ecommerce_*` databases**. The initial schema already includes the unique payment order index, so skip `2026-05-29-payment-order-unique.sql` on a fresh install. The member service initializes membership levels at startup. The knowledge SQL creates its database and categories even if you start the knowledge service later.
 
-After `clusterList` shows the Broker, create the 13 application topics. The commands configure four read queues and four write queues per topic.
+After `clusterList` shows the Broker, create the 14 application topics. The commands configure four read queues and four write queues per topic.
 
 **Linux/macOS (Bash)**
 
 ```bash
 (
   set -e
-  for topic in order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed; do
+  for topic in order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal; do
     docker compose exec -T rocketmq-broker sh mqadmin updateTopic -n rocketmq-namesrv:9876 -c DefaultCluster -t "$topic" -r 4 -w 4
   done
   docker compose exec -T rocketmq-broker sh mqadmin topicList -n rocketmq-namesrv:9876
@@ -185,7 +187,7 @@ After `clusterList` shows the Broker, create the 13 application topics. The comm
 **Windows (PowerShell)**
 
 ```powershell
-$topics = 'order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed'.Split(' ')
+$topics = 'order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal'.Split(' ')
 foreach ($topic in $topics) {
   docker compose exec -T rocketmq-broker sh mqadmin updateTopic -n rocketmq-namesrv:9876 -c DefaultCluster -t $topic -r 4 -w 4
   if ($LASTEXITCODE -ne 0) { throw "Topic creation failed: $topic" }
@@ -258,7 +260,7 @@ Build the Maven reactor from the repository root. Each service gets a runnable J
 mvn '-Dmaven.test.skip=true' clean package
 ```
 
-Use a dedicated terminal in the repository root. For chat, set the DeepSeek key in that terminal before starting the services. The blocks below start **18 services** by default. Enable the knowledge flag after configuring Ollama to start all **19**. Logs go to `.build-local/`. The commands set logistics to port `8098` so it can run alongside membership on `8096`, register loopback addresses with Nacos, and supply the development Redis password.
+Use a dedicated terminal in the repository root. For chat, set the DeepSeek key in that terminal before starting the services. The blocks below start **19 services** by default. Enable the knowledge flag after configuring Ollama to start all **20**. Logs go to `.build-local/`. The commands set logistics to port `8098` so it can run alongside membership on `8096`, register loopback addresses with Nacos, and supply the development Redis password.
 
 **Linux/macOS (Bash)**
 
@@ -268,7 +270,7 @@ repo="$PWD"
 log_dir="$repo/.build-local"
 mkdir -p "$log_dir"
 
-modules=(auth user product inventory cart order payment merchant coupon notification file search seckill member warehouse logistics monitor)
+modules=(auth user product inventory cart order payment merchant coupon notification file search recommendation seckill member warehouse logistics monitor)
 if [[ "$with_knowledge" == 1 ]]; then modules+=(knowledge); fi
 modules+=(gateway)
 
@@ -292,7 +294,7 @@ $withKnowledge = $false   # $true = enable AI knowledge service
 $repo = (Get-Location).Path
 $logDir = Join-Path $repo '.build-local'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-$modules = 'auth user product inventory cart order payment merchant coupon notification file search seckill member warehouse logistics monitor'.Split(' ')
+$modules = 'auth user product inventory cart order payment merchant coupon notification file search recommendation seckill member warehouse logistics monitor'.Split(' ')
 if ($withKnowledge) { $modules += 'knowledge' }
 $modules += 'gateway'
 
@@ -398,11 +400,38 @@ curl --noproxy "*" -fsS http://127.0.0.1:9200/products/_count
 curl --noproxy "*" -fsS "http://127.0.0.1:8080/api/v1/search?page=1&size=5&sort=price_asc"
 ```
 
-### 8. Optional: run the WeChat Mini Program
+### 8. Try personalized recommendations and start the data lake
+
+The Java launch commands also start the recommendation service on port `8099`. Guests and new accounts see recently listed items that are in stock. Sign in, browse several products in one category or add one to your cart, then return to the homepage to see the ranking change. Try two accounts with different browsing histories to see how their recommendations differ.
+
+To add the feature to an existing local database, import the recommendation schema and create its RocketMQ topic. You can rerun the initialization SQL.
+
+```bash
+docker compose exec -T mysql mysql -uroot -proot < ecommerce-recommendation/sql/init.sql
+docker compose exec -T rocketmq-broker sh mqadmin updateTopic -n rocketmq-namesrv:9876 -c DefaultCluster -t recommendation-signal -r 4 -w 4
+```
+
+In PowerShell, use `Get-Content -Raw ecommerce-recommendation/sql/init.sql | docker compose exec -T mysql mysql -uroot -proot`. Rebuild and restart product, cart, order, and gateway, then start recommendation. Build and launch the optional offline worker with the following commands. The first build installs DuckDB 2.0.1 from PyPI and downloads its matching `httpfs` extension.
+
+```bash
+docker compose --profile recommendation-lake up -d --build recommendation-lake
+docker compose logs -f recommendation-lake
+```
+
+The worker runs at startup and every 900 seconds. It creates a private `ecommerce-recommendation-lake` bucket on the existing MinIO instance, writes Parquet by UTC event date, and publishes user category preferences, related products, and click-through rates to the recommendation database. The online service caches those preferences and related products in Redis as it reads them. Set `RECOMMENDATION_LAKE_INTERVAL_SECONDS` to change the interval. See [Docker Compose](docker-compose.yml) for connection settings.
+
+```bash
+docker compose --profile recommendation-lake run --rm --no-deps recommendation-lake --once
+docker compose exec -T mysql mysql -uroot -proot ecommerce_recommendation -e "SELECT * FROM recommendation_daily_report ORDER BY event_date DESC;"
+```
+
+The report counts visible recommendation cards and their corresponding clicks for signed-in users. A related-product pair needs at least two users who viewed, added to cart, or paid for both products. The homepage continues to use recent activity when the worker is paused.
+
+### 9. Optional: run the WeChat Mini Program
 
 Open [ecommerce-miniprogram](ecommerce-miniprogram/) in HBuilderX. Set your WeChat Mini Program AppID in [manifest.json](ecommerce-miniprogram/manifest.json) and install WeChat Developer Tools. Set the gateway in [utils/api.js](ecommerce-miniprogram/utils/api.js) to an address reachable from the debugger. For H5 development, also change the proxy target in [vite.config.js](ecommerce-miniprogram/vite.config.js). The loopback addresses in this guide are for local development. A physical phone cannot use its own `localhost` to reach services on your computer.
 
-### 9. Stop, restart, and troubleshoot
+### 10. Stop, restart, and troubleshoot
 
 Press `Ctrl+C` in each frontend terminal. Stop the Java processes from the **same shell session** that started them:
 
@@ -440,11 +469,13 @@ docker compose --progress plain build --build-arg HTTP_PROXY="$HTTP_PROXY" --bui
 | 8086 | Cart | 8096 | Membership |
 | 8087 | Merchant | 8097 | Warehouse |
 | 8088 | Coupon | 8098 | Logistics, with the launch override |
-| 8089 | Notification | 11434 | Ollama |
+| 8089 | Notification | 8099 | Recommendation |
+| 11434 | Ollama | | |
 
 ## Explore the code
 
 - Start with [the root Maven project](pom.xml) and the [gateway route configuration](ecommerce-gateway/src/main/resources/application.yml) to follow requests from the frontends to each service.
 - To follow checkout, read [order](ecommerce-order/), [inventory](ecommerce-inventory/), and [payment](ecommerce-payment/) together with the [Outbox SQL](docs/sql/migrations/2026-05-28-transactional-outbox.sql).
+- For personalized recommendations, see [the recommendation service](ecommerce-recommendation/) and [the data lake job](docker/recommendation-lake/).
 - To follow retrieval, start with the [knowledge service](ecommerce-knowledge/) and its [database schema](ecommerce-knowledge/sql/init.sql).
 - For diagrams and business sequences, see the [Chinese architecture overview](README.md#系统架构图). For volume and data migration details, see the [middleware upgrade guide](docs/middleware-upgrade.md).

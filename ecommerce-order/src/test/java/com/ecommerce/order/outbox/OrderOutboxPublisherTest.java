@@ -1,6 +1,7 @@
 package com.ecommerce.order.outbox;
 
 import com.ecommerce.common.dto.OrderInventoryMessage;
+import com.ecommerce.common.dto.RecommendationSignal;
 import com.ecommerce.common.outbox.OutboxMessage;
 import com.ecommerce.common.outbox.OutboxService;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
@@ -53,6 +54,23 @@ class OrderOutboxPublisherTest {
         publisher.publishPending();
 
         verify(rocketMQTemplate).syncSend(eq("order-created"), any(OrderInventoryMessage.class));
+        verify(outboxService).markSent(1L);
+    }
+
+    @Test
+    void publishPendingShouldSendRecommendationPayloadForItsTopic() {
+        var signal = new RecommendationSignal("ORD-1", RecommendationSignal.Type.PAID, 2L, List.of(3L), null, 4L);
+        var mapper = JsonMapper.builder().build();
+        var message = new OutboxMessage();
+        message.setId(1L);
+        message.setTopic(RecommendationSignal.TOPIC);
+        message.setPayloadJson(mapper.writeValueAsString(signal));
+        when(outboxService.loadPendingBatch(50)).thenReturn(List.of(message));
+        when(outboxService.markSending(1L)).thenReturn(true);
+
+        new OrderOutboxPublisher(outboxService, rocketMQTemplate, mapper, 50).publishPending();
+
+        verify(rocketMQTemplate).syncSend(RecommendationSignal.TOPIC, signal);
         verify(outboxService).markSent(1L);
     }
 

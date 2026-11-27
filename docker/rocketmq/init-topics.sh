@@ -20,6 +20,7 @@ TOPICS=(
     "order-paid:4"
     "product-created:4"
     "merchant-approved:4"
+    "recommendation-signal:4"
 )
 
 for entry in "${TOPICS[@]}"; do

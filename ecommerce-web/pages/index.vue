@@ -25,21 +25,84 @@
         <ProductCard v-for="p in products" :key="p.id" :product="p" />
       </div>
     </section>
+
+    <section v-if="feed?.items.length" ref="recommendationSection" class="max-w-7xl mx-auto px-4 pb-16">
+      <h2 class="mb-8 text-2xl font-bold text-gray-900">猜你喜欢</h2>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+        <ProductCard
+          v-for="p in feed.items"
+          :key="p.id"
+          :product="p"
+          :data-recommendation-id="p.id"
+          @click="recordClick(p.id)"
+        />
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
+import type { RecommendationFeed } from '~/composables/useRecommendation'
+
 const keyword = ref('')
 const products = ref<any[]>([])
 const loading = ref(true)
 const router = useRouter()
+const auth = useAuthStore()
+const recommendation = useRecommendation()
+const feed = ref<RecommendationFeed>()
+const recommendationSection = ref<HTMLElement>()
+let request: AbortController | undefined
+let observer: IntersectionObserver | undefined
+
+async function refreshRecommendations() {
+  request?.abort()
+  observer?.disconnect()
+  feed.value = undefined
+  const currentRequest = new AbortController()
+  request = currentRequest
+  const timeout = window.setTimeout(() => currentRequest.abort(), 2800)
+  try {
+    const result = await recommendation.load(currentRequest.signal)
+    if (currentRequest.signal.aborted || request !== currentRequest || !result) return
+    feed.value = result
+    await nextTick()
+    if (!result.requestId || request !== currentRequest || !recommendationSection.value) return
+    const requestId = result.requestId
+    observer = new IntersectionObserver((entries, activeObserver) => {
+      if (request !== currentRequest) return
+      const visible = entries.filter(entry => entry.isIntersecting && entry.intersectionRatio >= 0.5)
+      recommendation.record(visible.flatMap(entry => {
+        activeObserver.unobserve(entry.target)
+        const spuId = (entry.target as HTMLElement).dataset.recommendationId
+        return spuId ? [{ type: 'IMPRESSION', spuId, requestId }] : []
+      }))
+    }, { threshold: 0.5 })
+    recommendationSection.value.querySelectorAll('[data-recommendation-id]').forEach(card => observer?.observe(card))
+  } catch {
+    // The regular product list remains available when recommendations time out.
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
+function recordClick(spuId: string) {
+  const requestId = feed.value?.requestId
+  if (requestId) recommendation.record([{ type: 'IMPRESSION', requestId, spuId }, { type: 'CLICK', requestId, spuId }])
+}
 
 onMounted(async () => {
+  watch(() => auth.token, refreshRecommendations, { immediate: true })
   try {
     const api = useApi()
     const res: any = await api.get('/products?page=1&size=12')
     if (res.code === 200) products.value = res.data?.records || []
   } finally { loading.value = false }
+})
+
+onBeforeUnmount(() => {
+  request?.abort()
+  observer?.disconnect()
 })
 
 function search() {

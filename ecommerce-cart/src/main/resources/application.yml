@@ -13,6 +13,11 @@ spring:
       discovery:
         server-addr: localhost:8848
 
+rocketmq:
+  name-server: ${ROCKETMQ_NAME_SERVER:localhost:9876}
+  producer:
+    group: ecommerce-cart-recommendation
+
 management:
   endpoints:
     web:

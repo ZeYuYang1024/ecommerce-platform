@@ -26,6 +26,7 @@ public interface OrderService {
     List<Order> listForRecon(LocalDateTime start, LocalDateTime end);
     void updateStatus(Long id, Integer status, String userType, Long merchantId);
     void applyInventoryCompensation(OrderPaidMessage message);
+    boolean confirmPayment(Order order, OrderPaidMessage message);
     Page<OutboxMessageVO> listOutbox(OutboxQuery query, int page, int size);
     OutboxSummary getOutboxSummary(OutboxQuery query);
     int retryOutboxMessage(Long messageId);

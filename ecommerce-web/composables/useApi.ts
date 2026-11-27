@@ -58,7 +58,7 @@ export const useApi = () => {
   }
 
   return {
-    get: <T>(path: string, params?: Record<string, any>) => {
+    get: <T>(path: string, params?: Record<string, any>, options?: RequestInit) => {
       let url = path
       if (params) {
         const qs = Object.entries(params)
@@ -67,7 +67,7 @@ export const useApi = () => {
           .join('&')
         if (qs) url += (path.includes('?') ? '&' : '?') + qs
       }
-      return request<T>(url)
+      return request<T>(url, options)
     },
     post: <T>(path: string, body?: any) => request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
     put: <T>(path: string, body?: any) => request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),

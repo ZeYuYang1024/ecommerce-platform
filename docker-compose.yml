@@ -121,6 +121,22 @@ services:
       - milvus-3-data:/var/lib/milvus
       - ./docker/milvus/embed-etcd.yml:/milvus/configs/embedEtcd.yaml:ro
 
+  recommendation-lake:
+    image: ecommerce-local/recommendation-lake:duckdb-2.0.1
+    build: ./docker/recommendation-lake
+    profiles: [recommendation-lake]
+    restart: unless-stopped
+    depends_on: [mysql, minio]
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_USER: ${RECOMMENDATION_DB_USER:-root}
+      MYSQL_PASSWORD: ${RECOMMENDATION_DB_PASSWORD:-root}
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${RECOMMENDATION_LAKE_ACCESS_KEY:-minio}
+      S3_SECRET_KEY: ${RECOMMENDATION_LAKE_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${RECOMMENDATION_LAKE_BUCKET:-ecommerce-recommendation-lake}
+      LAKE_INTERVAL_SECONDS: ${RECOMMENDATION_LAKE_INTERVAL_SECONDS:-900}
+
 volumes:
   mysql-26-data:
   redis-8-data:

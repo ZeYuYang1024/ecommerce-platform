@@ -4,6 +4,7 @@ import com.ecommerce.cart.dto.CartItem;
 import com.ecommerce.cart.dto.MergeCartRequest;
 import com.ecommerce.cart.dto.UpdateQuantityRequest;
 import com.ecommerce.cart.service.CartService;
+import com.ecommerce.cart.service.CartRecommendationPublisher;
 import com.ecommerce.common.result.Result;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,9 +15,11 @@ import java.util.List;
 public class CartController {
 
     private final CartService cartService;
+    private final CartRecommendationPublisher recommendationPublisher;
 
-    public CartController(CartService cartService) {
+    public CartController(CartService cartService, CartRecommendationPublisher recommendationPublisher) {
         this.cartService = cartService;
+        this.recommendationPublisher = recommendationPublisher;
     }
 
     @GetMapping
@@ -33,6 +36,7 @@ public class CartController {
     public Result<Void> addItem(@RequestHeader("X-User-Id") Long userId,
                                  @RequestBody CartItem item) {
         cartService.addItem(userId, item);
+        recommendationPublisher.added(userId, item);
         return Result.ok();
     }
 

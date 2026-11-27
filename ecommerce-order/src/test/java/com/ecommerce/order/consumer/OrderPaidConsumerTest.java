@@ -14,7 +14,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -39,9 +38,10 @@ class OrderPaidConsumerTest {
         order.setStatus(0);
         when(orderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(order);
 
-        consumer.onMessage(new OrderPaidMessage("ORD-1", 1, LocalDateTime.now()));
+        OrderPaidMessage message = new OrderPaidMessage("ORD-1", 1, LocalDateTime.now());
+        consumer.onMessage(message);
 
-        verify(orderMapper).transitionStatus(1L, 0, 1);
+        verify(orderService).confirmPayment(order, message);
     }
 
     @Test
@@ -54,7 +54,7 @@ class OrderPaidConsumerTest {
 
         consumer.onMessage(new OrderPaidMessage("ORD-1", 1, LocalDateTime.now()));
 
-        verify(orderMapper, never()).transitionStatus(any(), anyInt(), anyInt());
+        verify(orderService, never()).confirmPayment(any(), any());
     }
 
     @Test
@@ -67,7 +67,7 @@ class OrderPaidConsumerTest {
 
         consumer.onMessage(new OrderPaidMessage("ORD-1", 5, LocalDateTime.now()));
 
-        verify(orderMapper, never()).transitionStatus(any(), anyInt(), anyInt());
+        verify(orderService, never()).confirmPayment(any(), any());
     }
 
     @Test
@@ -81,6 +81,6 @@ class OrderPaidConsumerTest {
         consumer.onMessage(new OrderPaidMessage("ORD-1", 4, LocalDateTime.now()));
 
         verify(orderService).applyInventoryCompensation(any(OrderPaidMessage.class));
-        verify(orderMapper, never()).transitionStatus(any(), anyInt(), anyInt());
+        verify(orderService, never()).confirmPayment(any(), any());
     }
 }

@@ -67,6 +67,7 @@ TOPICS=(
     "order-paid:4"
     "product-created:4"
     "merchant-approved:4"
+    "recommendation-signal:4"
 )
 
 for entry in "${TOPICS[@]}"; do
@@ -82,6 +83,7 @@ done
 echo ""
 echo "[4/4] 初始化数据库 ..."
 docker exec -i ecommerce-mysql mysql -uroot -proot < "$PROJECT_DIR/docs/init.sql"
+docker exec -i ecommerce-mysql mysql -uroot -proot < "$PROJECT_DIR/ecommerce-recommendation/sql/init.sql"
 echo "数据库初始化完成。"
 
 echo ""

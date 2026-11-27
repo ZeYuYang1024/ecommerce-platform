@@ -74,6 +74,7 @@ $Topics = @(
     "order-paid:4",
     "product-created:4",
     "merchant-approved:4"
+    "recommendation-signal:4"
 )
 
 foreach ($entry in $Topics) {
@@ -95,6 +96,7 @@ foreach ($entry in $Topics) {
 Write-Host ""
 Write-Host "[4/4] 初始化数据库 ..." -ForegroundColor Yellow
 Get-Content "$ProjectDir\docs\init.sql" | docker exec -i ecommerce-mysql mysql -uroot -proot
+Get-Content "$ProjectDir\ecommerce-recommendation\sql\init.sql" | docker exec -i ecommerce-mysql mysql -uroot -proot
 Write-Host "数据库初始化完成。" -ForegroundColor Green
 
 # --------------- Done ---------------

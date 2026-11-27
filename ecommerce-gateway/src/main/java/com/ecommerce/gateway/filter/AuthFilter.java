@@ -53,7 +53,8 @@ public class AuthFilter implements GlobalFilter, Ordered {
         String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
         if (!isAdminPath && "GET".equalsIgnoreCase(method)) {
             // The legacy list uses the authenticated identity when the caller supplies a token.
-            if ((COUPONS_PATH + "/available").equals(path) || (COUPONS_PATH.equals(path) && authHeader == null)) {
+            if ((COUPONS_PATH + "/available").equals(path) || (COUPONS_PATH.equals(path) && authHeader == null)
+                    || "/api/v1/recommendations/popular".equals(path)) {
                 ServerWebExchange anonymous = exchange.mutate()
                         .request(request -> request.headers(this::removeIdentityHeaders))
                         .build();

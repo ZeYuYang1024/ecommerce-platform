@@ -83,6 +83,7 @@ const loading = ref(true)
 const product = ref<any>(null)
 const selectedSku = ref<any>(null)
 const cart = useCartStore()
+const recommendation = useRecommendation()
 const { useResolvedImage, primeImageUrls, resolveImageUrl } = useImageUrl()
 const mainImage = useResolvedImage(() => product.value?.spu?.mainImage)
 const subImages = ref<string[]>([])
@@ -99,6 +100,7 @@ onMounted(async () => {
     const res: any = await api.get(`/products/${route.params.id}`)
     if (res.code === 200) {
       product.value = res.data
+      recommendation.record([{ type: 'VIEW', spuId: String(route.params.id) }])
 
       let rawSubImages: string[] = []
       try { rawSubImages = JSON.parse(res.data?.spu?.images || '[]') } catch { rawSubImages = [] }

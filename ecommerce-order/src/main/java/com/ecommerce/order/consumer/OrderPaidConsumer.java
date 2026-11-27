@@ -49,7 +49,7 @@ public class OrderPaidConsumer implements RocketMQListener<OrderPaidMessage> {
             orderService.applyInventoryCompensation(message);
             return;
         }
-        if (orderMapper.transitionStatus(order.getId(), OrderStatus.PENDING, OrderStatus.PAID)) {
+        if (orderService.confirmPayment(order, message)) {
             log.info("Order status updated: {} -> {}", message.getOrderNo(), OrderStatus.PAID);
         }
     }

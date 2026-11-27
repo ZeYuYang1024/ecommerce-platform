@@ -120,6 +120,7 @@ docker compose up -d --no-build --pull never minio
 
   db < docs/init.sql
   db < ecommerce-knowledge/sql/init.sql
+  db < ecommerce-recommendation/sql/init.sql
   db < "$migrations/2026-05-17-merchant-marketing-tenant-columns.sql"
   db ecommerce_inventory < "$migrations/2026-05-28-inventory-event-log.sql"
   db < "$migrations/2026-06-01-member-init.sql"
@@ -152,6 +153,7 @@ function Import-ProjectSql([string]$Path, [string]$Schema) {
 $migrations = 'docs/sql/migrations'
 Import-ProjectSql 'docs/init.sql'
 Import-ProjectSql 'ecommerce-knowledge/sql/init.sql'
+Import-ProjectSql 'ecommerce-recommendation/sql/init.sql'
 Import-ProjectSql "$migrations/2026-05-17-merchant-marketing-tenant-columns.sql"
 Import-ProjectSql "$migrations/2026-05-28-inventory-event-log.sql" ecommerce_inventory
 Import-ProjectSql "$migrations/2026-06-01-member-init.sql"
@@ -171,16 +173,16 @@ foreach ($schema in 'ecommerce_inventory', 'ecommerce_order', 'ecommerce_payment
 docker compose exec -T mysql mysql -uroot -proot -Nse "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'ecommerce%';"
 ```
 
-最后应列出 **15 个 `ecommerce_*` 数据库**。基础 SQL 已包含支付表的订单号唯一索引，空库无需再执行 `2026-05-29-payment-order-unique.sql`。会员等级由会员服务启动时初始化。知识库 SQL 会先建库和分类，是否启动知识库服务可以稍后决定。
+最后应列出 **16 个 `ecommerce_*` 数据库**。基础 SQL 已包含支付表的订单号唯一索引，空库无需再执行 `2026-05-29-payment-order-unique.sql`。会员等级由会员服务启动时初始化。知识库 SQL 会先建库和分类，是否启动知识库服务可以稍后决定。
 
-确认 `clusterList` 已有 Broker，再创建项目使用的 13 个 RocketMQ Topic。每个 Topic 配置 4 个读队列和 4 个写队列。
+确认 `clusterList` 已有 Broker，再创建项目使用的 14 个 RocketMQ Topic。每个 Topic 配置 4 个读队列和 4 个写队列。
 
 **Linux/macOS（Bash）**
 
 ```bash
 (
   set -e
-  for topic in order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed; do
+  for topic in order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal; do
     docker compose exec -T rocketmq-broker sh mqadmin updateTopic -n rocketmq-namesrv:9876 -c DefaultCluster -t "$topic" -r 4 -w 4
   done
   docker compose exec -T rocketmq-broker sh mqadmin topicList -n rocketmq-namesrv:9876
@@ -190,7 +192,7 @@ docker compose exec -T mysql mysql -uroot -proot -Nse "SELECT SCHEMA_NAME FROM i
 **Windows（PowerShell）**
 
 ```powershell
-$topics = 'order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed'.Split(' ')
+$topics = 'order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal'.Split(' ')
 foreach ($topic in $topics) {
   docker compose exec -T rocketmq-broker sh mqadmin updateTopic -n rocketmq-namesrv:9876 -c DefaultCluster -t $topic -r 4 -w 4
   if ($LASTEXITCODE -ne 0) { throw "Topic creation failed: $topic" }
@@ -263,7 +265,7 @@ $env:DEEPSEEK_API_KEY = Read-Host 'DeepSeek API key' -MaskInput
 mvn '-Dmaven.test.skip=true' clean package
 ```
 
-在一个专用终端中从根目录运行下面对应的启动块。启用对话时，先在该终端设置 DeepSeek 密钥。默认启动 **18 个**服务。已经完成 Ollama 配置时，按注释启用知识库，共 **19 个**服务。启动日志写到 `.build-local/`。这组命令把物流服务覆盖为 `8098`，避开会员服务的 `8096`，同时向 Nacos 注册本机地址并提供 Redis 密码。
+在一个专用终端中从根目录运行下面对应的启动块。启用对话时，先在该终端设置 DeepSeek 密钥。默认启动 **19 个**服务。已经完成 Ollama 配置时，按注释启用知识库，共 **20 个**服务。启动日志写到 `.build-local/`。这组命令把物流服务覆盖为 `8098`，避开会员服务的 `8096`，同时向 Nacos 注册本机地址并提供 Redis 密码。
 
 **Linux/macOS（Bash）**
 
@@ -273,7 +275,7 @@ repo="$PWD"
 log_dir="$repo/.build-local"
 mkdir -p "$log_dir"
 
-modules=(auth user product inventory cart order payment merchant coupon notification file search seckill member warehouse logistics monitor)
+modules=(auth user product inventory cart order payment merchant coupon notification file search recommendation seckill member warehouse logistics monitor)
 if [[ "$with_knowledge" == 1 ]]; then modules+=(knowledge); fi
 modules+=(gateway)
 
@@ -297,7 +299,7 @@ $withKnowledge = $false   # $true = enable AI knowledge service
 $repo = (Get-Location).Path
 $logDir = Join-Path $repo '.build-local'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-$modules = 'auth user product inventory cart order payment merchant coupon notification file search seckill member warehouse logistics monitor'.Split(' ')
+$modules = 'auth user product inventory cart order payment merchant coupon notification file search recommendation seckill member warehouse logistics monitor'.Split(' ')
 if ($withKnowledge) { $modules += 'knowledge' }
 $modules += 'gateway'
 
@@ -403,11 +405,38 @@ curl --noproxy "*" -fsS http://127.0.0.1:9200/products/_count
 curl --noproxy "*" -fsS "http://127.0.0.1:8080/api/v1/search?page=1&size=5&sort=price_asc"
 ```
 
-### 8. 可选：运行微信小程序
+### 8. 体验「猜你喜欢」并启动数据湖
+
+推荐服务随上面的 Java 启动命令运行，端口为 `8099`。游客和没有浏览历史的新账号会收到近期上架的可售商品。登录后浏览几个同类商品或加购，再回到首页，「猜你喜欢」会优先展示符合近期兴趣的商品。建议用两个账号分别浏览不同类目，比较各自的推荐结果。
+
+已有本地数据库的开发者只需补建推荐库并创建 RocketMQ Topic。初始化 SQL 可重复执行。
+
+```bash
+docker compose exec -T mysql mysql -uroot -proot < ecommerce-recommendation/sql/init.sql
+docker compose exec -T rocketmq-broker sh mqadmin updateTopic -n rocketmq-namesrv:9876 -c DefaultCluster -t recommendation-signal -r 4 -w 4
+```
+
+PowerShell 可用 `Get-Content -Raw ecommerce-recommendation/sql/init.sql | docker compose exec -T mysql mysql -uroot -proot`。然后重新构建并重启商品、购物车、订单和网关服务，启动推荐服务。下面的命令构建并启动可选的离线分析容器，首次构建会从 PyPI 安装 DuckDB 2.0.1，并下载同版本的 `httpfs` 扩展。
+
+```bash
+docker compose --profile recommendation-lake up -d --build recommendation-lake
+docker compose logs -f recommendation-lake
+```
+
+任务启动时运行一次，之后每 900 秒运行一次。默认在当前 MinIO 实例创建私有桶 `ecommerce-recommendation-lake`，按 UTC 事件日期保存 Parquet，定时计算用户类目偏好、商品关联和点击率。离线结果写到推荐库，在线推荐把常用结果缓存到 Redis。使用 Compose 环境变量 `RECOMMENDATION_LAKE_INTERVAL_SECONDS` 可调整间隔。连接配置见 [Docker Compose](docker-compose.yml)。
+
+```bash
+docker compose --profile recommendation-lake run --rm --no-deps recommendation-lake --once
+docker compose exec -T mysql mysql -uroot -proot ecommerce_recommendation -e "SELECT * FROM recommendation_daily_report ORDER BY event_date DESC;"
+```
+
+报表统计登录用户的推荐卡片实际曝光和对应点击。商品关联至少需要两个用户都与同一对商品发生浏览、加购或支付行为。暂停离线容器时，首页仍用新采集的行为更新推荐。
+
+### 9. 可选：运行微信小程序
 
 用 HBuilderX 打开 [ecommerce-miniprogram](ecommerce-miniprogram/)，在 [manifest.json](ecommerce-miniprogram/manifest.json) 填写自己的小程序 AppID，并安装微信开发者工具。运行前把 [utils/api.js](ecommerce-miniprogram/utils/api.js) 里的网关地址替换成调试器能访问的地址。调试 H5 时改 [vite.config.js](ecommerce-miniprogram/vite.config.js) 的代理目标。手机真机不能通过自己的 `localhost` 连接电脑上的服务，本指南的环回地址用于本机开发。
 
-### 9. 关闭、重启和排错
+### 10. 关闭、重启和排错
 
 前端终端按 `Ctrl+C`。在启动 Java 服务的**同一个终端**停止本次启动的后台进程：
 
@@ -518,6 +547,7 @@ ecommerce-platform/
 ├── ecommerce-notification/    # 通知服务 :8089
 ├── ecommerce-file/            # 文件服务 :8090
 ├── ecommerce-search/          # 搜索服务 :8092
+├── ecommerce-recommendation/  # 个性化推荐 :8099
 ├── ecommerce-seckill/         # 秒杀服务 :8093
 ├── ecommerce-monitor/         # Spring Boot Admin :8094
 ├── ecommerce-knowledge/       # AI 知识库服务 :8095
@@ -938,6 +968,7 @@ sequenceDiagram
 | `ecommerce-order` | 下单、取消、订单查询 |
 | `ecommerce-payment` | 支付、退款、对账、结算 |
 | `ecommerce-search` | 商品搜索与 ES 索引同步 |
+| `ecommerce-recommendation` | 首页个性化推荐、推荐行为和离线分析结果 |
 | `ecommerce-file` | MinIO 文件上传 |
 | `ecommerce-monitor` | Spring Boot Admin 监控中心 |
 | `ecommerce-knowledge` | 平台知识库、商家知识库、RAG 问答、实时业务工具调用 |
@@ -981,7 +1012,8 @@ sequenceDiagram
 | 8086 | Cart | 8096 | Member |
 | 8087 | Merchant | 8097 | Warehouse |
 | 8088 | Coupon | 8098 | Logistics，由启动命令覆盖 |
-| 8089 | Notification | 11434 | Ollama |
+| 8089 | Notification | 8099 | Recommendation |
+| 11434 | Ollama | | |
 
 中间件端口和 Web 地址见[快速开始](#快速开始)。
 

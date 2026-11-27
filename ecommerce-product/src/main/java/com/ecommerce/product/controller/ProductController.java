@@ -8,6 +8,7 @@ import com.ecommerce.product.dto.request.CreateProductRequest;
 import com.ecommerce.product.dto.request.UpdateStatusRequest;
 import com.ecommerce.product.dto.response.ProductDetailVO;
 import com.ecommerce.common.dto.ProductStatsVO;
+import com.ecommerce.common.dto.RecommendationProduct;
 import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.common.dto.SkuOwnerVO;
 import com.ecommerce.product.dto.response.SpuVO;
@@ -222,6 +223,14 @@ public class ProductController {
             result.add(vo);
         }
         return Result.ok(result);
+    }
+
+    @PostMapping("/internal/products/recommendation-candidates")
+    public Result<List<RecommendationProduct>> recommendationProducts(@RequestBody RecommendationProduct.Query query) {
+        if (query.ids() == null || query.categoryIds() == null || query.ids().size() > 100 || query.categoryIds().size() > 3) {
+            return Result.fail(400, "Invalid recommendation candidate query");
+        }
+        return Result.ok(productService.recommendationProducts(query));
     }
 
     @GetMapping("/admin/products/stats")

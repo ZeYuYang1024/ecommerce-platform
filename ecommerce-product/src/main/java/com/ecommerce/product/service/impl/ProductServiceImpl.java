@@ -17,6 +17,7 @@ import com.ecommerce.product.dto.response.SkuVO;
 import com.ecommerce.product.dto.response.SpuVO;
 import com.ecommerce.product.service.ProductService;
 import com.ecommerce.common.dto.ProductCreatedMessage;
+import com.ecommerce.common.dto.RecommendationProduct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,7 @@ import java.math.BigDecimal;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -212,6 +214,41 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public SpuVO toSpuVO(Spu spu) {
+        return toSpuVO(spu, getSkusBySpuId(spu.getId()));
+    }
+
+    @Override
+    public List<RecommendationProduct> recommendationProducts(RecommendationProduct.Query query) {
+        Map<Long, Spu> products = new LinkedHashMap<>();
+        getSpusByIds(query.ids()).stream().filter(spu -> Integer.valueOf(1).equals(spu.getStatus()))
+                .forEach(spu -> products.put(spu.getId(), spu));
+        for (Long categoryId : query.categoryIds()) {
+            recommendationPage(categoryId, 24).forEach(spu -> products.putIfAbsent(spu.getId(), spu));
+        }
+        if (query.includeLatest()) {
+            recommendationPage(null, 48).forEach(spu -> products.putIfAbsent(spu.getId(), spu));
+        }
+        if (products.isEmpty()) return List.of();
+
+        Map<Long, List<Sku>> skusBySpu = skuMapper.selectList(new LambdaQueryWrapper<Sku>()
+                        .in(Sku::getSpuId, products.keySet())).stream()
+                .collect(Collectors.groupingBy(Sku::getSpuId));
+        return products.values().stream().map(spu -> {
+            List<Sku> skus = skusBySpu.getOrDefault(spu.getId(), List.of());
+            SpuVO vo = toSpuVO(spu, skus);
+            return new RecommendationProduct(vo.getId(), vo.getCategoryId(), vo.getBrandId(), vo.getName(),
+                    vo.getDescription(), vo.getMainImage(), vo.getMinPrice(), vo.getMaxPrice(), vo.getReviewCount(),
+                    skus.stream().map(Sku::getId).toList());
+        }).toList();
+    }
+
+    private List<Spu> recommendationPage(Long categoryId, int size) {
+        return spuMapper.selectPage(new Page<Spu>(1, size, false), new LambdaQueryWrapper<Spu>()
+                .eq(Spu::getStatus, 1).eq(categoryId != null, Spu::getCategoryId, categoryId)
+                .orderByDesc(Spu::getCreatedAt, Spu::getId)).getRecords();
+    }
+
+    private SpuVO toSpuVO(Spu spu, List<Sku> skus) {
         SpuVO vo = new SpuVO();
         vo.setId(spu.getId());
         vo.setName(spu.getName());
@@ -227,7 +264,6 @@ public class ProductServiceImpl implements ProductService {
         vo.setReviewCount(spu.getReviewCount());
         vo.setCreatedAt(spu.getCreatedAt());
 
-        List<Sku> skus = getSkusBySpuId(spu.getId());
         if (skus != null && !skus.isEmpty()) {
             BigDecimal min = null, max = null;
             for (Sku sku : skus) {

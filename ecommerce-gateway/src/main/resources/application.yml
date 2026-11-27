@@ -52,6 +52,10 @@ spring:
               uri: lb://ecommerce-search
               predicates:
                 - Path=/api/v1/search/**,/api/v1/admin/search/**
+            - id: recommendation
+              uri: lb://ecommerce-recommendation
+              predicates:
+                - Path=/api/v1/recommendations/me,/api/v1/recommendations/popular,/api/v1/recommendations/events
             - id: coupon
               uri: lb://ecommerce-coupon
               predicates:

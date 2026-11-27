@@ -7,6 +7,7 @@ import com.ecommerce.common.dto.OrderInternalVO;
 import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.OrderItemMessage;
 import com.ecommerce.common.dto.OrderPaidMessage;
+import com.ecommerce.common.dto.RecommendationSignal;
 import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.Result;
@@ -61,7 +62,9 @@ class OrderSagaFlowContractTest {
 
     @BeforeEach
     void setUpTableMetadata() {
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Payment.class);
+        var mapper = new MapperBuilderAssistant(new MybatisConfiguration(), "");
+        TableInfoHelper.initTableInfo(mapper, Payment.class);
+        TableInfoHelper.initTableInfo(mapper, OrderItem.class);
     }
 
     @Test
@@ -107,18 +110,32 @@ class OrderSagaFlowContractTest {
         assertThat(paidMessage.getIdempotencyKey()).startsWith("payment-paid:");
 
         OrderMapper consumerOrderMapper = mock(OrderMapper.class);
-        OrderService consumerOrderService = mock(OrderService.class);
+        OrderItemMapper consumerItems = mock(OrderItemMapper.class);
+        OutboxService recommendationOutbox = mock(OutboxService.class);
+        OrderService consumerOrderService = new OrderServiceImpl(consumerOrderMapper, consumerItems,
+                mock(ProductSpuClient.class), mock(CartClient.class), mock(MemberClient.class),
+                mock(LogisticsClient.class), recommendationOutbox);
         Order pendingOrder = new Order();
         pendingOrder.setId(1L);
+        pendingOrder.setUserId(1L);
         pendingOrder.setOrderNo(inventoryMessage.getOrderNo());
         pendingOrder.setStatus(0);
         when(consumerOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(pendingOrder);
+        when(consumerOrderMapper.transitionStatus(1L, 0, 1)).thenReturn(true, false);
+        OrderItem item = new OrderItem();
+        item.setSpuId(21L);
+        when(consumerItems.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(item));
 
         OrderPaidConsumer consumer = new OrderPaidConsumer(consumerOrderMapper, consumerOrderService);
         consumer.onMessage(paidMessage);
+        consumer.onMessage(paidMessage);
 
-        verify(consumerOrderMapper).transitionStatus(1L, 0, 1);
-        verifyNoInteractions(consumerOrderService);
+        ArgumentCaptor<RecommendationSignal> signal = ArgumentCaptor.forClass(RecommendationSignal.class);
+        verify(recommendationOutbox).enqueue(eq("order"), eq(pendingOrder.getOrderNo()),
+                eq(RecommendationSignal.TOPIC), signal.capture());
+        assertThat(signal.getValue().spuIds()).containsExactly(21L);
+        assertThat(signal.getValue().userId()).isEqualTo(1L);
+        assertThat(signal.getValue().type()).isEqualTo(RecommendationSignal.Type.PAID);
     }
 
     @Test
