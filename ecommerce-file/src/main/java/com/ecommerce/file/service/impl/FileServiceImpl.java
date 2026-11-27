@@ -6,9 +6,12 @@ import com.ecommerce.file.common.FileErrorCode;
 import com.ecommerce.file.config.MinioConfig;
 import com.ecommerce.file.service.FileService;
 import io.minio.*;
+import io.minio.errors.ErrorResponseException;
 import io.minio.http.Method;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -79,6 +82,31 @@ public class FileServiceImpl implements FileService {
                     .build());
         } catch (Exception e) {
             throw new BusinessException(FileErrorCode.FILE_NOT_FOUND);
+        }
+    }
+
+    @Override
+    public Image openImage(String objectName) {
+        try {
+            var object = minioClient.getObject(GetObjectArgs.builder()
+                    .bucket(minioConfig.getBucket()).object(objectName).build());
+            String contentType = object.headers().get("Content-Type");
+            if (contentType == null || !ALLOWED_TYPES.contains(contentType)) {
+                object.close();
+                throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported image type");
+            }
+            String length = object.headers().get("Content-Length");
+            return new Image(object, contentType, length == null ? -1 : Long.parseLong(length));
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (ErrorResponseException e) {
+            String code = e.errorResponse().code();
+            if ("NoSuchKey".equals(code) || "NoSuchBucket".equals(code)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Image not found", e);
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Image storage unavailable", e);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Image storage unavailable", e);
         }
     }
 

@@ -17,12 +17,8 @@ const props = defineProps({
   mode: { type: String, default: 'aspectFill' }
 })
 const url = ref('')
-watch(() => props.source, async (source, _, onCleanup) => {
-  let active = true
-  onCleanup(() => { active = false })
-  url.value = ''
-  const resolved = await resolveImageUrl(source)
-  if (active) url.value = resolved
+watch(() => props.source, source => {
+  url.value = resolveImageUrl(source)
 }, { immediate: true })
 </script>
 

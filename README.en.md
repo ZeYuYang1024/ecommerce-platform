@@ -365,6 +365,8 @@ For a first walkthrough, sign in to the storefront, open a product, and add it t
 
 ### 7. Optional: index the sample products for search
 
+To show product illustrations in the storefront and mini program, start the gateway, file service, and Docker middleware, then run `python3 scripts/seed-demo-product-images.py` from the repository root. On Windows, use `py -3 scripts/seed-demo-product-images.py`. The script uploads the [sample illustrations](docs/demo-product-images/) to local MinIO, fills empty image fields on the matching seed products, and refreshes existing search documents. On a fresh setup, import the images before running the search indexing steps below.
+
 `docs/init.sql` seeds the catalog in MySQL. An SQL import does not emit `product-created`, so an empty Elasticsearch volume can leave search empty or missing an index while the catalog still works. To explore event-driven indexing, create a listed product with a SKU in the admin console and inspect the `ecommerce-search` log.
 
 For a **fresh local search instance**, save the Python 3 snippet below as `index-demo-products.py` and run `python3 index-demo-products.py`, or `py -3 index-demo-products.py` on Windows. This example reads the first page of the product API (up to 100 rows, enough for the default seed) and indexes it in `products`. Matching document IDs in Elasticsearch are overwritten, so use this with demo data.

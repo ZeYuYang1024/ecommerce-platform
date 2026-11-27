@@ -1,27 +1,13 @@
-import { request } from './api'
+import { API_BASE } from './api'
 
-const imageUrls = new Map()
-const pending = new Map()
-const cacheMs = 60 * 60 * 1000
-
-export async function resolveImageUrl(value) {
+export function resolveImageUrl(value) {
   if (typeof value !== 'string' || !value.trim()) return ''
   const source = value.trim()
-  const resolver = source.match(/^\/api\/v1\/files\/([^/]+)\/url$/)
+  const resolver = source.match(/^\/api\/v1\/files\/([^/]+)\/(?:url|content)$/)
   if (!resolver && (/^(https?:)?\/\//.test(source) || source.startsWith('/'))) return source
 
   const key = resolver ? resolver[1] : encodeURIComponent(source)
-  const cached = imageUrls.get(key)
-  if (cached?.expiresAt > Date.now()) return cached.url
-
-  if (!pending.has(key)) {
-    pending.set(key, request({ url: `/api/v1/files/${key}/url`, auth: false }).then(res => {
-      if (res.code !== 200 || typeof res.data !== 'string') return ''
-      imageUrls.set(key, { url: res.data, expiresAt: Date.now() + cacheMs })
-      return res.data
-    }).finally(() => pending.delete(key)))
-  }
-  return pending.get(key)
+  return `${API_BASE}/api/v1/files/${key}/content`
 }
 
 export function productImages(product) {

@@ -370,6 +370,8 @@ npm run dev
 
 ### 7. 可选：给样例商品建立搜索索引
 
+如果希望首页、分类和详情页显示演示商品图，启动网关、文件服务和 Docker 中间件后，在仓库根目录运行 `python3 scripts/seed-demo-product-images.py`。Windows 可用 `py -3 scripts/seed-demo-product-images.py`。脚本会将 [演示插图](docs/demo-product-images/) 上传到本地 MinIO，仅填充对应样例商品的空图片字段，并同步已存在的搜索文档。已有商品图保留。首次部署可以先导图，再按下文建立搜索索引。
+
 `docs/init.sql` 向 MySQL 写入目录和样例商品。直接导入 SQL 不会产生 `product-created` 事件，所以空的 Elasticsearch 卷上，目录能看到商品，但搜索可能为空或提示索引不存在。研究异步同步时，可以在后台新建一个带 SKU 的上架商品，并在 `ecommerce-search` 日志里查看消费记录。要直接搜索 SQL 中的样例商品，可在**全新的本地搜索环境**中把以下 Python 3 代码保存成 `index-demo-products.py`，然后 运行 `python3 index-demo-products.py`（Windows 可用 `py -3 index-demo-products.py`）。
 
 这个示例读取商品接口的第一页（最多 100 条，足够覆盖默认样例），写入 `products` 索引。Elasticsearch 的同名文档 ID 会被覆盖，适合本地演示。
