@@ -53,7 +53,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { request } from '@/utils/api'
 
@@ -130,10 +130,15 @@ async function doCheckIn() {
   }
 }
 
-if (auth.isLogin) {
-  fetchMember()
-  fetchCheckInStatus()
-}
+watch(() => auth.isLogin, loggedIn => {
+  if (loggedIn) {
+    fetchMember()
+    fetchCheckInStatus()
+  } else {
+    member.value = { level: null, growthValue: 0, nextLevelGrowth: null, availablePoints: 0 }
+    checkedIn.value = false
+  }
+}, { immediate: true })
 </script>
 
 <style scoped>

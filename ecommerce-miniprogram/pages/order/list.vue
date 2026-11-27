@@ -12,7 +12,7 @@
           <text :class="['status', statusClass(o.status)]">{{ o.statusText }}</text>
         </view>
         <view v-for="item in o.items" :key="item.id" class="order-item">
-          <image :src="getImageUrl(item.image)" mode="aspectFill" class="item-img" />
+          <ProductImage :source="item.image" width="100rpx" height="100rpx" radius="8rpx" />
           <view class="item-info">
             <text class="item-name">{{ item.name }}</text>
             <text>¥{{ item.price }} × {{ item.quantity }}</text>
@@ -39,7 +39,7 @@
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { request } from '@/utils/api'
-import { getImageUrl } from '@/utils/image'
+import ProductImage from '@/components/ProductImage.vue'
 
 const tabs = ['全部','待付款','待发货','待收货','已完成']
 const statusMap = [null, 0, 1, 2, 3]
@@ -108,7 +108,6 @@ function goDetail(orderNo) { uni.navigateTo({ url: `/pages/order-detail/index?or
 .status { font-size: 24rpx; }
 .status.amber { color: #F59E0B; } .status.green { color: #10B981; } .status.blue { color: #3B82F6; } .status.gray { color: #9CA3AF; } .status.red { color: #EF4444; }
 .order-item { display: flex; gap: 12rpx; padding: 12rpx 0; border-top: 1px solid #F3F4F6; }
-.item-img { width: 100rpx; height: 100rpx; border-radius: 12rpx; background: #F8F8F8; }
 .item-info { flex: 1; font-size: 24rpx; }
 .item-name { font-size: 26rpx; display: block; margin-bottom: 4rpx; }
 .order-footer { display: flex; justify-content: space-between; padding-top: 12rpx; border-top: 1px solid #F3F4F6; font-size: 26rpx; }

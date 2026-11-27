@@ -434,7 +434,9 @@ docker compose exec -T mysql mysql -uroot -proot ecommerce_recommendation -e "SE
 
 ### 9. 可选：运行微信小程序
 
-用 HBuilderX 打开 [ecommerce-miniprogram](ecommerce-miniprogram/)，在 [manifest.json](ecommerce-miniprogram/manifest.json) 填写自己的小程序 AppID，并安装微信开发者工具。运行前把 [utils/api.js](ecommerce-miniprogram/utils/api.js) 里的网关地址替换成调试器能访问的地址。调试 H5 时改 [vite.config.js](ecommerce-miniprogram/vite.config.js) 的代理目标。手机真机不能通过自己的 `localhost` 连接电脑上的服务，本指南的环回地址用于本机开发。
+用 HBuilderX 打开 [ecommerce-miniprogram](ecommerce-miniprogram/)，在 [manifest.json](ecommerce-miniprogram/manifest.json) 填写自己的小程序 AppID，然后运行到微信开发者工具。本机微信模拟器和 H5 开发代理默认连接 `http://127.0.0.1:8080`。登录商城可用本地示例账号 `testuser / test123`。
+
+要连接其他网关，在小程序目录的 `.env.local` 里设置 `VITE_API_BASE_URL=https://你的网关域名`，然后重新编译。只需调整 H5 开发代理时，设置 `VITE_DEV_PROXY_TARGET`。手机真机使用可从手机访问、且已在微信小程序后台配置的 HTTPS 请求域名。
 
 ### 10. 关闭、重启和排错
 

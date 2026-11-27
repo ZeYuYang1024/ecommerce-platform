@@ -1,8 +1,11 @@
 package com.ecommerce.cart.service.impl;
 
 import com.ecommerce.cart.common.CartErrorCode;
+import com.ecommerce.cart.client.ProductClient;
 import com.ecommerce.cart.dto.CartItem;
+import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.common.result.Result;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -11,6 +14,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -23,6 +27,7 @@ class CartServiceImplTest {
     private RedisTemplate<String, Object> redisTemplate;
     private HashOperations<String, Object, Object> hashOps;
     private CartServiceImpl service;
+    private ProductClient products;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -30,7 +35,8 @@ class CartServiceImplTest {
         redisTemplate = mock(RedisTemplate.class);
         hashOps = mock(HashOperations.class);
         when(redisTemplate.opsForHash()).thenReturn(hashOps);
-        service = new CartServiceImpl(redisTemplate, null);
+        products = mock(ProductClient.class);
+        service = new CartServiceImpl(redisTemplate, products);
     }
 
     private CartItem createItem(Long skuId, BigDecimal price, int qty) {
@@ -179,6 +185,25 @@ class CartServiceImplTest {
         void shouldReturnEmptyListWhenCartEmpty() {
             when(hashOps.entries("cart:user:1")).thenReturn(new HashMap<>());
             assertThat(service.getCart(1L)).isEmpty();
+        }
+
+        @Test
+        void shouldHydrateLegacySkuOnlyItemWithoutChangingQuantityOrSelection() {
+            when(hashOps.entries("cart:user:1")).thenReturn(Map.of("1",
+                    "{\"skuId\":1,\"quantity\":2,\"checked\":false}"));
+            SkuBatchVO snapshot = new SkuBatchVO();
+            snapshot.setSkuId(1L);
+            snapshot.setSpuId(100L);
+            snapshot.setSkuName("Black / 42");
+            snapshot.setPrice(new BigDecimal("99.00"));
+            when(products.getSkus(List.of(1L))).thenReturn(Result.ok(List.of(snapshot)));
+
+            CartItem item = service.getCart(1L).getFirst();
+            assertThat(item.getSpuId()).isEqualTo(100L);
+            assertThat(item.getName()).isEqualTo("Black / 42");
+            assertThat(item.getPrice()).isEqualByComparingTo("99.00");
+            assertThat(item.getQuantity()).isEqualTo(2);
+            assertThat(item.getChecked()).isFalse();
         }
     }
 

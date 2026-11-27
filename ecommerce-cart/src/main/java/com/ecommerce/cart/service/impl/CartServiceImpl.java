@@ -4,6 +4,7 @@ import com.ecommerce.cart.common.CartErrorCode;
 import com.ecommerce.cart.dto.CartItem;
 import com.ecommerce.cart.client.ProductClient;
 import com.ecommerce.cart.service.CartService;
+import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.common.result.BusinessException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,6 +12,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -39,8 +41,13 @@ public class CartServiceImpl implements CartService {
         if (item.getQuantity() == null || item.getQuantity() <= 0) {
             throw new BusinessException(CartErrorCode.INVALID_QUANTITY);
         }
-        // 验证 SKU 存在（best-effort）
-        try { productClient.getProduct(item.getSpuId()); } catch (Exception ignored) {}
+        if (item.getSkuId() == null || item.getSkuId() <= 0) {
+            throw new BusinessException(CartErrorCode.PRODUCT_UNAVAILABLE);
+        }
+        if (missingProduct(item)) {
+            applySnapshot(item, loadSnapshots(List.of(item.getSkuId())).get(item.getSkuId()));
+            if (missingProduct(item)) throw new BusinessException(CartErrorCode.PRODUCT_UNAVAILABLE);
+        }
         String key = cartKey(userId);
         String field = String.valueOf(item.getSkuId());
 
@@ -50,6 +57,12 @@ public class CartServiceImpl implements CartService {
             try {
                 CartItem existingItem = objectMapper.readValue(existing.toString(), CartItem.class);
                 existingItem.setQuantity(existingItem.getQuantity() + item.getQuantity());
+                if (missingProduct(existingItem)) {
+                    existingItem.setSpuId(item.getSpuId());
+                    existingItem.setName(item.getName());
+                    existingItem.setImage(item.getImage());
+                    existingItem.setPrice(item.getPrice());
+                }
                 redisTemplate.opsForHash().put(key, field, objectMapper.writeValueAsString(existingItem));
                 redisTemplate.expire(key, CART_TTL_DAYS, TimeUnit.DAYS);
                 return;
@@ -104,6 +117,18 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public List<CartItem> getCart(Long userId) {
+        List<CartItem> items = readCart(userId);
+        List<Long> missing = items.stream().filter(item -> missingProduct(item) && item.getSkuId() != null)
+                .map(CartItem::getSkuId).toList();
+        if (!missing.isEmpty()) {
+            Map<Long, SkuBatchVO> snapshots = loadSnapshots(missing);
+            items.stream().filter(item -> missingProduct(item) && item.getSkuId() != null)
+                    .forEach(item -> applySnapshot(item, snapshots.get(item.getSkuId())));
+        }
+        return items;
+    }
+
+    private List<CartItem> readCart(Long userId) {
         Map<Object, Object> entries = redisTemplate.opsForHash().entries(cartKey(userId));
         List<CartItem> items = new ArrayList<>();
         for (Object value : entries.values()) {
@@ -116,7 +141,33 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public int getCount(Long userId) {
-        return getCart(userId).stream().mapToInt(CartItem::getQuantity).sum();
+        return readCart(userId).stream().mapToInt(CartItem::getQuantity).sum();
+    }
+
+    private boolean missingProduct(CartItem item) {
+        return item.getSpuId() == null || item.getPrice() == null || item.getName() == null || item.getName().isBlank();
+    }
+
+    private Map<Long, SkuBatchVO> loadSnapshots(List<Long> skuIds) {
+        try {
+            var result = productClient.getSkus(skuIds);
+            if (result != null && result.getCode() == 200 && result.getData() != null) {
+                Map<Long, SkuBatchVO> snapshots = new HashMap<>();
+                for (SkuBatchVO sku : result.getData()) snapshots.put(sku.getSkuId(), sku);
+                return snapshots;
+            }
+        } catch (RuntimeException ignored) {
+            // Previously saved cart rows remain readable when the catalog is temporarily unavailable.
+        }
+        return Map.of();
+    }
+
+    private void applySnapshot(CartItem item, SkuBatchVO sku) {
+        if (sku == null) return;
+        item.setSpuId(sku.getSpuId());
+        item.setName(sku.getSkuName());
+        if (item.getImage() == null || item.getImage().isBlank()) item.setImage(sku.getImage());
+        item.setPrice(sku.getPrice());
     }
 
     @Override

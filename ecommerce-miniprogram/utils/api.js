@@ -1,8 +1,13 @@
-// H5 dev mode uses Vite proxy, mini-program uses absolute URL
-export const API_BASE = typeof window !== 'undefined' ? '' : 'http://192.168.5.6:8080'
+import { clearSession, token } from './session'
+
+let defaultBase = ''
+// #ifdef MP-WEIXIN
+defaultBase = 'http://127.0.0.1:8080'
+// #endif
+export const API_BASE = (import.meta.env.VITE_API_BASE_URL || defaultBase).replace(/\/+$/, '')
 
 export function request(options) {
-  const token = uni.getStorageSync('token')
+  const requestToken = options.auth === false ? '' : token.value
   return new Promise((resolve) => {
     uni.request({
       url: API_BASE + options.url,
@@ -10,17 +15,23 @@ export function request(options) {
       data: options.data,
       header: {
         'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        ...(requestToken ? { Authorization: `Bearer ${requestToken}` } : {}),
         ...(options.header || {})
       },
       success(res) {
-        if (res.statusCode === 401) {
-          uni.removeStorageSync('token')
+        if (res.statusCode === 401 && requestToken && requestToken === token.value) clearSession()
+        if (res.statusCode >= 400) {
+          resolve({
+            code: res.data?.code || res.statusCode,
+            message: res.data?.message || (res.statusCode === 401 ? '请先登录' : '请求失败，请稍后重试'),
+            data: null
+          })
+        } else {
+          resolve(res.data || { code: res.statusCode, message: '', data: null })
         }
-        resolve(res.data || { code: res.statusCode, message: '', data: null })
       },
       fail() {
-        resolve({ code: -1, message: '网络开小差了', data: null })
+        resolve({ code: -1, message: '网络开小差了，请重试', data: null })
       }
     })
   })

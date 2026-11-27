@@ -429,7 +429,9 @@ The report counts visible recommendation cards and their corresponding clicks fo
 
 ### 9. Optional: run the WeChat Mini Program
 
-Open [ecommerce-miniprogram](ecommerce-miniprogram/) in HBuilderX. Set your WeChat Mini Program AppID in [manifest.json](ecommerce-miniprogram/manifest.json) and install WeChat Developer Tools. Set the gateway in [utils/api.js](ecommerce-miniprogram/utils/api.js) to an address reachable from the debugger. For H5 development, also change the proxy target in [vite.config.js](ecommerce-miniprogram/vite.config.js). The loopback addresses in this guide are for local development. A physical phone cannot use its own `localhost` to reach services on your computer.
+Open [ecommerce-miniprogram](ecommerce-miniprogram/) in HBuilderX, set your WeChat Mini Program AppID in [manifest.json](ecommerce-miniprogram/manifest.json), and run the app in WeChat Developer Tools. The local WeChat simulator and H5 development proxy use `http://127.0.0.1:8080` by default. Sign in to the store with the local demo account `testuser / test123`.
+
+To use another gateway, set `VITE_API_BASE_URL=https://your-gateway.example` in `.env.local` inside the mini program directory and rebuild. To override only the H5 development proxy, set `VITE_DEV_PROXY_TARGET`. For a physical phone, use a reachable HTTPS gateway configured as a request domain in the WeChat Mini Program dashboard.
 
 ### 10. Stop, restart, and troubleshoot
 

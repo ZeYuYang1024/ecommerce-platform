@@ -8,6 +8,6 @@ import org.springframework.stereotype.Component;
 public class ProductClientFallback implements FallbackFactory<ProductClient> {
     @Override
     public ProductClient create(Throwable cause) {
-        return id -> Result.ok();
+        return ids -> Result.fail(503, "暂时无法读取商品信息");
     }
 }

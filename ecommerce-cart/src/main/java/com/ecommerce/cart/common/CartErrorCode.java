@@ -5,6 +5,7 @@ import com.ecommerce.common.result.ErrorCode;
 public enum CartErrorCode implements ErrorCode {
     CART_ITEM_NOT_FOUND(35010001, "购物车商品不存在"),
     INVALID_QUANTITY(35010002, "数量必须大于0"),
+    PRODUCT_UNAVAILABLE(35010003, "商品规格不可用，请刷新商品详情"),
     ;
 
     private final int code;

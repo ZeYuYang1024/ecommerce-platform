@@ -7,8 +7,11 @@
 
     <!-- Banner -->
     <swiper class="banner" indicator-dots autoplay circular interval="3000">
-      <swiper-item v-for="b in banners" :key="b">
-        <image :src="b" mode="aspectFill" class="banner-img" />
+      <swiper-item v-for="banner in banners" :key="banner.title">
+        <view :class="['banner-panel', banner.theme]">
+          <text class="banner-title">{{ banner.title }}</text>
+          <text class="banner-subtitle">{{ banner.subtitle }}</text>
+        </view>
       </swiper-item>
     </swiper>
 
@@ -41,12 +44,12 @@
       </view>
       <view class="product-grid">
         <view v-for="p in products" :key="p.id" class="product-card" @click="goDetail(p.id)">
-          <image :src="getImageUrl(p.mainImage)" mode="aspectFill" class="product-img" />
+          <ProductImage :source="p.mainImage" height="340rpx" />
           <view class="product-info">
             <text class="product-name">{{ p.name }}</text>
             <view class="product-price-row">
-              <text class="text-price">¥{{ p.minPrice || p.price }}</text>
-              <text class="text-price-original" v-if="p.maxPrice && p.maxPrice !== p.minPrice">¥{{ p.maxPrice }}</text>
+              <text class="text-price">¥{{ p.minPrice ?? p.price ?? "—" }}</text>
+              <text class="price-range" v-if="Number(p.maxPrice) > Number(p.minPrice)">– ¥{{ p.maxPrice }}</text>
             </view>
           </view>
         </view>
@@ -58,9 +61,13 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { request } from '@/utils/api'
-import { getImageUrl } from '@/utils/image'
+import ProductImage from '@/components/ProductImage.vue'
 
-const banners = ref(['/static/banner_hero.png', '/static/banner_new.png', '/static/banner_seckill.png'])
+const banners = [
+  { title: '品质好物，一站购齐', subtitle: '从日常所需到心仪新品', theme: 'amber' },
+  { title: '发现新上架好物', subtitle: '看看最近上架的商品', theme: 'teal' },
+  { title: '发现购物优惠', subtitle: '逛逛优惠活动和领券中心', theme: 'plum' }
+]
 const categories = ref([])
 const products = ref([])
 const seckillItems = ref([])
@@ -84,7 +91,10 @@ onMounted(async () => {
 
 const goSearch = () => uni.navigateTo({ url: '/pages/search/index' })
 const goDetail = (id) => uni.navigateTo({ url: `/pages/product/detail?id=${id}` })
-const goCategory = (id) => uni.navigateTo({ url: `/pages/category/index?id=${id}` })
+function goCategory(id) {
+  uni.setStorageSync('browseCategoryId', String(id))
+  uni.switchTab({ url: '/pages/category/index', fail: () => uni.removeStorageSync('browseCategoryId') })
+}
 const goSeckill = () => uni.navigateTo({ url: '/pages/seckill/index' })
 </script>
 
@@ -93,7 +103,11 @@ const goSeckill = () => uni.navigateTo({ url: '/pages/seckill/index' })
 .search-bar { padding: 16rpx 24rpx; background: #fff; }
 .search-input { height: 68rpx; background: #F8F8F8; border-radius: 34rpx; padding: 0 32rpx; display: flex; align-items: center; color: #9CA3AF; font-size: 28rpx; }
 .banner { height: 320rpx; margin: 16rpx 24rpx; border-radius: 20rpx; overflow: hidden; }
-.banner-img { width: 100%; height: 100%; }
+.banner-panel { height: 100%; box-sizing: border-box; padding: 48rpx; display: flex; flex-direction: column; justify-content: center; gap: 12rpx; color: #fff; background: radial-gradient(circle at 100% 0%, #B45309, transparent 58%), #7C2D12; }
+.banner-panel.teal { background: radial-gradient(circle at 100% 0%, #0F766E, transparent 58%), #134E4A; }
+.banner-panel.plum { background: radial-gradient(circle at 100% 0%, #A21CAF, transparent 58%), #581C87; }
+.banner-title { font-size: 48rpx; font-weight: 700; }
+.banner-subtitle { font-size: 27rpx; }
 .cats { display: flex; flex-wrap: wrap; padding: 16rpx 24rpx; background: #fff; margin: 0 24rpx; border-radius: 20rpx; }
 .cat-item { width: 25%; display: flex; flex-direction: column; align-items: center; padding: 16rpx 0; }
 .cat-icon { width: 80rpx; height: 80rpx; background: linear-gradient(135deg, #FEF3C7, #FDE68A); border-radius: 20rpx; display: flex; align-items: center; justify-content: center; font-size: 32rpx; font-weight: bold; color: #D97706; }
@@ -108,8 +122,8 @@ const goSeckill = () => uni.navigateTo({ url: '/pages/seckill/index' })
 .seckill-name { font-size: 24rpx; color: #6B7280; margin-top: 6rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .product-grid { display: flex; flex-wrap: wrap; gap: 16rpx; }
 .product-card { width: calc(50% - 8rpx); background: #fff; border-radius: 20rpx; overflow: hidden; }
-.product-img { width: 100%; height: 340rpx; background: #F8F8F8; }
 .product-info { padding: 16rpx; }
 .product-name { font-size: 28rpx; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.price-range { color: #5F6B7A; font-size: 24rpx; }
 .product-price-row { display: flex; align-items: baseline; gap: 8rpx; margin-top: 8rpx; }
 </style>

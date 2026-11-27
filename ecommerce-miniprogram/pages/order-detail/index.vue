@@ -12,7 +12,7 @@
     <view class="card">
       <text class="label">商品明细</text>
       <view v-for="item in order.items" :key="item.id" class="item-row">
-        <image :src="getImageUrl(item.image)" mode="aspectFill" class="item-img" />
+        <ProductImage :source="item.image" width="80rpx" height="80rpx" radius="8rpx" />
         <view class="item-info">
           <text>{{ item.name }}</text>
           <text class="text-muted">¥{{ item.price }} × {{ item.quantity }}</text>
@@ -38,7 +38,7 @@
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { request } from '@/utils/api'
-import { getImageUrl } from '@/utils/image'
+import ProductImage from '@/components/ProductImage.vue'
 
 const order = ref(null)
 
@@ -71,7 +71,6 @@ async function viewLogistics() {
 .order-no { font-size: 24rpx; color: #9CA3AF; }
 .label { font-size: 28rpx; font-weight: 600; display: block; margin-bottom: 12rpx; }
 .item-row { display: flex; gap: 12rpx; padding: 12rpx 0; border-top: 1px solid #F3F4F6; align-items: center; }
-.item-img { width: 80rpx; height: 80rpx; border-radius: 8rpx; background: #F8F8F8; }
 .item-info { flex: 1; font-size: 26rpx; }
 .item-total { font-size: 26rpx; font-weight: 500; }
 .total-row { display: flex; justify-content: space-between; padding-top: 16rpx; border-top: 1px solid #F3F4F6; font-size: 30rpx; font-weight: bold; margin-top: 8rpx; }

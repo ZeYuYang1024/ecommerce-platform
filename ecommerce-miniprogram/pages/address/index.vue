@@ -43,6 +43,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import { request } from '@/utils/api'
 
 const loading = ref(false)
@@ -57,6 +58,8 @@ const form = ref({
   detail: '',
   isDefault: 0
 })
+let fromCheckout = false
+onLoad(options => { fromCheckout = options?.fromCheckout === '1' })
 
 onMounted(fetchAddresses)
 
@@ -88,14 +91,17 @@ function validateForm() {
 }
 
 async function createAddress() {
-  if (!validateForm()) return
+  if (submitting.value || !validateForm()) return
   submitting.value = true
   const res = await request({ url: '/api/v1/users/addresses', method: 'POST', data: form.value })
   submitting.value = false
   if (res.code === 200) {
     uni.showToast({ title: '保存成功', icon: 'success' })
     form.value = { receiverName: '', receiverPhone: '', province: '', city: '', district: '', detail: '', isDefault: 0 }
-    fetchAddresses()
+    if (fromCheckout) {
+      if (res.data?.id != null) uni.setStorageSync('checkoutAddressId', String(res.data.id))
+      uni.navigateBack()
+    } else fetchAddresses()
   } else {
     uni.showToast({ title: res.message || '保存失败', icon: 'none' })
   }
