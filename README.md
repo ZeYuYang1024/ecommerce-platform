@@ -148,6 +148,7 @@ docker compose up -d --no-build --pull never minio
   for schema in ecommerce_inventory ecommerce_order ecommerce_payment ecommerce_logistics ecommerce_warehouse; do
     db "$schema" < "$migrations/2026-05-28-transactional-outbox.sql"
   done
+  db < "$migrations/2026-11-28-buyer-after-sale.sql"
   db -Nse "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'ecommerce%';"
 )
 ```
@@ -182,19 +183,20 @@ Import-ProjectSql "$migrations/2026-06-20-warehouse-init.sql" ecommerce_warehous
 foreach ($schema in 'ecommerce_inventory', 'ecommerce_order', 'ecommerce_payment', 'ecommerce_logistics', 'ecommerce_warehouse') {
   Import-ProjectSql "$migrations/2026-05-28-transactional-outbox.sql" $schema
 }
+Import-ProjectSql "$migrations/2026-11-28-buyer-after-sale.sql"
 docker compose exec -T mysql mysql -uroot -proot -Nse "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'ecommerce%';"
 ```
 
 最后应列出 **16 个 `ecommerce_*` 数据库**。基础 SQL 已包含支付表的订单号唯一索引，空库无需再执行 `2026-05-29-payment-order-unique.sql`。会员等级由会员服务启动时初始化。知识库 SQL 会先建库和分类，是否启动知识库服务可以稍后决定。
 
-确认 `clusterList` 已有 Broker，再创建项目使用的 14 个 RocketMQ Topic。每个 Topic 配置 4 个读队列和 4 个写队列。
+确认 `clusterList` 已有 Broker，再创建项目使用的 16 个 RocketMQ Topic。每个 Topic 配置 4 个读队列和 4 个写队列。
 
 **Linux/macOS（Bash）**
 
 ```bash
 (
   set -e
-  for topic in order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal; do
+  for topic in order-created order-cancelled order-paid order-refunded after-sale-refund-requested after-sale-stock-release product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal; do
     docker compose exec -T rocketmq-broker sh mqadmin updateTopic -n rocketmq-namesrv:9876 -c DefaultCluster -t "$topic" -r 4 -w 4
   done
   docker compose exec -T rocketmq-broker sh mqadmin topicList -n rocketmq-namesrv:9876
@@ -204,7 +206,7 @@ docker compose exec -T mysql mysql -uroot -proot -Nse "SELECT SCHEMA_NAME FROM i
 **Windows（PowerShell）**
 
 ```powershell
-$topics = 'order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal'.Split(' ')
+$topics = 'order-created order-cancelled order-paid order-refunded after-sale-refund-requested after-sale-stock-release product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal'.Split(' ')
 foreach ($topic in $topics) {
   docker compose exec -T rocketmq-broker sh mqadmin updateTopic -n rocketmq-namesrv:9876 -c DefaultCluster -t $topic -r 4 -w 4
   if ($LASTEXITCODE -ne 0) { throw "Topic creation failed: $topic" }
@@ -457,6 +459,12 @@ PC 和小程序首页都接入「猜你喜欢」。升级已有推荐库时，�
 要连接其他网关，在小程序目录的 `.env.local` 里设置 `VITE_API_BASE_URL=https://你的网关域名`，然后重新编译。只需调整 H5 开发代理时，设置 `VITE_DEV_PROXY_TARGET`。手机真机使用可从手机访问、且已在微信小程序后台配置的 HTTPS 请求域名。
 
 真机冒烟时，先确认「猜你喜欢」卡片的图片能加载，再登录、进入推荐商品、选规格、加购、结算，并在订单详情核对金额和状态。打开弱网模式后确认商品列表仍可浏览，失败提示和重试入口可用。
+
+#### 小程序模拟支付与退款
+
+买家提交订单后可以直接模拟支付。稍后也可以从待支付订单详情继续。支付与库存事件异步处理。对已支付、尚未开始发货的订单，买家可在小程序和 Web 订单详情申请一次全额退款，并查看审核结果。单一店铺订单由该商家在「订单管理 → 售后申请」审核。平台自营或跨店订单由平台管理员处理。同意退款后，支付服务记录退款，订单状态由退款结果驱动。库存服务只释放实际扣减过的库存。退款失败时，平台管理员可重试同一申请，拒绝仍是终态。发货占用的租约为 30 分钟，过期后先核对物流和托管仓记录，再由定时任务或平台后台释放无实际发货的占用。订单无法迁移时，已成功的退款仍会显示，后台保留异常说明，库存交由人工核对。
+
+升级已有本地数据库时，先导入 `docs/sql/migrations/2026-11-28-buyer-after-sale.sql`，再按第 3 节创建 `after-sale-refund-requested` 和 `after-sale-stock-release`，然后重建、重启订单、支付、库存、物流和会员服务。迁移会在共享 MySQL 中保留此前已开始发货的记录。订单与物流使用独立数据库实例时，启用功能前需要将现有物流发货单的 `order_id` 和 `shipping_no` 导入订单库的 `order_shipping_claim`。
 
 ### 10. 关闭、重启和排错
 

@@ -5,10 +5,14 @@
         <span class="section-label">订单管理</span>
         <p class="page-desc">查看您店铺商品的订单</p>
       </div>
-      <el-select v-model="statusFilter" placeholder="状态" style="width:140px" clearable @change="fetchData">
-        <el-option label="待支付" :value="0" /><el-option label="已支付" :value="1" />
-        <el-option label="已发货" :value="2" /><el-option label="已完成" :value="3" />
-      </el-select>
+      <div class="toolbar-right">
+        <AfterSalesDialog merchant @reviewed="fetchData" />
+        <el-select v-model="statusFilter" placeholder="状态" style="width:140px" clearable @change="fetchData">
+          <el-option label="待支付" :value="0" /><el-option label="已支付" :value="1" />
+          <el-option label="已发货" :value="2" /><el-option label="已完成" :value="3" />
+          <el-option label="已退款" :value="5" />
+        </el-select>
+      </div>
     </div>
 
     <el-card shadow="never" class="table-card">
@@ -20,7 +24,7 @@
           <template #default="{ row }"><span class="amount-text">¥{{ row.totalAmount }}</span></template>
         </el-table-column>
         <el-table-column label="状态" width="100" align="center">
-          <template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ row.statusText }}</el-tag></template>
+          <template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ row.status === 5 ? '已退款' : row.statusText }}</el-tag></template>
         </el-table-column>
         <el-table-column label="收货人" width="140">
           <template #default="{ row }"><span style="font-size:13px">{{ row.receiverName }}</span></template>
@@ -49,6 +53,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import AfterSalesDialog from '@/components/AfterSalesDialog.vue'
 import { formatDateTime } from '@/utils/dateTime'
 
 const loading = ref(false)
@@ -80,6 +85,7 @@ onMounted(fetchData)
 
 <style scoped>
 .toolbar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+.toolbar-right { display: flex; gap: 12px; align-items: center; }
 .page-desc { font-size: 13.5px; color: var(--text-muted); margin-top: 4px; }
 .table-card { border-radius: var(--radius-lg); }
 .pagination-row { padding: 18px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }

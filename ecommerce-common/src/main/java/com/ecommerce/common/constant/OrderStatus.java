@@ -9,6 +9,7 @@ public final class OrderStatus {
     public static final int SHIPPED = 2;
     public static final int COMPLETED = 3;
     public static final int CANCELLED = 4;
+    public static final int REFUNDED = 5;
 
     public static String text(Integer status) {
         if (status == null) {
@@ -20,6 +21,7 @@ public final class OrderStatus {
             case SHIPPED -> "SHIPPED";
             case COMPLETED -> "COMPLETED";
             case CANCELLED -> "CANCELLED";
+            case REFUNDED -> "REFUNDED";
             default -> "UNKNOWN";
         };
     }

@@ -24,4 +24,12 @@ public class OrderRefundedMessage implements Serializable {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime occurredAt;
     private String idempotencyKey;
+    private Long afterSaleId;
+    private String failureReason;
+    private Integer refundAttempt;
+
+    public OrderRefundedMessage(String refundNo, String orderNo, Long userId, BigDecimal refundAmount,
+                                String refundType, String refundStatus, LocalDateTime occurredAt, String idempotencyKey) {
+        this(refundNo, orderNo, userId, refundAmount, refundType, refundStatus, occurredAt, idempotencyKey, null, null, null);
+    }
 }

@@ -451,16 +451,16 @@ class OrderServiceImplTest {
         }
 
         @Test
-        void shouldShowUnknownStatusTextForLegacyRefundedValue() {
+        void shouldShowRefundedStatusText() {
             order.setStatus(5);
             when(orderMapper.selectById(1L)).thenReturn(order);
             when(itemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
 
-            assertThat(service.getOrder(1L, 1L).getStatusText()).isEqualTo("UNKNOWN");
+            assertThat(service.getOrder(1L, 1L).getStatusText()).isEqualTo("REFUNDED");
         }
 
         @Test
-        void shouldRejectLegacyRefundedStatusTransition() {
+        void shouldRejectManualRefundedStatusTransition() {
             order.setStatus(1);
             when(orderMapper.selectById(1L)).thenReturn(order);
 

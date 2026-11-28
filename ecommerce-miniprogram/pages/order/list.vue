@@ -9,7 +9,7 @@
       <view v-for="o in filteredOrders" :key="o.id" class="order-card" @click="goDetail(o.orderNo)">
         <view class="order-header">
           <text class="order-no">{{ o.orderNo }}</text>
-          <text :class="['status', statusClass(o.status)]">{{ o.statusText }}</text>
+          <text :class="['status', statusClass(o.status)]">{{ o.status === 5 ? '已退款' : o.statusText }}</text>
         </view>
         <view v-for="item in o.items" :key="item.id" class="order-item">
           <ProductImage :source="item.image" width="100rpx" height="100rpx" radius="8rpx" />

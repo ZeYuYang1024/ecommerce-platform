@@ -1,6 +1,6 @@
 # Contributing
 
-Start with the local demo in [English](README.en.md#start-the-storefront-and-admin-demo) or [中文](README.md#一键体验商城和后台). Use a demo database for shopping smoke tests, which create a test account and place an order against the seeded catalog.
+Start with the local demo in [English](README.en.md#start-the-storefront-and-admin-demo) or [中文](README.md#一键体验商城和后台). Use a demo database for shopping smoke tests, which create a test account, place an order against the seeded catalog, and approve a full refund using the seeded platform admin.
 
 Run backend tests from the repository root, then package the service JARs separately. The order contract tests use the inventory and payment modules' test-time classpaths, while the runnable JARs use Spring Boot packaging.
 

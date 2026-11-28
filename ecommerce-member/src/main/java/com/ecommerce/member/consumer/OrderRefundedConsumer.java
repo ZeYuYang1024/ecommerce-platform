@@ -22,6 +22,7 @@ public class OrderRefundedConsumer implements RocketMQListener<OrderRefundedMess
 
     @Override
     public void onMessage(OrderRefundedMessage message) {
+        if (!"SUCCESS".equals(message.getRefundStatus())) return;
         log.info("Member MQ received: order-refunded, orderNo={}, refundNo={}",
                 message.getOrderNo(), message.getRefundNo());
 

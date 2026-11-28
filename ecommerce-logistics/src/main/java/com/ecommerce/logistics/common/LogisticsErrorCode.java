@@ -21,7 +21,8 @@ public enum LogisticsErrorCode implements ErrorCode {
     TEMPLATE_CALC_FAILED(50020016, "shipping fee calculation failed"),
     WAYBILL_GENERATE_FAILED(50020017, "waybill generation failed"),
     TEMPLATE_FORBIDDEN(50020018, "forbidden template access"),
-    WAREHOUSE_FORBIDDEN(50020019, "forbidden warehouse access");
+    WAREHOUSE_FORBIDDEN(50020019, "forbidden warehouse access"),
+    SHIPPING_BLOCKED(50020020, "订单暂不可发货，请检查订单和售后状态");
 
     private final int code;
     private final String message;

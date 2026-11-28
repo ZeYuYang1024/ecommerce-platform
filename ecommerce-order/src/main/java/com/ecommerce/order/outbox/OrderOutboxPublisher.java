@@ -1,5 +1,6 @@
 package com.ecommerce.order.outbox;
 
+import com.ecommerce.common.dto.AfterSaleRefundRequest;
 import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.RecommendationSignal;
 import com.ecommerce.common.outbox.OutboxMessage;
@@ -36,8 +37,11 @@ public class OrderOutboxPublisher {
                 continue;
             }
             try {
-                Class<?> payloadType = RecommendationSignal.TOPIC.equals(message.getTopic())
-                        ? RecommendationSignal.class : OrderInventoryMessage.class;
+                Class<?> payloadType = switch (message.getTopic()) {
+                    case RecommendationSignal.TOPIC -> RecommendationSignal.class;
+                    case AfterSaleRefundRequest.TOPIC -> AfterSaleRefundRequest.class;
+                    default -> OrderInventoryMessage.class;
+                };
                 Object payload = jsonMapper.readValue(message.getPayloadJson(), payloadType);
                 rocketMQTemplate.syncSend(message.getTopic(), payload);
                 outboxService.markSent(message);

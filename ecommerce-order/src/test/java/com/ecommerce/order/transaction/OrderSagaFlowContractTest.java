@@ -11,6 +11,8 @@ import com.ecommerce.common.dto.RecommendationSignal;
 import com.ecommerce.common.dto.SkuBatchVO;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.Result;
+import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.inventory.common.InventoryErrorCode;
 import com.ecommerce.inventory.entity.InventoryEventLog;
 import com.ecommerce.inventory.mapper.InventoryEventLogMapper;
 import com.ecommerce.inventory.service.StockService;
@@ -147,7 +149,7 @@ class OrderSagaFlowContractTest {
         OutboxService inventoryOutboxService = mock(OutboxService.class);
         InventoryTransactionExecutor transactionExecutor = Runnable::run;
         when(inventoryEventLogMapper.insert(any(InventoryEventLog.class))).thenReturn(1);
-        org.mockito.Mockito.doThrow(new IllegalStateException("stock down"))
+        org.mockito.Mockito.doThrow(new BusinessException(InventoryErrorCode.STOCK_INSUFFICIENT))
                 .when(stockService).deduct(11L, 2);
 
         InventoryMessageServiceImpl inventoryService = new InventoryMessageServiceImpl(
@@ -163,7 +165,7 @@ class OrderSagaFlowContractTest {
         assertThat(compensationMessage.getStatus()).isEqualTo(4);
         assertThat(compensationMessage.getTransactionId()).isEqualTo(inventoryMessage.getTransactionId());
         assertThat(compensationMessage.getIdempotencyKey()).isEqualTo(inventoryMessage.getIdempotencyKey() + ":compensate");
-        assertThat(compensationMessage.getErrorMessage()).isEqualTo("stock down");
+        assertThat(compensationMessage.getErrorMessage()).isEqualTo(InventoryErrorCode.STOCK_INSUFFICIENT.getMessage());
 
         OrderMapper orderMapper = mock(OrderMapper.class);
         Order order = new Order();

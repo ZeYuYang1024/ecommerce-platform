@@ -173,7 +173,10 @@ async function submitOrder() {
     if (!buyNow && !await cartStore.removePurchased(purchased)) {
       uni.showToast({ title: '订单已提交，购物车更新失败', icon: 'none' })
     }
-    uni.redirectTo({ url: `/pages/order-detail/index?orderNo=${encodeURIComponent(res.data.orderNo)}` })
+    const orderNo = encodeURIComponent(res.data.orderNo)
+    uni.redirectTo({ url: `/pages/payment/index?orderNo=${orderNo}`,
+      fail: () => uni.redirectTo({ url: `/pages/order-detail/index?orderNo=${orderNo}` })
+    })
   } finally {
     submitting.value = false
   }

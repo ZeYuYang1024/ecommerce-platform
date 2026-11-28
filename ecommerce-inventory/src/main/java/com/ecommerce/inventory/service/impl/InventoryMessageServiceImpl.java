@@ -5,6 +5,8 @@ import com.ecommerce.common.dto.OrderItemMessage;
 import com.ecommerce.common.dto.OrderPaidMessage;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.util.SnowflakeUtils;
+import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.inventory.common.InventoryErrorCode;
 import com.ecommerce.inventory.entity.InventoryEventLog;
 import com.ecommerce.inventory.mapper.InventoryEventLogMapper;
 import com.ecommerce.inventory.service.InventoryMessageService;
@@ -41,47 +43,56 @@ public class InventoryMessageServiceImpl implements InventoryMessageService {
 
     @Override
     public void handleDeduct(OrderInventoryMessage message) {
-        handle(message, TOPIC_ORDER_CREATED, Operation.DEDUCT);
+        String orderNo = message.getOrderNo();
+        try {
+            transactionExecutor.execute(() -> {
+                inventoryEventLogMapper.lockOrder(orderNo);
+                Long eventLogId = tryCreateProcessingLog(TOPIC_ORDER_CREATED, orderNo);
+                if (eventLogId == null) return;
+                if (inventoryEventLogMapper.wasProcessed(orderNo, TOPIC_ORDER_CANCELLED)) {
+                    // A release that arrived first cancels this reservation without changing stock.
+                    inventoryEventLogMapper.markFailed(eventLogId);
+                    return;
+                }
+                for (OrderItemMessage item : message.getItems()) {
+                    stockService.deduct(item.getSkuId(), item.getQuantity());
+                }
+                inventoryEventLogMapper.markProcessed(eventLogId);
+            });
+        } catch (BusinessException error) {
+            if (error.getErrorCode() != InventoryErrorCode.STOCK_INSUFFICIENT) throw error;
+            compensateInsufficientStock(message, error);
+        }
+    }
+
+    private void compensateInsufficientStock(OrderInventoryMessage message, BusinessException error) {
+        String orderNo = message.getOrderNo();
+        // Roll back all SKU changes first, then persist the failure and its compensation together.
+        transactionExecutor.execute(() -> {
+            inventoryEventLogMapper.lockOrder(orderNo);
+            Long eventLogId = tryCreateProcessingLog(TOPIC_ORDER_CREATED, orderNo);
+            if (eventLogId == null) return;
+            inventoryEventLogMapper.markFailed(eventLogId);
+            if (!inventoryEventLogMapper.wasProcessed(orderNo, TOPIC_ORDER_CANCELLED)) {
+                publishInventoryCompensation(message, error);
+            }
+        });
     }
 
     @Override
     public void handleRelease(OrderInventoryMessage message) {
-        handle(message, TOPIC_ORDER_CANCELLED, Operation.RELEASE);
-    }
-
-    private void handle(OrderInventoryMessage message, String topic, Operation operation) {
-        Long eventLogId = tryCreateProcessingLog(topic, message.getOrderNo());
-        if (eventLogId == null) {
-            log.info("Skip duplicated inventory event: topic={} orderNo={}", topic, message.getOrderNo());
-            return;
-        }
-        if (TOPIC_ORDER_CREATED.equals(topic)) {
-            // Keep failure mark and compensation outbox in one local transaction / 在同一本地事务里同时落失败标记和补偿 outbox
-            transactionExecutor.execute(() -> {
-                try {
-                    for (OrderItemMessage item : message.getItems()) {
-                        operation.apply(stockService, item);
-                    }
-                    inventoryEventLogMapper.markProcessed(eventLogId);
-                } catch (RuntimeException ex) {
-                    inventoryEventLogMapper.markFailed(eventLogId);
-                    publishInventoryCompensation(message, ex);
-                    log.warn("Inventory deduct failed, compensation queued: orderNo={}", message.getOrderNo(), ex);
-                }
-            });
-            return;
-        }
-        try {
-            transactionExecutor.execute(() -> {
+        String orderNo = message.getOrderNo();
+        transactionExecutor.execute(() -> {
+            inventoryEventLogMapper.lockOrder(orderNo);
+            Long eventLogId = tryCreateProcessingLog(TOPIC_ORDER_CANCELLED, orderNo);
+            if (eventLogId == null) return;
+            if (inventoryEventLogMapper.wasProcessed(orderNo, TOPIC_ORDER_CREATED)) {
                 for (OrderItemMessage item : message.getItems()) {
-                    operation.apply(stockService, item);
+                    stockService.release(item.getSkuId(), item.getQuantity());
                 }
-                inventoryEventLogMapper.markProcessed(eventLogId);
-            });
-        } catch (RuntimeException ex) {
-            transactionExecutor.execute(() -> inventoryEventLogMapper.markFailed(eventLogId));
-            throw ex;
-        }
+            }
+            inventoryEventLogMapper.markProcessed(eventLogId);
+        });
     }
 
     private Long tryCreateProcessingLog(String topic, String orderNo) {
@@ -94,6 +105,7 @@ public class InventoryMessageServiceImpl implements InventoryMessageService {
             inventoryEventLogMapper.insert(eventLog);
             return eventLog.getId();
         } catch (DuplicateKeyException ex) {
+            log.info("Skip duplicated inventory event: topic={} orderNo={}", topic, orderNo);
             return null;
         }
     }
@@ -114,22 +126,5 @@ public class InventoryMessageServiceImpl implements InventoryMessageService {
             return "inventory-compensation:" + message.getOrderNo();
         }
         return message.getIdempotencyKey() + ":compensate";
-    }
-
-    private enum Operation {
-        DEDUCT {
-            @Override
-            void apply(StockService stockService, OrderItemMessage item) {
-                stockService.deduct(item.getSkuId(), item.getQuantity());
-            }
-        },
-        RELEASE {
-            @Override
-            void apply(StockService stockService, OrderItemMessage item) {
-                stockService.release(item.getSkuId(), item.getQuantity());
-            }
-        };
-
-        abstract void apply(StockService stockService, OrderItemMessage item);
     }
 }

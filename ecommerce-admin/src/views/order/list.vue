@@ -6,12 +6,14 @@
         <p class="page-desc">查看和管理平台所有订单</p>
       </div>
       <div class="toolbar-right">
+        <AfterSalesDialog @reviewed="fetchData" />
         <el-select v-model="statusFilter" placeholder="订单状态" style="width:140px" clearable @change="fetchData">
           <el-option label="待支付" :value="0" />
           <el-option label="已支付" :value="1" />
           <el-option label="已发货" :value="2" />
           <el-option label="已完成" :value="3" />
           <el-option label="已取消" :value="4" />
+          <el-option label="已退款" :value="5" />
         </el-select>
       </div>
     </div>
@@ -35,7 +37,7 @@
         </el-table-column>
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">{{ row.statusText }}</el-tag>
+            <el-tag :type="statusType(row.status)" size="small">{{ row.status === 5 ? '已退款' : row.statusText }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="收货人" width="140">
@@ -51,9 +53,12 @@
             <span class="font-mono time-text">{{ row.createdAt }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" align="center" fixed="right">
+        <el-table-column label="操作" width="190" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="row.status === 1" size="small" type="warning" @click="openShipDialog(row)">发货</el-button>
+            <template v-if="row.status === 1">
+              <el-button size="small" type="warning" @click="openShipDialog(row)">发货</el-button>
+              <el-button size="small" link @click="releaseExpiredShipping(row)">释放过期占用</el-button>
+            </template>
             <span v-else style="font-size:12px;color:var(--text-muted)">--</span>
           </template>
         </el-table-column>
@@ -99,8 +104,9 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
+import AfterSalesDialog from '@/components/AfterSalesDialog.vue'
 
 const loading = ref(false)
 const tableData = ref([])
@@ -131,6 +137,21 @@ function handleSizeChange() {
 function statusType(status) {
   const map = { 0: 'warning', 1: 'success', 2: '', 3: 'info', 4: 'danger' }
   return map[status] || 'info'
+}
+
+async function releaseExpiredShipping(row) {
+  try {
+    await ElMessageBox.confirm(`检查并释放订单 ${row.orderNo} 没有实际发货记录的过期占用？`, '释放发货占用')
+  } catch { return }
+
+  try {
+    const { data } = await axios.post(`/api/v1/admin/orders/${encodeURIComponent(row.id)}/shipping-claims/release-expired`)
+    if (data.code !== 200) throw new Error(data.message)
+    if (data.data > 0) ElMessage.success(`已释放 ${data.data} 条过期占用`)
+    else ElMessage.info('当前没有可释放的过期占用')
+  } catch (error) {
+    ElMessage.error(error.message || '暂时无法核对发货记录，请稍后再试')
+  }
 }
 
 async function fetchData() {

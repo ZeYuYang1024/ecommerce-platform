@@ -120,6 +120,7 @@ db ecommerce_inventory < "$migrations/2026-05-28-inventory-event-log.sql"
 db < "$migrations/2026-06-01-member-init.sql"
 db < "$migrations/2026-06-02-member-phase2a-init.sql"
 db < "$migrations/2026-06-02-order-points-reservation.sql"
+db < "$migrations/2026-11-28-buyer-after-sale.sql"
 for schema in ecommerce_inventory ecommerce_order ecommerce_payment; do
   db "$schema" < "$migrations/2026-05-28-transactional-outbox.sql"
 done
@@ -127,7 +128,7 @@ if [[ $(db -Nse "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_
   db ecommerce_payment < "$migrations/2026-05-29-payment-order-unique.sql"
 fi
 
-for topic in order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal; do
+for topic in order-created order-cancelled order-paid order-refunded after-sale-refund-requested after-sale-stock-release product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal; do
   result=$(docker compose exec -T rocketmq-broker sh mqadmin updateTopic     -n rocketmq-namesrv:9876 -c DefaultCluster -t "$topic" -r 4 -w 4 2>&1)
   if [[ $result != *success* ]]; then printf '%s\n' "$result" >&2; exit 1; fi
 done

@@ -4,6 +4,8 @@ import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.OrderItemMessage;
 import com.ecommerce.common.dto.OrderPaidMessage;
 import com.ecommerce.common.outbox.OutboxService;
+import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.inventory.common.InventoryErrorCode;
 import com.ecommerce.inventory.entity.InventoryEventLog;
 import com.ecommerce.inventory.mapper.InventoryEventLogMapper;
 import com.ecommerce.inventory.service.StockService;
@@ -76,7 +78,7 @@ class InventoryMessageServiceImplTest {
 
         verify(stockService, never()).deduct(any(Long.class), any(Integer.class));
         verify(inventoryEventLogMapper, never()).markProcessed(any(Long.class));
-        verify(transactionExecutor, never()).execute(any(Runnable.class));
+        verify(transactionExecutor).execute(any(Runnable.class));
     }
 
     @Test
@@ -95,6 +97,7 @@ class InventoryMessageServiceImplTest {
 
     @Test
     void handleReleaseShouldProcessAllItemsAndMarkProcessed() {
+        when(inventoryEventLogMapper.wasProcessed("ORD-1001", "order-created")).thenReturn(true);
         when(inventoryEventLogMapper.insert(any(InventoryEventLog.class))).thenReturn(1);
 
         inventoryMessageService.handleRelease(message);
@@ -106,6 +109,7 @@ class InventoryMessageServiceImplTest {
 
     @Test
     void handleReleaseShouldNotMarkProcessedWhenStockUpdateFails() {
+        when(inventoryEventLogMapper.wasProcessed("ORD-1001", "order-created")).thenReturn(true);
         when(inventoryEventLogMapper.insert(any(InventoryEventLog.class))).thenReturn(1);
         doNothing().when(stockService).release(11L, 2);
         doThrow(new IllegalStateException("boom")).when(stockService).release(22L, 3);
@@ -116,46 +120,50 @@ class InventoryMessageServiceImplTest {
 
         verify(stockService).release(11L, 2);
         verify(stockService).release(22L, 3);
-        verify(transactionExecutor, times(2)).execute(any(Runnable.class));
-        verify(inventoryEventLogMapper).markFailed(any(Long.class));
+        verify(transactionExecutor, times(1)).execute(any(Runnable.class));
+        verify(inventoryEventLogMapper, never()).markFailed(any(Long.class));
         verify(inventoryEventLogMapper, never()).markProcessed(any(Long.class));
     }
 
     @Test
-    void handleDeductShouldEnqueueCompensationWhenStockDeductionFailsInSingleTransaction() {
+    void releaseArrivingBeforeDeductDoesNotChangeStockInEitherDirection() {
         when(inventoryEventLogMapper.insert(any(InventoryEventLog.class))).thenReturn(1);
+        inventoryMessageService.handleRelease(message);
+        verify(inventoryEventLogMapper).markProcessed(any(Long.class));
+        verify(stockService, never()).release(any(Long.class), any(Integer.class));
+
+        when(inventoryEventLogMapper.wasProcessed("ORD-1001", "order-cancelled")).thenReturn(true);
+        inventoryMessageService.handleDeduct(message);
+        verify(stockService, never()).deduct(any(Long.class), any(Integer.class));
+        verify(inventoryEventLogMapper).markFailed(any(Long.class));
+        verify(inventoryEventLogMapper, times(2)).lockOrder("ORD-1001");
+    }
+
+    @Test
+    void infrastructureFailureDoesNotBecomeAStockCompensation() {
         doThrow(new IllegalStateException("stock down")).when(stockService).deduct(11L, 2);
 
-        inventoryMessageService.handleDeduct(message);
-
-        verify(transactionExecutor, times(1)).execute(any(Runnable.class));
-        verify(outboxService).enqueue(eq("inventory"), eq("ORD-1001"), eq("order-paid"),
-                org.mockito.ArgumentMatchers.argThat((OrderPaidMessage compensation) ->
-                        compensation != null
-                                && "ORD-1001".equals(compensation.getOrderNo())
-                                && Integer.valueOf(4).equals(compensation.getStatus())
-                                && "tx-order-1001".equals(compensation.getTransactionId())
-                                && "order-created:ORD-1001:compensate".equals(compensation.getIdempotencyKey())
-                                && "stock down".equals(compensation.getErrorMessage())));
-        verify(inventoryEventLogMapper).markFailed(any(Long.class));
+        assertThatThrownBy(() -> inventoryMessageService.handleDeduct(message))
+                .isInstanceOf(IllegalStateException.class);
+        verify(outboxService, never()).enqueue(any(), any(), any(), any());
         verify(inventoryEventLogMapper, never()).markProcessed(any(Long.class));
     }
 
     @Test
-    void handleDeductShouldEnqueueCompensationWhenInventoryIsInsufficientInSingleTransaction() {
+    void handleDeductShouldEnqueueCompensationWhenInventoryIsInsufficientAfterRollingBackDeductions() {
         when(inventoryEventLogMapper.insert(any(InventoryEventLog.class))).thenReturn(1);
-        doThrow(new IllegalStateException("insufficient stock")).when(stockService).deduct(11L, 2);
+        doThrow(new BusinessException(InventoryErrorCode.STOCK_INSUFFICIENT)).when(stockService).deduct(11L, 2);
 
         inventoryMessageService.handleDeduct(message);
 
-        verify(transactionExecutor, times(1)).execute(any(Runnable.class));
+        verify(transactionExecutor, times(2)).execute(any(Runnable.class));
         verify(outboxService).enqueue(eq("inventory"), eq("ORD-1001"), eq("order-paid"),
                 org.mockito.ArgumentMatchers.argThat((OrderPaidMessage compensation) ->
                         compensation != null
                                 && Integer.valueOf(4).equals(compensation.getStatus())
                                 && "tx-order-1001".equals(compensation.getTransactionId())
                                 && "order-created:ORD-1001:compensate".equals(compensation.getIdempotencyKey())
-                                && "insufficient stock".equals(compensation.getErrorMessage())));
+                                && InventoryErrorCode.STOCK_INSUFFICIENT.getMessage().equals(compensation.getErrorMessage())));
         verify(inventoryEventLogMapper).markFailed(any(Long.class));
         verify(inventoryEventLogMapper, never()).markProcessed(any(Long.class));
     }

@@ -11,7 +11,7 @@
       <NuxtLink v-for="order in orders" :key="order.id" :to="`/user/orders/${order.orderNo}`" class="block bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-md transition-shadow">
         <div class="flex justify-between items-center mb-4">
           <span class="text-sm text-gray-400 font-mono">订单号: {{ order.orderNo }}</span>
-          <span :class="statusClass(order.status)" class="text-sm font-medium">{{ order.statusText }}</span>
+          <span :class="statusClass(order.status)" class="text-sm font-medium">{{ order.status === 5 ? '已退款' : order.statusText }}</span>
         </div>
         <div v-for="item in order.items" :key="item.id" class="flex items-center gap-4 py-2 border-b border-gray-50 last:border-0">
           <div class="w-14 h-14 bg-gray-50 rounded-lg overflow-hidden">

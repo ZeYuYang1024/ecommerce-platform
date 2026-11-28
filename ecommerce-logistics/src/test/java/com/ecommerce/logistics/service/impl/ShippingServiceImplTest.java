@@ -88,6 +88,8 @@ class ShippingServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.lenient().when(orderClient.claimShipping(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenReturn(com.ecommerce.common.result.Result.ok());
         ReflectionTestUtils.setField(service, "trackingCacheMinutes", 30);
         ReflectionTestUtils.setField(service, "jsonMapper", JsonMapper.builder().build());
         provider = new LogisticsProvider();

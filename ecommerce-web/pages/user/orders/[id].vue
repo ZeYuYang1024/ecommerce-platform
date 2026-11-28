@@ -38,6 +38,7 @@
           <button @click="cancel" class="px-6 py-3 text-red-400 hover:text-red-500 font-medium">取消订单</button>
         </div>
       </div>
+      <OrderAfterSale :order-no="order.orderNo" :amount="order.totalAmount" @refunded="showRefunded" />
     </div>
   </div>
 </template>
@@ -81,5 +82,10 @@ async function cancel() {
   await api.put(`/orders/${order.value.id}/cancel`)
   order.value.status = 4
   order.value.statusText = '已取消'
+}
+
+function showRefunded() {
+  order.value.status = 5
+  order.value.statusText = '已退款'
 }
 </script>

@@ -199,6 +199,29 @@ class OrderControllerTest {
     }
 
     @Test
+    void shouldReturnShippingSnapshotForPlatformSkuWithoutMerchant() throws Exception {
+        Order order = new Order();
+        order.setId(101L);
+        when(orderMapper.selectById(101L)).thenReturn(order);
+
+        OrderItem item = new OrderItem();
+        item.setId(1001L);
+        item.setSkuId(2001L);
+        when(orderItemMapper.selectList(any())).thenReturn(List.of(item));
+        SkuBatchVO sku = new SkuBatchVO();
+        sku.setSkuId(2001L);
+        when(productSpuClient.batchQuerySkus(List.of(2001L)))
+                .thenReturn(com.ecommerce.common.result.Result.ok(List.of(sku)));
+
+        mockMvc.perform(get("/api/v1/internal/orders/101/shipping-snapshot"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.merchantId").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].skuId").value(2001))
+                .andExpect(jsonPath("$.data.items[0].merchantId").doesNotExist());
+    }
+
+    @Test
     void shouldRequireUserIdHeaderForOrderDetail() throws Exception {
         mockMvc.perform(get("/api/v1/orders/123"))
                 .andExpect(status().isBadRequest());

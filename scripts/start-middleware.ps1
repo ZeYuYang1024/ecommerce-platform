@@ -72,6 +72,9 @@ $Topics = @(
     "order-created:4",
     "order-cancelled:4",
     "order-paid:4",
+    "order-refunded:4",
+    "after-sale-refund-requested:4",
+    "after-sale-stock-release:4",
     "product-created:4",
     "merchant-approved:4"
     "recommendation-signal:4"
@@ -97,6 +100,9 @@ Write-Host ""
 Write-Host "[4/4] 初始化数据库 ..." -ForegroundColor Yellow
 Get-Content "$ProjectDir\docs\init.sql" | docker exec -i ecommerce-mysql mysql -uroot -proot
 Get-Content "$ProjectDir\ecommerce-recommendation\sql\init.sql" | docker exec -i ecommerce-mysql mysql -uroot -proot
+Get-Content -LiteralPath "$ProjectDir\docs\sql\migrations\2026-11-28-buyer-after-sale.sql" -Raw |
+    docker exec -i ecommerce-mysql mysql -uroot -proot
+if ($LASTEXITCODE -ne 0) { throw 'Buyer after-sale migration failed' }
 Write-Host "数据库初始化完成。" -ForegroundColor Green
 
 # --------------- Done ---------------

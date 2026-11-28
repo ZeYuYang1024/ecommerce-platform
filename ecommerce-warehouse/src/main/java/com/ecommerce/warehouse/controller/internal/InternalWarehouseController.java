@@ -1,10 +1,13 @@
 package com.ecommerce.warehouse.controller.internal;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.warehouse.dto.request.CreateOutboundRequest;
 import com.ecommerce.warehouse.dto.response.OutboundOrderVO;
 import com.ecommerce.warehouse.dto.response.PhysicalStockVO;
 import com.ecommerce.warehouse.dto.response.WarehouseVO;
+import com.ecommerce.warehouse.entity.OutboundOrder;
+import com.ecommerce.warehouse.mapper.OutboundOrderMapper;
 import com.ecommerce.warehouse.service.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +27,7 @@ public class InternalWarehouseController {
     private final OutboundService outboundService;
     private final StockService stockService;
     private final CheckService checkService;
+    private final OutboundOrderMapper outboundOrders;
 
     @GetMapping("/{id}")
     public Result<WarehouseVO> getWarehouse(@PathVariable Long id) {
@@ -47,5 +51,11 @@ public class InternalWarehouseController {
     @PostMapping("/outbounds")
     public Result<OutboundOrderVO> createOutbound(@Valid @RequestBody CreateOutboundRequest request) {
         return Result.ok(outboundService.createOutbound(request));
+    }
+
+    @GetMapping("/outbounds/shipping/{shippingId}/exists")
+    public Result<Boolean> hasOutbound(@PathVariable Long shippingId) {
+        return Result.ok(outboundOrders.exists(new LambdaQueryWrapper<OutboundOrder>()
+                .eq(OutboundOrder::getShippingId, shippingId)));
     }
 }

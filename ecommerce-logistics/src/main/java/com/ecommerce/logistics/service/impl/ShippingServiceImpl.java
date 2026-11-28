@@ -14,6 +14,7 @@ import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.common.tenant.MerchantTenantSupport;
+import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.logistics.client.OrderClient;
 import com.ecommerce.logistics.client.WarehouseClient;
 import com.ecommerce.logistics.client.dto.CreateOutboundRequest;
@@ -43,6 +44,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.DigestUtils;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -76,7 +79,7 @@ public class ShippingServiceImpl implements ShippingService {
             (int) (System.currentTimeMillis() % 100000));
 
     @Override
-    @Transactional
+    @Transactional(timeout = 120)
     public ShippingOrderVO createShipping(CreateShippingRequest request, String userType, Long merchantId) {
         // idempotency check
         ShippingOrder existing = shippingOrderMapper.selectOne(
@@ -122,8 +125,11 @@ public class ShippingServiceImpl implements ShippingService {
         Long resolvedMerchantId = resolveShippingMerchantId(orderSnapshot, warehouse, merchantId);
         MerchantTenantSupport.requireOwnerAccess(
                 merchantId, resolvedMerchantId, LogisticsErrorCode.SHIPPING_FORBIDDEN);
+        long shippingId = SnowflakeUtils.nextId();
+        claimShipping(request.getOrderId(), shippingNo, shippingId, managedWarehouse);
 
         ShippingOrder order = new ShippingOrder();
+        order.setId(shippingId);
         order.setShippingNo(shippingNo);
         order.setClientRequestId(request.getClientRequestId());
         order.setOrderId(request.getOrderId());
@@ -202,6 +208,48 @@ public class ShippingServiceImpl implements ShippingService {
         log.info("Shipping order created: shippingNo={}, orderId={}, trackingNo={}, warehouseManaged={}",
                 shippingNo, request.getOrderId(), request.getTrackingNo(), managedWarehouse);
         return toVO(order);
+    }
+
+    private void claimShipping(Long orderId, String shippingNo, Long shippingId, boolean managedWarehouse) {
+        requireShippingClaim(orderId, shippingNo, shippingId, managedWarehouse);
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) return;
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void beforeCommit(boolean readOnly) {
+                requireShippingClaim(orderId, shippingNo, shippingId, managedWarehouse);
+            }
+
+            @Override
+            public void afterCommit() {
+                try {
+                    Result<Void> confirmed = orderClient.confirmShipping(orderId, shippingNo);
+                    if (confirmed == null || confirmed.getCode() != 200) {
+                        log.warn("Shipment claim confirmation will be retried after its lease expires: {}", shippingNo);
+                    }
+                } catch (RuntimeException failure) {
+                    log.warn("Shipment claim confirmation will be retried after its lease expires: {}", shippingNo, failure);
+                }
+            }
+
+            @Override
+            public void afterCompletion(int status) {
+                // Managed warehouse may already have committed the outbound. Resolve it using the lease reconciler.
+                if (status != STATUS_ROLLED_BACK || managedWarehouse) return;
+                try {
+                    orderClient.releaseShipping(orderId, shippingNo);
+                } catch (RuntimeException failure) {
+                    log.warn("Rolled-back shipment claim {} will be checked after its lease expires", shippingNo, failure);
+                }
+            }
+        });
+    }
+
+    private void requireShippingClaim(Long orderId, String shippingNo, Long shippingId, boolean managedWarehouse) {
+        Result<Void> result = orderClient.claimShipping(orderId, shippingNo, shippingId, managedWarehouse);
+        if (result == null || result.getCode() != 200) {
+            throw new BusinessException(LogisticsErrorCode.SHIPPING_BLOCKED);
+        }
     }
 
     @Override
@@ -417,7 +465,7 @@ public class ShippingServiceImpl implements ShippingService {
     }
 
     @Override
-    @Transactional
+    @Transactional(timeout = 120)
     public List<ShippingOrderVO> batchShip(com.ecommerce.logistics.dto.request.BatchShipRequest request, String userType, Long merchantId) {
         List<ShippingOrderVO> results = new java.util.ArrayList<>();
         for (com.ecommerce.logistics.dto.request.BatchShipRequest.BatchShipItem item : request.getItems()) {

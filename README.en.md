@@ -143,6 +143,7 @@ Use these steps with **fresh data volumes**. For an existing installation, back 
   for schema in ecommerce_inventory ecommerce_order ecommerce_payment ecommerce_logistics ecommerce_warehouse; do
     db "$schema" < "$migrations/2026-05-28-transactional-outbox.sql"
   done
+  db < "$migrations/2026-11-28-buyer-after-sale.sql"
   db -Nse "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'ecommerce%';"
 )
 ```
@@ -177,19 +178,20 @@ Import-ProjectSql "$migrations/2026-06-20-warehouse-init.sql" ecommerce_warehous
 foreach ($schema in 'ecommerce_inventory', 'ecommerce_order', 'ecommerce_payment', 'ecommerce_logistics', 'ecommerce_warehouse') {
   Import-ProjectSql "$migrations/2026-05-28-transactional-outbox.sql" $schema
 }
+Import-ProjectSql "$migrations/2026-11-28-buyer-after-sale.sql"
 docker compose exec -T mysql mysql -uroot -proot -Nse "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'ecommerce%';"
 ```
 
 The final command should list **16 `ecommerce_*` databases**. The initial schema already includes the unique payment order index, so skip `2026-05-29-payment-order-unique.sql` on a fresh install. The member service initializes membership levels at startup. The knowledge SQL creates its database and categories even if you start the knowledge service later.
 
-After `clusterList` shows the Broker, create the 14 application topics. The commands configure four read queues and four write queues per topic.
+After `clusterList` shows the Broker, create the 16 application topics. The commands configure four read queues and four write queues per topic.
 
 **Linux/macOS (Bash)**
 
 ```bash
 (
   set -e
-  for topic in order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal; do
+  for topic in order-created order-cancelled order-paid order-refunded after-sale-refund-requested after-sale-stock-release product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal; do
     docker compose exec -T rocketmq-broker sh mqadmin updateTopic -n rocketmq-namesrv:9876 -c DefaultCluster -t "$topic" -r 4 -w 4
   done
   docker compose exec -T rocketmq-broker sh mqadmin topicList -n rocketmq-namesrv:9876
@@ -199,7 +201,7 @@ After `clusterList` shows the Broker, create the 14 application topics. The comm
 **Windows (PowerShell)**
 
 ```powershell
-$topics = 'order-created order-cancelled order-paid order-refunded product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal'.Split(' ')
+$topics = 'order-created order-cancelled order-paid order-refunded after-sale-refund-requested after-sale-stock-release product-created merchant-approved review-created seckill-order outbound-shipped shipping-dispatched shipping-exception order-delivered warehouse-stock-changed recommendation-signal'.Split(' ')
 foreach ($topic in $topics) {
   docker compose exec -T rocketmq-broker sh mqadmin updateTopic -n rocketmq-namesrv:9876 -c DefaultCluster -t $topic -r 4 -w 4
   if ($LASTEXITCODE -ne 0) { throw "Topic creation failed: $topic" }
@@ -452,6 +454,12 @@ Open [ecommerce-miniprogram](ecommerce-miniprogram/) in HBuilderX, set your WeCh
 To use another gateway, set `VITE_API_BASE_URL=https://your-gateway.example` in `.env.local` inside the mini program directory and rebuild. To override only the H5 development proxy, set `VITE_DEV_PROXY_TARGET`. For a physical phone, use a reachable HTTPS gateway configured as a request domain in the WeChat Mini Program dashboard.
 
 On a physical device, check that recommendation card images load. Then sign in, open a recommended product, select a SKU, add it to the cart, check out, and verify the amount and status on the order details page. Under a slow connection, check that the catalog stays usable and that request failures offer a way to retry.
+
+#### Mini Program simulated payments and refunds
+
+Buyers can pay after submitting an order or return to a pending order later. Payment and inventory events are processed asynchronously. For a paid order whose fulfillment has yet to start, the Mini Program and Web order details let buyers submit one full-refund request and check its progress. Merchants review orders belonging to their own store through the after-sales dialog on the Orders page. Platform administrators can review platform and mixed-merchant orders. Approval records a refund and the payment outcome drives the order state. Inventory releases stock only when a successful deduction exists. Platform administrators can retry a failed request against the same application. Rejections are final. Shipping reservations have a 30-minute lease. Automated cleanup and the platform release action reconcile expired claims against logistics and managed warehouse records. When a refund succeeds but the order cannot transition, the application records the refund and leaves inventory for manual review.
+
+For an existing local database, apply `docs/sql/migrations/2026-11-28-buyer-after-sale.sql` and create the `after-sale-refund-requested` and `after-sale-stock-release` topics as shown in step 3. Then rebuild and restart order, payment, inventory, logistics, and membership services. The migration seeds claims for existing shipments on the shared local MySQL. Where order and logistics use separate database servers, import existing shipment `order_id` and `shipping_no` values into `order_shipping_claim` before enabling the feature.
 
 ### 10. Stop, restart, and troubleshoot
 

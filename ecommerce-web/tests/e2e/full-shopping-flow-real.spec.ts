@@ -23,7 +23,7 @@ function orderSql(statement: string) {
 }
 
 test('seeded SKU goes from cart to paid order and consumes one unit of available stock', async ({ page, request }) => {
-  test.setTimeout(90_000)
+  test.setTimeout(150_000)
   const login = { username: `e2e_${randomUUID().slice(0, 12)}`, password: randomUUID().slice(0, 30) }
   const account = await result(await request.post('/api/v1/auth/register', { data: login }))
   const headers = { Authorization: `Bearer ${account.token}` }
@@ -103,4 +103,40 @@ test('seeded SKU goes from cart to paid order and consumes one unit of available
       expect((await getOrder()).status).toBe(1)
     })
   }
+
+  await test.step('request a full refund, approve it and restore stock once', async () => {
+    await page.goto(`/user/orders/${orderNo}`)
+    await page.getByRole('button', { name: '申请全额退款' }).click()
+    await page.getByLabel('退款原因').fill('冒烟测试全额退款')
+    const applied = page.waitForResponse(res => res.url().endsWith(`/${orderNo}/after-sale`)
+      && res.request().method() === 'POST')
+    await page.getByRole('button', { name: '提交退款申请' }).click()
+    const application = await result(await applied)
+    expect(application.status).toBe('PENDING')
+    await expect(page.getByText('待审核', { exact: true })).toBeVisible()
+
+    const duplicate = await result(await request.post(`/api/v1/orders/no/${orderNo}/after-sale`, {
+      headers, data: { reason: '重复提交测试' },
+    }))
+    expect(duplicate.id).toBe(application.id)
+    expect(duplicate.reason).toBe(application.reason)
+
+    const admin = await result(await request.post('/api/v1/auth/admin/login', {
+      data: { username: 'admin', password: 'admin123' },
+    }))
+    const reviewed = await result(await request.put(`/api/v1/admin/orders/after-sales/${application.id}/review`, {
+      headers: { Authorization: `Bearer ${admin.token}` }, data: { approved: true },
+    }))
+    expect(reviewed.status).toBe('REFUNDING')
+    await expect.poll(async () => (await getOrder()).status, { timeout: 45_000 }).toBe(5)
+    await expect.poll(async () => {
+      const stock = await result(await request.get(`/api/v1/inventory/${skuId}`, { headers }))
+      return stock.availableStock
+    }, { timeout: 30_000 }).toBe(stockBefore.availableStock)
+
+    const payment = await result(await request.get(`/api/v1/payment/orders/${orderNo}`, { headers }))
+    expect(payment.status).toBe(3)
+    await page.getByRole('button', { name: '刷新进度' }).click()
+    await expect(page.getByText(/退款单号 REF/)).toBeVisible()
+  })
 })

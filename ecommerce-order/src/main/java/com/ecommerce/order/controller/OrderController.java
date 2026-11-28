@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @RestController
@@ -158,7 +157,7 @@ public class OrderController {
             return Map.of();
         }
         return response.getData().stream()
-                .filter(sku -> sku != null && sku.getSkuId() != null)
+                .filter(sku -> sku != null && sku.getSkuId() != null && sku.getMerchantId() != null)
                 .collect(Collectors.toMap(
                         com.ecommerce.common.dto.SkuBatchVO::getSkuId,
                         com.ecommerce.common.dto.SkuBatchVO::getMerchantId,

@@ -1,6 +1,7 @@
 package com.ecommerce.payment.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.ecommerce.common.dto.AfterSaleRefundRequest;
 import com.ecommerce.common.dto.OrderRefundedMessage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.OrderPaidMessage;
@@ -22,6 +23,8 @@ import com.ecommerce.payment.entity.Refund;
 import com.ecommerce.payment.mapper.PaymentMapper;
 import com.ecommerce.payment.mapper.RefundMapper;
 import com.ecommerce.payment.service.PaymentService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,10 +34,13 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
 public class PaymentServiceImpl implements PaymentService {
+
+    private static final Logger log = LoggerFactory.getLogger(PaymentServiceImpl.class);
 
     private final PaymentMapper paymentMapper;
     private final RefundMapper refundMapper;
@@ -117,8 +123,7 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public PaymentVO refund(String orderNo, RefundRequest request) {
-        Payment payment = paymentMapper.selectOne(
-                new LambdaQueryWrapper<Payment>().eq(Payment::getOrderNo, orderNo));
+        Payment payment = lockPayment(orderNo);
         if (payment == null) {
             throw new BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND);
         }
@@ -137,13 +142,60 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BusinessException(PaymentErrorCode.REFUND_AMOUNT_INVALID);
         }
 
+        recordRefund(payment, refundAmount, request.getReason(), null);
+        return toVO(payment);
+    }
+
+    @Override
+    @Transactional
+    public void refundAfterSale(AfterSaleRefundRequest request) {
+        Payment payment = lockPayment(request.orderNo());
+        if (!outboxService.queryMessages(new OutboxQuery("after-sale", "order-refunded", null, request.outcomeKey()),
+                1, 1).getRecords().isEmpty()) return;
+
+        if (payment == null || !Objects.equals(payment.getUserId(), request.userId())
+                || !Objects.equals(payment.getOrderId(), request.orderId())) {
+            publishAfterSaleFailure(request, "未找到对应的支付记录");
+            return;
+        }
+        if (request.amount() != null && (payment.getAmount() == null
+                || request.amount().compareTo(payment.getAmount()) != 0)) {
+            log.error("After-sale refund amount does not match payment: orderNo={}, afterSaleId={}, attempt={}, requested={}, paid={}",
+                    request.orderNo(), request.afterSaleId(), request.refundAttempt(), request.amount(), payment.getAmount());
+            publishAfterSaleFailure(request, "售后退款金额与支付记录不一致");
+            return;
+        }
+        Refund existing = refundMapper.selectOne(new LambdaQueryWrapper<Refund>()
+                .eq(Refund::getOrderNo, request.orderNo()).orderByDesc(Refund::getId).last("LIMIT 1"));
+        if (existing != null) {
+            if (Integer.valueOf(3).equals(payment.getStatus()) && Integer.valueOf(1).equals(existing.getStatus())
+                    && existing.getAmount().compareTo(payment.getAmount()) == 0) {
+                publishRefundResult(payment, existing, false, request);
+            } else {
+                publishAfterSaleFailure(request, "订单已有退款记录，无法办理本次全额退款");
+            }
+            return;
+        }
+        if (!Integer.valueOf(1).equals(payment.getStatus()) || payment.getAmount().signum() <= 0) {
+            publishAfterSaleFailure(request, "支付状态不支持全额退款");
+            return;
+        }
+        recordRefund(payment, payment.getAmount(), request.reason(), request);
+    }
+
+    private Payment lockPayment(String orderNo) {
+        return paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
+                .eq(Payment::getOrderNo, orderNo).last("FOR UPDATE"));
+    }
+
+    private void recordRefund(Payment payment, BigDecimal refundAmount, String reason, AfterSaleRefundRequest afterSale) {
         Refund refund = new Refund();
         refund.setId(SnowflakeUtils.nextId());
         refund.setRefundNo(generateRefundNo());
         refund.setPaymentId(payment.getId());
-        refund.setOrderNo(orderNo);
+        refund.setOrderNo(payment.getOrderNo());
         refund.setAmount(refundAmount);
-        refund.setReason(request.getReason());
+        refund.setReason(reason);
         refund.setStatus(1);
         refundMapper.insert(refund);
 
@@ -151,21 +203,23 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setStatus(isPartial ? 1 : 3);
         paymentMapper.updateById(payment);
 
-        DistributedTransactionContext transaction = startTransaction(
-                payment.getOrderNo(),
-                "payment-refund:" + payment.getOrderNo() + ":" + refund.getRefundNo());
-        outboxService.enqueue("payment", payment.getOrderNo(), "order-refunded",
-                new OrderRefundedMessage(
-                        refund.getRefundNo(),
-                        payment.getOrderNo(),
-                        payment.getUserId(),
-                        refundAmount,
-                        isPartial ? "PARTIAL" : "FULL",
-                        "SUCCESS",
-                        LocalDateTime.now(),
-                        transaction.getIdempotencyKey()));
+        publishRefundResult(payment, refund, isPartial, afterSale);
+    }
 
-        return toVO(payment);
+    private void publishRefundResult(Payment payment, Refund refund, boolean partial, AfterSaleRefundRequest afterSale) {
+        String key = "payment-refund:" + payment.getOrderNo() + ":" + refund.getRefundNo();
+        var event = new OrderRefundedMessage(refund.getRefundNo(), payment.getOrderNo(),
+                payment.getUserId(), refund.getAmount(), partial ? "PARTIAL" : "FULL",
+                "SUCCESS", LocalDateTime.now(), key, afterSale == null ? null : afterSale.afterSaleId(), null,
+                afterSale == null ? null : afterSale.refundAttempt());
+        outboxService.enqueue(afterSale == null ? "payment" : "after-sale",
+                afterSale == null ? payment.getOrderNo() : afterSale.outcomeKey(), "order-refunded", event);
+    }
+
+    private void publishAfterSaleFailure(AfterSaleRefundRequest request, String reason) {
+        var event = new OrderRefundedMessage(null, request.orderNo(), request.userId(), null, "FULL",
+                "FAILED", LocalDateTime.now(), null, request.afterSaleId(), reason, request.refundAttempt());
+        outboxService.enqueue("after-sale", request.outcomeKey(), "order-refunded", event);
     }
 
     @Override
