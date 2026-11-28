@@ -12,6 +12,9 @@ import java.util.List;
 public class OrderInventoryMessage implements Serializable {
     private static final long serialVersionUID = 1L;
 
+    public static final String RESERVED_TOPIC = "order-stock-reserved";
+    public static final String CONSUMED_TOPIC = "order-stock-consumed";
+
     private String orderNo;
     private String transactionId;
     private String idempotencyKey;

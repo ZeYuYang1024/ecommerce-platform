@@ -24,4 +24,5 @@ public class ShippingDispatchedMessage implements Serializable {
     private String idempotencyKey;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime occurredAt;
+    private boolean wholeOrder;
 }

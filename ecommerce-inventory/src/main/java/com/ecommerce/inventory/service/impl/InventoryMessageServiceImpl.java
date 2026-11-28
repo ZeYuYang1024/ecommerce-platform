@@ -1,5 +1,6 @@
 package com.ecommerce.inventory.service.impl;
 
+import com.ecommerce.common.constant.OrderStatus;
 import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.OrderItemMessage;
 import com.ecommerce.common.dto.OrderPaidMessage;
@@ -58,14 +59,17 @@ public class InventoryMessageServiceImpl implements InventoryMessageService {
                     stockService.deduct(item.getSkuId(), item.getQuantity());
                 }
                 inventoryEventLogMapper.markProcessed(eventLogId);
+                outboxService.enqueue("inventory", orderNo, OrderInventoryMessage.RESERVED_TOPIC, message);
             });
         } catch (BusinessException error) {
-            if (error.getErrorCode() != InventoryErrorCode.STOCK_INSUFFICIENT) throw error;
-            compensateInsufficientStock(message, error);
+            if (error.getErrorCode() != InventoryErrorCode.STOCK_INSUFFICIENT
+                    && error.getErrorCode() != InventoryErrorCode.STOCK_NOT_FOUND
+                    && error.getErrorCode() != InventoryErrorCode.INVALID_QUANTITY) throw error;
+            compensateRejectedReservation(message, error);
         }
     }
 
-    private void compensateInsufficientStock(OrderInventoryMessage message, BusinessException error) {
+    private void compensateRejectedReservation(OrderInventoryMessage message, BusinessException error) {
         String orderNo = message.getOrderNo();
         // Roll back all SKU changes first, then persist the failure and its compensation together.
         transactionExecutor.execute(() -> {
@@ -86,10 +90,30 @@ public class InventoryMessageServiceImpl implements InventoryMessageService {
             inventoryEventLogMapper.lockOrder(orderNo);
             Long eventLogId = tryCreateProcessingLog(TOPIC_ORDER_CANCELLED, orderNo);
             if (eventLogId == null) return;
-            if (inventoryEventLogMapper.wasProcessed(orderNo, TOPIC_ORDER_CREATED)) {
+            if (inventoryEventLogMapper.wasProcessed(orderNo, TOPIC_ORDER_CREATED)
+                    && !inventoryEventLogMapper.wasProcessed(orderNo, OrderInventoryMessage.CONSUMED_TOPIC)) {
                 for (OrderItemMessage item : message.getItems()) {
                     stockService.release(item.getSkuId(), item.getQuantity());
                 }
+            }
+            inventoryEventLogMapper.markProcessed(eventLogId);
+        });
+    }
+
+    @Override
+    public void handleConsumption(OrderInventoryMessage message) {
+        String orderNo = message.getOrderNo();
+        transactionExecutor.execute(() -> {
+            inventoryEventLogMapper.lockOrder(orderNo);
+            if (inventoryEventLogMapper.wasProcessed(orderNo, OrderInventoryMessage.CONSUMED_TOPIC)) return;
+            if (!inventoryEventLogMapper.wasProcessed(orderNo, TOPIC_ORDER_CREATED)
+                    || inventoryEventLogMapper.wasProcessed(orderNo, TOPIC_ORDER_CANCELLED)) {
+                throw new IllegalStateException("No active reservation for shipped order " + orderNo);
+            }
+            Long eventLogId = tryCreateProcessingLog(OrderInventoryMessage.CONSUMED_TOPIC, orderNo);
+            if (eventLogId == null) return;
+            for (OrderItemMessage item : message.getItems()) {
+                stockService.consume(item.getSkuId(), item.getQuantity());
             }
             inventoryEventLogMapper.markProcessed(eventLogId);
         });
@@ -114,7 +138,7 @@ public class InventoryMessageServiceImpl implements InventoryMessageService {
         outboxService.enqueue("inventory", message.getOrderNo(), TOPIC_ORDER_PAID,
                 new OrderPaidMessage(
                         message.getOrderNo(),
-                        4,
+                        OrderStatus.CANCELLED,
                         null,
                         message.getTransactionId(),
                         compensationIdempotencyKey(message),

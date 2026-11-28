@@ -167,6 +167,20 @@ public class StockServiceImpl implements StockService {
 
     @Transactional
     @Override
+    public void consume(Long skuId, int quantity) {
+        if (quantity <= 0) throw new BusinessException(InventoryErrorCode.INVALID_QUANTITY);
+        int updated = stockMapper.update(null, new LambdaUpdateWrapper<Stock>()
+                .eq(Stock::getSkuId, skuId)
+                .ge(Stock::getLockedStock, quantity)
+                .ge(Stock::getTotalStock, quantity)
+                .setSql("locked_stock = locked_stock - " + quantity)
+                .setSql("total_stock = total_stock - " + quantity)
+                .setSql("version = version + 1"));
+        if (updated == 0) throw new BusinessException(InventoryErrorCode.LOCKED_STOCK_INSUFFICIENT);
+    }
+
+    @Transactional
+    @Override
     public void setStock(Long skuId, int totalStock) {
         if (totalStock < 0) {
             throw new BusinessException(InventoryErrorCode.INVALID_QUANTITY);

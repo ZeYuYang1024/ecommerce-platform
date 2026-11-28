@@ -73,6 +73,9 @@ $Topics = @(
     "order-cancelled:4",
     "order-paid:4",
     "order-refunded:4",
+    "order-stock-reserved:4",
+    "order-stock-consumed:4",
+    "order-refund-required:4",
     "after-sale-refund-requested:4",
     "after-sale-stock-release:4",
     "product-created:4",
@@ -103,6 +106,9 @@ Get-Content "$ProjectDir\ecommerce-recommendation\sql\init.sql" | docker exec -i
 Get-Content -LiteralPath "$ProjectDir\docs\sql\migrations\2026-11-28-buyer-after-sale.sql" -Raw |
     docker exec -i ecommerce-mysql mysql -uroot -proot
 if ($LASTEXITCODE -ne 0) { throw 'Buyer after-sale migration failed' }
+Get-Content -LiteralPath "$ProjectDir\docs\sql\migrations\2026-11-28-commerce-consistency.sql" -Raw |
+    docker exec -i ecommerce-mysql mysql -uroot -proot
+if ($LASTEXITCODE -ne 0) { throw 'Commerce consistency migration failed' }
 Write-Host "数据库初始化完成。" -ForegroundColor Green
 
 # --------------- Done ---------------

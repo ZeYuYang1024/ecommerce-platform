@@ -7,12 +7,14 @@ import com.ecommerce.member.dto.request.internal.RefundCompensationRequest;
 import com.ecommerce.member.dto.response.internal.RefundCompensationResult;
 import com.ecommerce.member.entity.PointsReservation;
 import com.ecommerce.member.mapper.GrowthTransactionMapper;
-import com.ecommerce.member.mapper.MemberProfileMapper;
-import com.ecommerce.member.mapper.PointsConsumeDetailMapper;
+import com.ecommerce.member.mapper.MemberOrderFinanceMapper;
+import com.ecommerce.member.entity.GrowthTransaction;
+import com.ecommerce.member.entity.PointsTransaction;
 import com.ecommerce.member.mapper.PointsReservationMapper;
 import com.ecommerce.member.mapper.PointsTransactionMapper;
 import com.ecommerce.member.service.GrowthService;
 import com.ecommerce.member.service.PointsService;
+import com.ecommerce.member.service.PointsReservationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -35,7 +37,7 @@ class RefundCompensationServiceImplTest {
     private PointsReservationMapper pointsReservationMapper;
 
     @Mock
-    private PointsConsumeDetailMapper pointsConsumeDetailMapper;
+    private MemberOrderFinanceMapper finance;
 
     @Mock
     private PointsTransactionMapper pointsTransactionMapper;
@@ -44,7 +46,7 @@ class RefundCompensationServiceImplTest {
     private GrowthTransactionMapper growthTransactionMapper;
 
     @Mock
-    private MemberProfileMapper memberProfileMapper;
+    private PointsReservationService reservations;
 
     @Mock
     private PointsService pointsService;
@@ -77,19 +79,36 @@ class RefundCompensationServiceImplTest {
         assertThat(result.getRestoredPoints()).isEqualTo(120);
         verify(pointsService).reverseSpend(10001L, 120, "REFUND", "RF1",
                 "REFUND:RF1:POINTS", "退款退回积分", "PR1", null);
-        verify(growthService).add(eq(10001L), eq(-199), eq("REFUND"), eq("RF1"),
-                eq("REFUND:RF1:GROWTH"), eq("退款扣回成长值"));
+        verify(finance).markFullyRefunded("ORD-1");
     }
 
     @Test
     void compensateShouldBeIdempotentByRefundRequestKey() {
-        when(pointsTransactionMapper.selectCount(any())).thenReturn(1L);
+        when(finance.isFullyRefunded("ORD-1")).thenReturn(true);
 
         RefundCompensationResult result = service.compensate(new RefundCompensationRequest(
                 "RF1", "ORD-1", 10001L, new BigDecimal("199.00"), "FULL", "refund:ORD-1:RF1"));
 
         assertThat(result.isDuplicate()).isTrue();
         verify(pointsService, never()).reverseSpend(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void fullRefundShouldReverseOriginalBenefitsWithoutAnyReservation() {
+        PointsTransaction reward = new PointsTransaction();
+        reward.setAmount(150);
+        when(pointsTransactionMapper.selectOne(any())).thenReturn(reward);
+        GrowthTransaction earned = new GrowthTransaction();
+        earned.setAmount(100);
+        when(growthTransactionMapper.selectOne(any())).thenReturn(earned);
+
+        var result = service.compensate(new RefundCompensationRequest(
+                "RF2", "ORD-1", 10001L, new BigDecimal("100.00"), "FULL", "refund:ORD-1:RF2"));
+
+        assertThat(result.getReversedGrowth()).isEqualTo(100);
+        verify(pointsService).reverseEarn(reward, "ORD-1");
+        verify(growthService).add(10001L, -100, "REFUND", "ORD-1",
+                "ORDER:ORD-1:GROWTH_REVERSED", "全额退款扣回成长值");
     }
 
     @Test

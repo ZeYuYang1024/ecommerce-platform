@@ -7,4 +7,6 @@ public interface InventoryMessageService {
     void handleDeduct(OrderInventoryMessage message);
 
     void handleRelease(OrderInventoryMessage message);
+
+    void handleConsumption(OrderInventoryMessage message);
 }

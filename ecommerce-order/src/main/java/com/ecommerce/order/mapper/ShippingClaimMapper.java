@@ -18,6 +18,12 @@ public interface ShippingClaimMapper {
     boolean existsForOrder(@Param("orderId") Long orderId);
 
     @Select("""
+            SELECT EXISTS (SELECT 1 FROM order_shipping_claim WHERE order_id = #{orderId}
+                AND shipping_no != #{shippingNo} AND (expires_at IS NULL OR expires_at > NOW()))
+            """)
+    boolean existsOtherForOrder(@Param("orderId") Long orderId, @Param("shippingNo") String shippingNo);
+
+    @Select("""
             SELECT order_id AS orderId, shipping_no AS shippingNo, shipping_id AS shippingId, managed
             FROM order_shipping_claim WHERE order_id = #{orderId} AND expires_at <= NOW()
             ORDER BY expires_at, shipping_no

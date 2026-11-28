@@ -13,6 +13,7 @@ public interface StockService {
     Page<StockVO> listForMerchant(Long merchantId, Long skuId, Integer stockStatus, int page, int size);
     void deduct(Long skuId, int quantity);
     void release(Long skuId, int quantity);
+    void consume(Long skuId, int quantity);
     void setStock(Long skuId, int totalStock);
     void setStockForMerchant(Long merchantId, Long skuId, int totalStock);
     StockVO toVO(Stock stock);

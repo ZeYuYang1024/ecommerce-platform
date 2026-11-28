@@ -56,6 +56,11 @@ test('seeded SKU goes from cart to paid order and consumes one unit of available
   await page.getByRole('button', { name: '加入购物车', exact: true }).click()
   await result(await added)
 
+  const uncheckedSkuId = '2'
+  await result(await request.post('/api/v1/cart/items', {
+    headers, data: { skuId: uncheckedSkuId, quantity: 1, checked: false },
+  }))
+
   await page.goto('/cart')
   await expect(page.getByText('海尔双开门冰箱 BCD-500 - BCD-500 银灰色')).toBeVisible()
   await page.getByRole('button', { name: '去结算' }).click()
@@ -67,6 +72,10 @@ test('seeded SKU goes from cart to paid order and consumes one unit of available
   const { orderNo } = await result(await submitted)
   expect(orderNo).toMatch(/^[A-Z0-9]+$/)
   await expect(page).toHaveURL(new RegExp(`/payment/${orderNo}$`))
+  await expect.poll(async () => {
+    const cart = await result(await request.get('/api/v1/cart', { headers }))
+    return cart.map((item: { skuId: string | number }) => String(item.skuId))
+  }).toEqual([uncheckedSkuId])
 
   await expect.poll(async () => {
     const stock = await result(await request.get(`/api/v1/inventory/${skuId}`, { headers }))

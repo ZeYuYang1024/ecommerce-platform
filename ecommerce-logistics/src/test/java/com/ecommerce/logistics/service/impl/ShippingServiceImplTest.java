@@ -331,7 +331,7 @@ class ShippingServiceImplTest {
         }
 
         @Test
-        void shouldCreateShippingWithoutItemsList() {
+        void rejectsShipmentWithoutCompleteOrderItems() {
             CreateShippingRequest req = buildCreateRequest();
             req.setItems(Collections.emptyList());
             when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
@@ -339,11 +339,11 @@ class ShippingServiceImplTest {
             when(providerMapper.selectById(1L)).thenReturn(provider);
             when(shippingOrderMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
             when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
-            when(shippingOrderMapper.insert(any(ShippingOrder.class))).thenReturn(1);
 
-            ShippingOrderVO vo = service.createShipping(req, "admin", null);
-
-            assertThat(vo.getShippingNo()).isNotNull();
+            assertThatThrownBy(() -> service.createShipping(req, "admin", null))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(error -> ((BusinessException) error).getErrorCode())
+                    .isEqualTo(LogisticsErrorCode.WHOLE_ORDER_REQUIRED);
             verify(shippingOrderItemMapper, never()).insert(any(ShippingOrderItem.class));
         }
 
@@ -882,7 +882,17 @@ class ShippingServiceImplTest {
             when(shippingOrderMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(List.of(current, sibling));
             when(orderClient.getShippingSnapshot(1001L))
-                    .thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot("ORD202606200001", 1, 9001L)));
+                    .thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot("ORD202606200001", 1, 9001L,
+                            itemSnapshot(100L, 200L, 1), itemSnapshot(101L, 201L, 2))));
+            ShippingOrderItem first = new ShippingOrderItem();
+            first.setOrderItemId(100L);
+            first.setSkuId(200L);
+            first.setQuantity(1);
+            ShippingOrderItem second = new ShippingOrderItem();
+            second.setOrderItemId(101L);
+            second.setSkuId(201L);
+            second.setQuantity(2);
+            when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(first, second));
             when(aggregationProvider.verifyCallbackSignature(eq("SF"), anyString(), eq("signature-abc")))
                     .thenReturn(true);
             service.processCallback("SF", """

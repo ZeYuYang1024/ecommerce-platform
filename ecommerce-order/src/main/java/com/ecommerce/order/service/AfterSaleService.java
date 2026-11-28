@@ -140,6 +140,12 @@ public class AfterSaleService {
         if (order == null || !Objects.equals(order.getStatus(), OrderStatus.PAID)) {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_PAID);
         }
+        if (!Boolean.TRUE.equals(order.getInventoryReserved())) {
+            throw new BusinessException(OrderErrorCode.ORDER_INVENTORY_UNCONFIRMED);
+        }
+        if (claimReaper.hasOtherShipping(orderId, shippingNo)) {
+            throw new BusinessException(OrderErrorCode.ORDER_ALREADY_SHIPPED);
+        }
         AfterSale application = findCase(orderId);
         if (application != null && (application.getStatus() == AfterSale.Status.PENDING
                 || application.getStatus() == AfterSale.Status.REFUNDING)) {
@@ -178,7 +184,9 @@ public class AfterSaleService {
             return;
         }
         if (!correlated && isExpectedPartial(result, order)) return;
-        if (!matchesFullRefund(result, order.getUserId(), order.getTotalAmount())) {
+        boolean compensation = Boolean.TRUE.equals(order.getPaymentRefundRequired())
+                && Objects.equals(order.getStatus(), OrderStatus.CANCELLED);
+        if (!matchesFullRefund(result, order.getUserId(), order.getTotalAmount(), compensation)) {
             log.error("Refund outcome violates type, amount or buyer: orderNo={}, refundNo={}, type={}, amount={}",
                     result.getOrderNo(), result.getRefundNo(), result.getRefundType(), result.getRefundAmount());
             if (currentAttempt) fail(application, "退款结果的类型、金额或买家与订单不一致");
@@ -186,6 +194,11 @@ public class AfterSaleService {
         }
 
         if (Objects.equals(order.getStatus(), OrderStatus.REFUNDED)) {
+            recordRefund(application, result, null);
+            return;
+        }
+        if (compensation) {
+            orders.transitionStatus(order.getId(), OrderStatus.CANCELLED, OrderStatus.REFUNDED);
             recordRefund(application, result, null);
             return;
         }
@@ -220,7 +233,7 @@ public class AfterSaleService {
         if (application == null || application.getStatus() != AfterSale.Status.REFUNDING
                 || application.getRefundAttempt() != Objects.requireNonNullElse(result.getRefundAttempt(), 0)) return;
         if ("SUCCESS".equals(result.getRefundStatus())
-                && matchesFullRefund(result, application.getUserId(), application.getAmount())) {
+                && matchesFullRefund(result, application.getUserId(), application.getAmount(), false)) {
             recordRefund(application, result, "退款已成功，订单不存在，库存未自动释放");
         } else {
             fail(application, "无法核对退款结果，订单不存在");
@@ -233,9 +246,10 @@ public class AfterSaleService {
                 && result.getRefundAmount().signum() > 0 && result.getRefundAmount().compareTo(order.getTotalAmount()) < 0;
     }
 
-    private boolean matchesFullRefund(OrderRefundedMessage result, Long userId, BigDecimal total) {
+    private boolean matchesFullRefund(OrderRefundedMessage result, Long userId, BigDecimal total, boolean allowZero) {
         return "FULL".equals(result.getRefundType()) && Objects.equals(result.getUserId(), userId)
-                && total != null && total.signum() > 0 && result.getRefundAmount() != null
+                && total != null && (total.signum() > 0 || (allowZero && total.signum() == 0))
+                && result.getRefundAmount() != null
                 && total.compareTo(result.getRefundAmount()) == 0
                 && result.getRefundNo() != null && !result.getRefundNo().isBlank();
     }

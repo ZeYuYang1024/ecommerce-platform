@@ -99,6 +99,11 @@ public class OrderController {
         return Result.ok(orderService.listOrderNosByMerchant(merchantId));
     }
 
+    @GetMapping("/internal/orders/merchant/owns-entire-order")
+    public Result<Boolean> merchantOwnsEntireOrder(@RequestParam Long merchantId, @RequestParam String orderNo) {
+        return Result.ok(orderService.merchantOwnsEntireOrder(merchantId, orderNo));
+    }
+
     @GetMapping("/orders/no/{orderNo}")
     public Result<OrderVO> detailByOrderNo(@RequestHeader("X-User-Id") Long userId, @PathVariable String orderNo) {
         return Result.ok(orderService.getOrderByOrderNo(userId, orderNo));

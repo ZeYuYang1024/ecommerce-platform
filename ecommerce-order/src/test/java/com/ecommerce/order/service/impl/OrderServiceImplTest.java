@@ -5,6 +5,7 @@ import com.ecommerce.common.dto.OrderPaidMessage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.SkuBatchVO;
+import com.ecommerce.common.dto.CompensationRefundRequest;
 import com.ecommerce.common.outbox.OutboxQuery;
 import com.ecommerce.common.outbox.OutboxSummary;
 import com.ecommerce.common.outbox.OutboxService;
@@ -330,8 +331,7 @@ class OrderServiceImplTest {
             verify(orderMapper).transitionStatus(1L, 0, 4);
             verify(outboxService).enqueue(eq("order"), eq("202605091200000001"), eq("order-cancelled"),
                     any(OrderInventoryMessage.class));
-            verify(memberClient).releasePoints(eq("PR-CANCEL-1"),
-                    argThat(request -> request != null && "USER_CANCELLED".equals(request.getReason())));
+            verify(memberClient, never()).releasePoints(anyString(), any());
         }
 
         @Test
@@ -385,13 +385,28 @@ class OrderServiceImplTest {
         }
 
         @Test
-        void shouldIgnoreInventoryCompensationWhenOrderAlreadyPaid() {
+        void shouldRequestRefundWhenInventoryFailsAfterPaymentConfirmation() {
             order.setStatus(1);
             when(orderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(order);
+            when(orderMapper.transitionStatus(1L, 1, 4)).thenReturn(true);
 
             service.applyInventoryCompensation(new OrderPaidMessage("202605091200000001", 4, LocalDateTime.now()));
 
-            verify(orderMapper, never()).transitionStatus(any(), anyInt(), anyInt());
+            verify(orderMapper).transitionStatus(1L, 1, 4);
+            verify(outboxService).enqueue(eq("order"), eq(order.getOrderNo()),
+                    eq(CompensationRefundRequest.TOPIC), any(CompensationRefundRequest.class));
+        }
+
+        @Test
+        void latePaymentOnCancelledOrderRequestsCompensationRefund() {
+            order.setStatus(4);
+            when(orderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(order);
+
+            assertThat(service.confirmPayment(order, new OrderPaidMessage(order.getOrderNo(), 1, LocalDateTime.now())))
+                    .isFalse();
+
+            verify(outboxService).enqueue(eq("order"), eq(order.getOrderNo()),
+                    eq(CompensationRefundRequest.TOPIC), any(CompensationRefundRequest.class));
         }
     }
 
@@ -619,6 +634,7 @@ class OrderServiceImplTest {
         SkuBatchVO sku = new SkuBatchVO();
         sku.setSkuId(skuId);
         sku.setSpuId(spuId);
+        sku.setSpuStatus(1);
         sku.setSkuName(name);
         sku.setImage(image);
         sku.setPrice(new BigDecimal(price));

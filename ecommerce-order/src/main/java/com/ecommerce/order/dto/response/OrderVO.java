@@ -17,6 +17,8 @@ public class OrderVO {
     private BigDecimal pointsDeductionAmount;
     private Integer pointsDeductionRatio;
     private Integer status;
+    private boolean inventoryReserved;
+    private boolean compensationRefundPending;
     private String statusText;
     private String fulfillmentStatus;
     private String fulfillmentStatusText;

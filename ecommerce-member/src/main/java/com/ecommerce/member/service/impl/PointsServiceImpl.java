@@ -249,6 +249,41 @@ public class PointsServiceImpl implements PointsService {
         return profile;
     }
 
+    @Override
+    @Transactional
+    public void reverseEarn(PointsTransaction original, String orderNo) {
+        PointsTransaction expiry = pointsTransactionMapper.selectOne(new LambdaQueryWrapper<PointsTransaction>()
+                .eq(PointsTransaction::getBizKey, "EXPIRE:" + original.getId()));
+        int expired = expiry == null ? 0 : expiry.getAmount();
+        int amount = original.getAmount() - expired;
+        if (amount <= 0) return;
+        MemberProfile profile = memberProfileMapper.selectOne(new LambdaQueryWrapper<MemberProfile>()
+                .eq(MemberProfile::getUserId, original.getUserId()));
+        if (profile == null) throw new BusinessException(MemberErrorCode.MEMBER_PROFILE_NOT_FOUND);
+
+        int updated = memberProfileMapper.update(null, new LambdaUpdateWrapper<MemberProfile>()
+                .eq(MemberProfile::getId, profile.getId())
+                .eq(MemberProfile::getVersion, profile.getVersion())
+                .setSql("available_points = available_points - " + amount)
+                .setSql("version = version + 1"));
+        if (updated == 0) throw new BusinessException(MemberErrorCode.CONCURRENT_UPDATE_FAILED);
+        original.setConsumedAmount(original.getAmount());
+        pointsTransactionMapper.updateById(original);
+
+        PointsTransaction reversal = new PointsTransaction();
+        reversal.setId(SnowflakeUtils.nextId());
+        reversal.setUserId(original.getUserId());
+        reversal.setDirection("SPEND");
+        reversal.setAmount(amount);
+        reversal.setBalanceAfter(profile.getAvailablePoints() - amount);
+        reversal.setSourceType("REFUND");
+        reversal.setSourceId(orderNo);
+        reversal.setBizKey("ORDER:" + orderNo + ":EARN_REVERSED");
+        reversal.setReversalOfTxId(original.getId());
+        reversal.setRemark("全额退款扣回订单奖励积分");
+        pointsTransactionMapper.insert(reversal);
+    }
+
     private MemberLevel getDefaultLevel() {
         MemberLevel level = memberLevelMapper.selectOne(
                 new LambdaQueryWrapper<MemberLevel>()

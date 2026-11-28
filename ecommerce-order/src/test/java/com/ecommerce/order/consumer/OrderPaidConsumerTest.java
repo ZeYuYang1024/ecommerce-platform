@@ -58,6 +58,19 @@ class OrderPaidConsumerTest {
     }
 
     @Test
+    void shouldRouteLateSuccessfulPaymentForCancelledOrderToRefundHandling() {
+        Order order = new Order();
+        order.setId(1L);
+        order.setStatus(4);
+        when(orderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(order);
+        OrderPaidMessage message = new OrderPaidMessage("ORD-1", 1, LocalDateTime.now());
+
+        consumer.onMessage(message);
+
+        verify(orderService).confirmPayment(order, message);
+    }
+
+    @Test
     void shouldIgnoreLegacyRefundedMessageStatus() {
         Order order = new Order();
         order.setId(1L);

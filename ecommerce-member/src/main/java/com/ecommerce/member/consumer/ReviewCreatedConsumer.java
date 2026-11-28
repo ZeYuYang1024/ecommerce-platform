@@ -15,7 +15,7 @@ import java.io.Serializable;
 @RequiredArgsConstructor
 @RocketMQMessageListener(
     topic = "review-created",
-    consumerGroup = "${spring.application.name}-consumer"
+    consumerGroup = "${spring.application.name}-review-created"
 )
 public class ReviewCreatedConsumer implements RocketMQListener<ReviewCreatedConsumer.ReviewCreatedMessage> {
 

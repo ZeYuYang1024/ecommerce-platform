@@ -56,9 +56,11 @@
         <el-table-column label="操作" width="190" align="center" fixed="right">
           <template #default="{ row }">
             <template v-if="row.status === 1">
-              <el-button size="small" type="warning" @click="openShipDialog(row)">发货</el-button>
+              <el-button size="small" type="warning" :disabled="!row.inventoryReserved" @click="openShipDialog(row)">发货</el-button>
               <el-button size="small" link @click="releaseExpiredShipping(row)">释放过期占用</el-button>
             </template>
+            <el-button v-else-if="row.compensationRefundPending" size="small" link type="warning"
+              @click="retryCompensationRefund(row)">重试补偿退款</el-button>
             <span v-else style="font-size:12px;color:var(--text-muted)">--</span>
           </template>
         </el-table-column>
@@ -137,6 +139,17 @@ function handleSizeChange() {
 function statusType(status) {
   const map = { 0: 'warning', 1: 'success', 2: '', 3: 'info', 4: 'danger' }
   return map[status] || 'info'
+}
+
+async function retryCompensationRefund(row) {
+  try {
+    const { data } = await axios.post(`/api/v1/admin/orders/${encodeURIComponent(row.id)}/compensation-refund/retry`)
+    if (data.code !== 200) throw new Error(data.message)
+    ElMessage.success('已重新提交补偿退款')
+    await fetchData()
+  } catch (error) {
+    ElMessage.error(error.message || '重新提交失败')
+  }
 }
 
 async function releaseExpiredShipping(row) {

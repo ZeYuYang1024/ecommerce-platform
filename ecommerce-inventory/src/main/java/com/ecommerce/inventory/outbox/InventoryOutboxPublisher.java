@@ -1,6 +1,7 @@
 package com.ecommerce.inventory.outbox;
 
 import com.ecommerce.common.dto.OrderPaidMessage;
+import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.outbox.OutboxMessage;
 import com.ecommerce.common.outbox.OutboxService;
 import lombok.extern.slf4j.Slf4j;
@@ -36,7 +37,9 @@ public class InventoryOutboxPublisher {
                 continue;
             }
             try {
-                OrderPaidMessage payload = jsonMapper.readValue(message.getPayloadJson(), OrderPaidMessage.class);
+                Class<?> payloadType = OrderInventoryMessage.RESERVED_TOPIC.equals(message.getTopic())
+                        ? OrderInventoryMessage.class : OrderPaidMessage.class;
+                Object payload = jsonMapper.readValue(message.getPayloadJson(), payloadType);
                 rocketMQTemplate.syncSend(message.getTopic(), payload);
                 outboxService.markSent(message);
             } catch (RuntimeException ex) {

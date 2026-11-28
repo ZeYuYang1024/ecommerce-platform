@@ -22,9 +22,7 @@
             <span class="text-xs text-gray-400 line-through">¥{{ item.originalPrice }}</span>
           </div>
           <div class="text-xs text-gray-400 mb-3">剩余 {{ item.remainingCount }} 件</div>
-          <button @click="buy(item)" class="w-full py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors" :disabled="item.remainingCount<=0">
-            {{ item.remainingCount>0?'立即秒杀':'已抢光' }}
-          </button>
+          <p class="text-sm text-gray-500">暂未开放购买</p>
         </div>
       </div>
     </div>
@@ -68,12 +66,4 @@ function countdown(end: string) {
   return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
 }
 
-async function buy(item: any) {
-  const api = useApi()
-  try {
-    await api.post('/seckill/order', { itemId: item.id, userId: 1 })
-    alert('抢购成功！')
-    item.remainingCount--
-  } catch { alert('抢购失败') }
-}
 </script>

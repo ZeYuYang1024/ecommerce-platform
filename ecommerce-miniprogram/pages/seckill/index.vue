@@ -17,7 +17,7 @@
           </view>
           <text class="stock">剩余 {{ item.remainingCount }} 件</text>
         </view>
-        <button class="btn-seckill" @click="doSeckill(item.id, item.remainingCount)">{{ item.remainingCount > 0 ? '秒杀' : '已抢光' }}</button>
+        <text class="purchase-status">暂未开放购买</text>
       </view>
     </view>
     <view v-else class="empty">暂无秒杀活动</view>
@@ -51,14 +51,6 @@ function countdown(end) {
 
 function progress(item) { return `${((item.stockCount - item.remainingCount) / item.stockCount * 100).toFixed(0)}%` }
 
-async function doSeckill(itemId, remaining) {
-  if (remaining <= 0) return
-  try {
-    const res = await request({ url: '/api/v1/seckill/order', method: 'POST', data: { itemId, userId: 1 } })
-    if (res.code === 200) uni.showToast({ title: '抢购成功！', icon: 'success' })
-    else uni.showToast({ title: res.message, icon: 'none' })
-  } catch {}
-}
 </script>
 
 <style scoped>
@@ -76,7 +68,6 @@ async function doSeckill(itemId, remaining) {
 .progress-bar { height: 8rpx; background: #F3F4F6; border-radius: 4rpx; margin-bottom: 4rpx; }
 .progress-fill { height: 100%; background: #EF4444; border-radius: 4rpx; }
 .stock { font-size: 22rpx; color: #9CA3AF; }
-.btn-seckill { width: 140rpx; height: 72rpx; line-height: 72rpx; background: #EF4444; color: #fff; border-radius: 36rpx; font-size: 26rpx; border: none; }
-.btn-seckill[disabled] { background: #D1D5DB; }
+.purchase-status { color: #6B7280; font-size: 24rpx; }
 .empty { text-align: center; padding: 200rpx 0; color: #9CA3AF; }
 </style>

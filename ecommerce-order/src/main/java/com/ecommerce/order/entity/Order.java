@@ -19,6 +19,8 @@ public class Order extends BaseEntity {
     private BigDecimal pointsDeductionAmount;
     private Integer pointsDeductionRatio;
     private Integer status;
+    private Boolean inventoryReserved;
+    private Boolean paymentRefundRequired;
     private String receiverName;
     private String receiverPhone;
     private String receiverAddress;

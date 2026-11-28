@@ -24,6 +24,7 @@ public class ShippingOrder extends BaseEntity {
     private Integer sourceType;
     private BigDecimal shippingFee;
     private Integer shippingStatus;
+    private Boolean wholeOrder;
     private String senderInfo;
     private String receiverInfo;
     private Integer packageWeight;

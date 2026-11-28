@@ -1,6 +1,7 @@
 package com.ecommerce.payment.service;
 
 import com.ecommerce.common.dto.AfterSaleRefundRequest;
+import com.ecommerce.common.dto.CompensationRefundRequest;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.outbox.OutboxQuery;
@@ -17,6 +18,8 @@ public interface PaymentService {
     PaymentVO refund(String orderNo, RefundRequest request);
 
     void refundAfterSale(AfterSaleRefundRequest request);
+
+    void refundCompensation(CompensationRefundRequest request);
     Page<PaymentVO> listAll(Integer status, int page, int size);
     Page<PaymentVO> listByMerchant(Long merchantId, Integer status, int page, int size);
     PaymentVO refundByMerchant(Long merchantId, String orderNo, RefundRequest request);

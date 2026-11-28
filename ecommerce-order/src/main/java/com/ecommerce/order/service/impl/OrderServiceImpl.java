@@ -3,6 +3,7 @@ package com.ecommerce.order.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.constant.OrderStatus;
+import com.ecommerce.common.dto.CompensationRefundRequest;
 import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.OrderItemMessage;
 import com.ecommerce.common.dto.OrderPaidMessage;
@@ -91,6 +92,12 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(OrderErrorCode.ORDER_ITEMS_EMPTY);
         }
 
+        for (CreateOrderRequest.OrderItemRequest item : request.getItems()) {
+            if (item == null || item.getSkuId() == null || item.getSkuId() <= 0
+                    || item.getQuantity() == null || item.getQuantity() <= 0) {
+                throw new BusinessException(OrderErrorCode.ORDER_ITEM_INVALID_QUANTITY);
+            }
+        }
         Map<Long, SkuBatchVO> skuMap = loadSkuSnapshots(request);
 
         BigDecimal originalTotal = BigDecimal.ZERO;
@@ -230,28 +237,15 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_PENDING);
         }
 
-        List<OrderItem> items = itemMapper.selectList(
-                new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, id));
-        List<OrderItemMessage> releaseItems = items.stream()
-                .map(i -> new OrderItemMessage(i.getSkuId(), i.getQuantity()))
-                .collect(Collectors.toList());
-        outboxService.enqueue("order", order.getOrderNo(), "order-cancelled",
-                new OrderInventoryMessage(order.getOrderNo(), releaseItems));
-        releaseReservedPointsQuietly(order.getPointsReservationNo(), order.getOrderNo(), "USER_CANCELLED");
+        publishCancellation(order);
     }
 
-    private void updateStatusByOrderNo(String orderNo, Integer status) {
-        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>().eq(Order::getOrderNo, orderNo));
-        if (order == null) {
-            throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
-        }
-        validateStatusTransition(order.getStatus(), status);
-        if (Objects.equals(order.getStatus(), status)) {
-            return;
-        }
-        if (!orderMapper.transitionStatus(order.getId(), order.getStatus(), status)) {
-            throw new BusinessException(OrderErrorCode.ORDER_NOT_PENDING);
-        }
+    private void publishCancellation(Order order) {
+        List<OrderItemMessage> releaseItems = itemMapper.selectList(new LambdaQueryWrapper<OrderItem>()
+                        .eq(OrderItem::getOrderId, order.getId())).stream()
+                .map(item -> new OrderItemMessage(item.getSkuId(), item.getQuantity())).toList();
+        outboxService.enqueue("order", order.getOrderNo(), "order-cancelled",
+                new OrderInventoryMessage(order.getOrderNo(), releaseItems));
     }
 
     @Override
@@ -312,6 +306,19 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public boolean merchantOwnsEntireOrder(Long merchantId, String orderNo) {
+        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>().eq(Order::getOrderNo, orderNo));
+        if (order == null) return false;
+        try {
+            ensureMerchantOwnsOrder(order, "merchant", merchantId);
+            return true;
+        } catch (BusinessException denied) {
+            if (denied.getErrorCode() != OrderErrorCode.ORDER_FORBIDDEN) throw denied;
+            return false;
+        }
+    }
+
+    @Override
     public List<Order> listForRecon(LocalDateTime start, LocalDateTime end) {
         return orderMapper.selectList(
                 new LambdaQueryWrapper<Order>()
@@ -335,13 +342,20 @@ public class OrderServiceImpl implements OrderService {
         if (!orderMapper.transitionStatus(id, currentStatus, status)) {
             throw new BusinessException(OrderErrorCode.ORDER_NOT_PENDING);
         }
-        releaseReservedPointsIfPendingCancellation(order, currentStatus, status, "STATUS_UPDATE_CANCELLED");
+        publishCancellation(order);
     }
 
     @Override
     @Transactional
     public boolean confirmPayment(Order order, OrderPaidMessage message) {
-        if (!orderMapper.transitionStatus(order.getId(), OrderStatus.PENDING, OrderStatus.PAID)) return false;
+        Order locked = lockOrderByNumber(message.getOrderNo());
+        if (locked == null) return false;
+        if (Integer.valueOf(OrderStatus.CANCELLED).equals(locked.getStatus())) {
+            requestCompensationRefund(locked, "订单在支付确认前已取消");
+            return false;
+        }
+        if (!Integer.valueOf(OrderStatus.PENDING).equals(locked.getStatus())
+                || !orderMapper.transitionStatus(locked.getId(), OrderStatus.PENDING, OrderStatus.PAID)) return false;
         List<Long> spuIds = itemMapper.selectList(new LambdaQueryWrapper<OrderItem>()
                         .select(OrderItem::getSpuId).eq(OrderItem::getOrderId, order.getId())).stream()
                 .map(OrderItem::getSpuId).filter(Objects::nonNull).distinct().toList();
@@ -361,21 +375,46 @@ public class OrderServiceImpl implements OrderService {
         if (message == null || message.getOrderNo() == null || message.getStatus() == null) {
             return;
         }
-        Order order = orderMapper.selectOne(
-                new LambdaQueryWrapper<Order>().eq(Order::getOrderNo, message.getOrderNo()));
-        if (order == null) {
-            log.warn("Ignore inventory compensation for missing order: {}", message.getOrderNo());
-            return;
+        Order order = lockOrderByNumber(message.getOrderNo());
+        if (order == null || !OrderTransactionCoordinator.shouldApplyInventoryCompensation(
+                order.getStatus(), message.getStatus())) return;
+
+        int previous = order.getStatus();
+        if (orderMapper.transitionStatus(order.getId(), previous, OrderStatus.CANCELLED)) {
+            publishCancellation(order);
+            if (previous == OrderStatus.PAID) {
+                requestCompensationRefund(order, "支付成功后确认库存不足");
+            }
         }
-        if (!OrderTransactionCoordinator.shouldApplyInventoryCompensation(order.getStatus(), message.getStatus())) {
-            log.warn("Ignore inventory compensation: orderNo={}, currentStatus={}, incomingStatus={}",
-                    message.getOrderNo(), order.getStatus(), message.getStatus());
-            return;
+    }
+
+    private Order lockOrderByNumber(String orderNo) {
+        return orderMapper.selectOne(new LambdaQueryWrapper<Order>()
+                .eq(Order::getOrderNo, orderNo).last("FOR UPDATE"));
+    }
+
+    private void requestCompensationRefund(Order order, String reason) {
+        if (Boolean.TRUE.equals(order.getPaymentRefundRequired())) return;
+        orderMapper.markCompensationRefundRequired(order.getId());
+        enqueueCompensationRefund(order, reason);
+    }
+
+    private void enqueueCompensationRefund(Order order, String reason) {
+        outboxService.enqueue("order", order.getOrderNo(), CompensationRefundRequest.TOPIC,
+                new CompensationRefundRequest(order.getOrderNo(), reason));
+    }
+
+    @Override
+    @Transactional
+    public void retryCompensationRefund(Long id) {
+        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>().eq(Order::getId, id).last("FOR UPDATE"));
+        if (order == null) throw new BusinessException(OrderErrorCode.ORDER_NOT_FOUND);
+        if (!Integer.valueOf(OrderStatus.CANCELLED).equals(order.getStatus())
+                || !Boolean.TRUE.equals(order.getPaymentRefundRequired())) {
+            throw new BusinessException(OrderErrorCode.ORDER_NO_COMPENSATION_REFUND);
         }
-        Integer currentStatus = order.getStatus();
-        if (orderMapper.transitionStatus(order.getId(), currentStatus, message.getStatus())) {
-            releaseReservedPointsIfPendingCancellation(order, currentStatus, message.getStatus(), "INVENTORY_COMPENSATION");
-        }
+        outboxService.enqueue("order", order.getOrderNo(), CompensationRefundRequest.TOPIC,
+                new CompensationRefundRequest(order.getOrderNo(), "管理员重试订单补偿退款", true));
     }
 
     @Override
@@ -433,6 +472,9 @@ public class OrderServiceImpl implements OrderService {
         vo.setPointsDeductionRatio(order.getPointsDeductionRatio());
         vo.setStatus(order.getStatus());
         vo.setStatusText(statusText(order.getStatus()));
+        vo.setInventoryReserved(Boolean.TRUE.equals(order.getInventoryReserved()));
+        vo.setCompensationRefundPending(Integer.valueOf(OrderStatus.CANCELLED).equals(order.getStatus())
+                && Boolean.TRUE.equals(order.getPaymentRefundRequired()));
         FulfillmentSummaryVO fulfillment = fulfillmentMap.get(order.getId());
         if (fulfillment != null) {
             vo.setFulfillmentStatus(fulfillment.getFulfillmentStatus());
@@ -559,6 +601,10 @@ public class OrderServiceImpl implements OrderService {
             if (snapshot == null || snapshot.getSkuId() == null || snapshot.getSpuId() == null || snapshot.getPrice() == null) {
                 throw new BusinessException(OrderErrorCode.ORDER_ITEMS_EMPTY);
             }
+            if (!Integer.valueOf(1).equals(snapshot.getSpuStatus()) || snapshot.getPrice().signum() < 0) {
+                throw remoteBusinessException(null, OrderErrorCode.ORDER_ITEM_UNAVAILABLE.getCode(),
+                        "商品已下架或不可购买，SKU " + snapshot.getSkuId());
+            }
             skuMap.put(snapshot.getSkuId(), snapshot);
         }
         if (!skuMap.keySet().containsAll(skuIds)) {
@@ -647,18 +693,6 @@ public class OrderServiceImpl implements OrderService {
             log.warn("release reserved points failed: reservationNo={}, orderNo={}, reason={}",
                     reservationNo, orderNo, reason, ex);
         }
-    }
-
-    private void releaseReservedPointsIfPendingCancellation(Order order, Integer currentStatus, Integer targetStatus,
-                                                            String reason) {
-        if (order == null) {
-            return;
-        }
-        if (!Objects.equals(currentStatus, OrderStatus.PENDING)
-                || !Objects.equals(targetStatus, OrderStatus.CANCELLED)) {
-            return;
-        }
-        releaseReservedPointsQuietly(order.getPointsReservationNo(), order.getOrderNo(), reason);
     }
 
     private BusinessException remoteBusinessException(Result<?> response, int defaultCode, String defaultMessage) {

@@ -353,8 +353,8 @@ class PaymentServiceImplTest {
 
         @Test
         void shouldRejectMerchantRefundForForeignOrder() {
-            when(orderClient.listOrderNosByMerchant(2001L))
-                    .thenReturn(Result.ok(List.of("OTHER-ORDER")));
+            when(orderClient.merchantOwnsEntireOrder(2001L, "202605091200000001"))
+                    .thenReturn(Result.ok(false));
 
             RefundRequest req = new RefundRequest();
             req.setReason("merchant refund");

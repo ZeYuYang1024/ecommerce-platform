@@ -218,6 +218,7 @@ public class ProductController {
             Spu spu = spuMap.get(sku.getSpuId());
             if (spu != null) {
                 vo.setSpuName(spu.getName());
+                vo.setSpuStatus(spu.getStatus());
                 vo.setMerchantId(spu.getMerchantId());
             }
             result.add(vo);

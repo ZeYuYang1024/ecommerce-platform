@@ -32,6 +32,15 @@ public class ShippingClaimReaper {
         return claims.existsForOrder(orderId);
     }
 
+    public boolean hasOtherShipping(Long orderId, String shippingNo) {
+        if (claims.existsOtherForOrder(orderId, shippingNo)) return true;
+        for (ShippingClaimMapper.Claim claim : claims.findExpiredForOrder(orderId)) {
+            if (shippingNo.equals(claim.shippingNo())) continue;
+            reconcile(claim);
+        }
+        return claims.existsOtherForOrder(orderId, shippingNo);
+    }
+
     public int releaseExpired(Long orderId) {
         return claims.findExpiredForOrder(orderId).stream().mapToInt(this::reconcile).sum();
     }

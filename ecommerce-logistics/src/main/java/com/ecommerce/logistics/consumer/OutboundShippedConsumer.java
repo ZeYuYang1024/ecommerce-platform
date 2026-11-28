@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
@@ -30,6 +31,7 @@ public class OutboundShippedConsumer implements RocketMQListener<OutboundShipped
     }
 
     @Override
+    @Transactional
     public void onMessage(OutboundShippedMessage message) {
         log.info("MQ received: outbound-shipped, shippingId={}, outboundId={}, warehouseId={}",
                 message.getShippingId(), message.getOutboundId(), message.getWarehouseId());
@@ -49,7 +51,9 @@ public class OutboundShippedConsumer implements RocketMQListener<OutboundShipped
         if (order.getShippingStatus() != null && order.getShippingStatus() == ShippingStatus.PENDING) {
             order.setShippingStatus(ShippingStatus.DISPATCHED);
             order.setShippedAt(LocalDateTime.now());
-            shippingOrderMapper.updateById(order);
+            if (shippingOrderMapper.updateById(order) == 0) {
+                throw new IllegalStateException("Shipment changed concurrently: " + order.getId());
+            }
             log.info("Shipping order status updated to DISPATCHED: shippingId={}", message.getShippingId());
         } else {
             log.info("Shipping order already dispatched or in unexpected status: shippingId={}, status={}",
@@ -64,6 +68,7 @@ public class OutboundShippedConsumer implements RocketMQListener<OutboundShipped
         dispatchedMsg.setOrderNo(order.getOrderNo());
         dispatchedMsg.setTrackingNo(order.getTrackingNo());
         dispatchedMsg.setShippingStatus(order.getShippingStatus());
+        dispatchedMsg.setWholeOrder(Boolean.TRUE.equals(order.getWholeOrder()));
         dispatchedMsg.setMerchantId(order.getMerchantId());
         dispatchedMsg.setTransactionId(message.getTransactionId() != null
                 ? message.getTransactionId() : "outbound-shipped-" + order.getId());

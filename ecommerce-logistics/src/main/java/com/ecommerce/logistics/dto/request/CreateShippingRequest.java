@@ -1,6 +1,8 @@
 package com.ecommerce.logistics.dto.request;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -28,12 +30,12 @@ public class CreateShippingRequest {
     private Integer sourceType;
 
     @NotEmpty(message = "发货明细不能为空")
-    private List<ShippingItemRequest> items;
+    private List<@NotNull @Valid ShippingItemRequest> items;
 
     @Data
     public static class ShippingItemRequest {
         @NotNull private Long orderItemId;
         @NotNull private Long skuId;
-        @NotNull private Integer quantity;
+        @NotNull @Positive private Integer quantity;
     }
 }

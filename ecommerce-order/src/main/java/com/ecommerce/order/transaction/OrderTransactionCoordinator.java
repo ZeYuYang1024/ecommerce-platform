@@ -1,5 +1,6 @@
 package com.ecommerce.order.transaction;
 
+import com.ecommerce.common.constant.OrderStatus;
 import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.OrderItemMessage;
 import com.ecommerce.common.transaction.DistributedTransactionContext;
@@ -34,7 +35,7 @@ public final class OrderTransactionCoordinator {
     public static boolean shouldApplyInventoryCompensation(Integer currentStatus, Integer incomingStatus) {
         return currentStatus != null
                 && incomingStatus != null
-                && currentStatus == 0
-                && incomingStatus == 4;
+                && (currentStatus == OrderStatus.PENDING || currentStatus == OrderStatus.PAID)
+                && incomingStatus == OrderStatus.CANCELLED;
     }
 }

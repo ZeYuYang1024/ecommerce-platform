@@ -8,6 +8,7 @@ import com.ecommerce.order.common.OrderErrorCode;
 import com.ecommerce.order.entity.AfterSale;
 import com.ecommerce.order.service.AfterSaleService;
 import com.ecommerce.order.service.ShippingClaimReaper;
+import com.ecommerce.order.service.OrderService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class AfterSaleController {
     private final AfterSaleService service;
+    private final OrderService orderService;
     private final ShippingClaimReaper claimReaper;
 
     record Application(@NotBlank @Size(max = 256) String reason) {}
@@ -73,6 +75,13 @@ public class AfterSaleController {
     public Result<AfterSale> retryRefund(@PathVariable Long id, @RequestHeader("X-User-Type") String userType) {
         requirePlatformRole(userType);
         return Result.ok(service.retryRefund(id));
+    }
+
+    @PostMapping("/admin/orders/{id}/compensation-refund/retry")
+    public Result<Void> retryCompensationRefund(@PathVariable Long id, @RequestHeader("X-User-Type") String userType) {
+        requirePlatformRole(userType);
+        orderService.retryCompensationRefund(id);
+        return Result.ok();
     }
 
     @PostMapping("/admin/orders/{id}/shipping-claims/release-expired")

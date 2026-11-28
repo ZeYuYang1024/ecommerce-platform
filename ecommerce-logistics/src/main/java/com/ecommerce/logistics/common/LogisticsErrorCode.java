@@ -22,7 +22,8 @@ public enum LogisticsErrorCode implements ErrorCode {
     WAYBILL_GENERATE_FAILED(50020017, "waybill generation failed"),
     TEMPLATE_FORBIDDEN(50020018, "forbidden template access"),
     WAREHOUSE_FORBIDDEN(50020019, "forbidden warehouse access"),
-    SHIPPING_BLOCKED(50020020, "订单暂不可发货，请检查订单和售后状态");
+    SHIPPING_BLOCKED(50020020, "订单暂不可发货，请检查订单和售后状态"),
+    WHOLE_ORDER_REQUIRED(50020021, "发货单必须包含整单商品及完整数量");
 
     private final int code;
     private final String message;

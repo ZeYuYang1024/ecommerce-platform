@@ -36,34 +36,13 @@ public class OrderPaidConsumer implements RocketMQListener<OrderPaidMessage> {
             log.warn("Order not found: {}", message.getOrderNo());
             return;
         }
-        if (order.getStatus() != null && order.getStatus() == message.getStatus()) {
-            log.info("Order already in status {}: {}", message.getStatus(), message.getOrderNo());
-            return;
-        }
-        if (!shouldApply(order.getStatus(), message.getStatus())) {
-            log.warn("Ignore incompatible order status update: orderNo={}, currentStatus={}, incomingStatus={}",
-                    message.getOrderNo(), order.getStatus(), message.getStatus());
-            return;
-        }
-        if (message.getStatus() == OrderStatus.CANCELLED) {
+        if (Integer.valueOf(OrderStatus.CANCELLED).equals(message.getStatus())) {
             orderService.applyInventoryCompensation(message);
-            return;
-        }
-        if (orderService.confirmPayment(order, message)) {
+        } else if (Integer.valueOf(OrderStatus.PAID).equals(message.getStatus())
+                && (Integer.valueOf(OrderStatus.PENDING).equals(order.getStatus())
+                    || Integer.valueOf(OrderStatus.CANCELLED).equals(order.getStatus()))
+                && orderService.confirmPayment(order, message)) {
             log.info("Order status updated: {} -> {}", message.getOrderNo(), OrderStatus.PAID);
         }
-    }
-
-    private boolean shouldApply(Integer currentStatus, Integer incomingStatus) {
-        if (currentStatus == null || incomingStatus == null) {
-            return false;
-        }
-        if (incomingStatus == OrderStatus.PAID) {
-            return currentStatus == OrderStatus.PENDING;
-        }
-        if (incomingStatus == OrderStatus.CANCELLED) {
-            return currentStatus == OrderStatus.PENDING;
-        }
-        return false;
     }
 }

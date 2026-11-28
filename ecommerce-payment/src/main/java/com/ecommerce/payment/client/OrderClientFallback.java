@@ -28,6 +28,10 @@ public class OrderClientFallback implements FallbackFactory<OrderClient> {
                 return Result.ok(Collections.emptyList());
             }
             @Override
+            public Result<Boolean> merchantOwnsEntireOrder(Long merchantId, String orderNo) {
+                return Result.fail(503, "order service unavailable");
+            }
+            @Override
             public Result<List<ReconOrderVO>> getOrdersForRecon(String start, String end) {
                 return Result.ok(Collections.emptyList());
             }

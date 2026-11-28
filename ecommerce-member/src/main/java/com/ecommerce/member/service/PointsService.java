@@ -2,6 +2,7 @@ package com.ecommerce.member.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ecommerce.member.dto.response.PointsTransactionVO;
+import com.ecommerce.member.entity.PointsTransaction;
 
 public interface PointsService {
 
@@ -27,6 +28,8 @@ public interface PointsService {
      */
     void reverseSpend(Long userId, Integer amount, String sourceType, String sourceId, String bizKey,
                       String remark, String relatedReservationNo, Long reversalOfTxId);
+
+    void reverseEarn(PointsTransaction original, String orderNo);
 
     /**
      * 积分流水列表。

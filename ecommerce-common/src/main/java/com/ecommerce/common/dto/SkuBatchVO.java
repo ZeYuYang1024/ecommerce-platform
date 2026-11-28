@@ -13,4 +13,5 @@ public class SkuBatchVO {
     private BigDecimal price;
     private String image;
     private Long merchantId;
+    private Integer spuStatus;
 }

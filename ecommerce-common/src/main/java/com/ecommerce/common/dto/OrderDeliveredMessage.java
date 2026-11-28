@@ -23,4 +23,10 @@ public class OrderDeliveredMessage implements Serializable {
     private LocalDateTime signedAt;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime occurredAt;
+    private boolean wholeOrder;
+
+    public OrderDeliveredMessage(Long shippingId, Long orderId, String orderNo, Long userId, String transactionId,
+                                 String idempotencyKey, LocalDateTime signedAt, LocalDateTime occurredAt) {
+        this(shippingId, orderId, orderNo, userId, transactionId, idempotencyKey, signedAt, occurredAt, false);
+    }
 }

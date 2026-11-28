@@ -46,6 +46,28 @@ export const useCartStore = defineStore('cart', () => {
     await fetchCart()
   }
 
+  async function removePurchased(purchased: { skuId: string | number; quantity: number }[]) {
+    const api = useApi()
+    const response: any = await api.get('/cart')
+    if (response.code !== 200) return
+    const current = new Map<string, number>(
+      (response.data || []).map((item: any) => [String(item.skuId), item.quantity])
+    )
+    try {
+      await Promise.allSettled(purchased.map(item => {
+        const skuId = encodeURIComponent(String(item.skuId))
+        const quantity = current.get(String(item.skuId))
+        if (quantity === undefined) return
+        const remaining = quantity - item.quantity
+        return remaining > 0
+          ? api.put(`/cart/items/${skuId}`, { quantity: remaining })
+          : api.delete(`/cart/items/${skuId}`)
+      }))
+    } finally {
+      await fetchCart()
+    }
+  }
+
   async function clearCart() {
     const api = useApi()
     await api.delete('/cart')
@@ -53,5 +75,5 @@ export const useCartStore = defineStore('cart', () => {
     count.value = 0
   }
 
-  return { items, count, fetchCart, addItem, updateQuantity, removeItem, toggleCheck, clearCart }
+  return { items, count, fetchCart, addItem, updateQuantity, removeItem, toggleCheck, clearCart, removePurchased }
 })

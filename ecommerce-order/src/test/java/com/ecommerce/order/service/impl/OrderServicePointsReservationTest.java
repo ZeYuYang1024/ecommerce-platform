@@ -207,6 +207,7 @@ class OrderServicePointsReservationTest {
 
     private SkuBatchVO buildSku(Long skuId, Long spuId, String name, String image, String price) {
         SkuBatchVO sku = new SkuBatchVO();
+        sku.setSpuStatus(1);
         sku.setSkuId(skuId);
         sku.setSpuId(spuId);
         sku.setSkuName(name);

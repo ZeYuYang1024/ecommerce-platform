@@ -1,6 +1,7 @@
 package com.ecommerce.order.outbox;
 
 import com.ecommerce.common.dto.AfterSaleRefundRequest;
+import com.ecommerce.common.dto.CompensationRefundRequest;
 import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.RecommendationSignal;
 import com.ecommerce.common.outbox.OutboxMessage;
@@ -40,6 +41,7 @@ public class OrderOutboxPublisher {
                 Class<?> payloadType = switch (message.getTopic()) {
                     case RecommendationSignal.TOPIC -> RecommendationSignal.class;
                     case AfterSaleRefundRequest.TOPIC -> AfterSaleRefundRequest.class;
+                    case CompensationRefundRequest.TOPIC -> CompensationRefundRequest.class;
                     default -> OrderInventoryMessage.class;
                 };
                 Object payload = jsonMapper.readValue(message.getPayloadJson(), payloadType);

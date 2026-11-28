@@ -23,9 +23,12 @@ public interface OrderService {
     Page<OrderVO> listAll(int page, int size, Integer status);
     Page<OrderVO> listByMerchant(Long merchantId, int page, int size, Integer status);
     List<String> listOrderNosByMerchant(Long merchantId);
+
+    boolean merchantOwnsEntireOrder(Long merchantId, String orderNo);
     List<Order> listForRecon(LocalDateTime start, LocalDateTime end);
     void updateStatus(Long id, Integer status, String userType, Long merchantId);
     void applyInventoryCompensation(OrderPaidMessage message);
+    void retryCompensationRefund(Long id);
     boolean confirmPayment(Order order, OrderPaidMessage message);
     Page<OutboxMessageVO> listOutbox(OutboxQuery query, int page, int size);
     OutboxSummary getOutboxSummary(OutboxQuery query);

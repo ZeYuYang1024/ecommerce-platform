@@ -31,6 +31,7 @@ CREATE TABLE shipping_order (
     source_type       TINYINT DEFAULT 0 COMMENT '0后台/1商家/2系统自动',
     shipping_fee      DECIMAL(10,2) DEFAULT 0 COMMENT '实收运费',
     shipping_status   TINYINT DEFAULT 0 COMMENT '0待交运/1已交运/2运输中/3派送中/4已签收/5异常/6已退回',
+    whole_order BOOLEAN NOT NULL DEFAULT FALSE,
     sender_info       JSON         COMMENT '寄件人信息',
     receiver_info     JSON         COMMENT '收件人信息',
     package_weight    INT DEFAULT 0 COMMENT '克',

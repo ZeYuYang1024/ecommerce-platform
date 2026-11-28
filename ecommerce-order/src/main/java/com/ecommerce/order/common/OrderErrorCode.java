@@ -17,7 +17,11 @@ public enum OrderErrorCode implements ErrorCode {
     AFTER_SALE_REVIEW_NOTE_REQUIRED(40010012, "请填写拒绝原因"),
     AFTER_SALE_BLOCKS_SHIPPING(40010013, "该订单有待处理的退款申请，请先处理售后"),
     AFTER_SALE_CATALOG_UNAVAILABLE(40010014, "暂时无法确认店铺，请稍后重新申请"),
-    AFTER_SALE_NOT_FAILED(40010015, "仅退款失败的申请可以重试");
+    AFTER_SALE_NOT_FAILED(40010015, "仅退款失败的申请可以重试"),
+    ORDER_ITEM_UNAVAILABLE(40010016, "商品已下架或不可购买"),
+    ORDER_ITEM_INVALID_QUANTITY(40010017, "商品数量须大于零"),
+    ORDER_INVENTORY_UNCONFIRMED(40010018, "库存尚未确认，请稍后发货"),
+    ORDER_NO_COMPENSATION_REFUND(40010019, "当前订单没有待处理的补偿退款");
 
     private final int code;
     private final String message;

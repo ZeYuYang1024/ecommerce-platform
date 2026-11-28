@@ -159,8 +159,9 @@ async function saveAddress() {
 
 async function submitOrder() {
   const addr = selectedAddr.value
-  if (!addr) return
+  if (!addr || submitting.value) return
   submitting.value = true
+  orderError.value = ''
   try {
     const items = checkedItems.value.map((i: any) => ({
       skuId: i.skuId, spuId: i.spuId, name: i.name, image: i.image, price: i.price, quantity: i.quantity
@@ -172,8 +173,8 @@ async function submitOrder() {
       items
     })
     if (res.code === 200) {
-      await cart.clearCart()
-      router.push(`/payment/${res.data.orderNo}`)
+      void cart.removePurchased(items).catch(() => {})
+      await router.push(`/payment/${encodeURIComponent(res.data.orderNo)}`)
     } else {
       orderError.value = res.message || '下单失败，请重试'
     }

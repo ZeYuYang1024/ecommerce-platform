@@ -2,6 +2,7 @@ package com.ecommerce.payment.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ecommerce.common.dto.AfterSaleRefundRequest;
+import com.ecommerce.common.dto.CompensationRefundRequest;
 import com.ecommerce.common.dto.OrderRefundedMessage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.OrderPaidMessage;
@@ -73,7 +74,7 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BusinessException(PaymentErrorCode.PAYMENT_NOT_PAID);
         }
         if (order.getTotalAmount() == null || request.getAmount() == null
-                || order.getTotalAmount().compareTo(request.getAmount()) != 0) {
+                || order.getTotalAmount().signum() < 0 || order.getTotalAmount().compareTo(request.getAmount()) != 0) {
             throw new BusinessException(PaymentErrorCode.REFUND_AMOUNT_INVALID);
         }
 
@@ -183,12 +184,50 @@ public class PaymentServiceImpl implements PaymentService {
         recordRefund(payment, payment.getAmount(), request.reason(), request);
     }
 
+    @Override
+    @Transactional
+    public void refundCompensation(CompensationRefundRequest request) {
+        Payment payment = lockPayment(request.orderNo());
+        if (payment == null || payment.getAmount() == null || payment.getAmount().signum() < 0) {
+            throw new BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND);
+        }
+        if (!request.replay() && !outboxService.queryMessages(new OutboxQuery("compensation-refund", "order-refunded", null,
+                request.orderNo()), 1, 1).getRecords().isEmpty()) return;
+
+        List<Refund> previousRefunds = refundMapper.selectList(new LambdaQueryWrapper<Refund>()
+                .eq(Refund::getPaymentId, payment.getId()).eq(Refund::getStatus, 1).orderByDesc(Refund::getId));
+        BigDecimal refunded = previousRefunds.stream().map(Refund::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal remaining = payment.getAmount().subtract(refunded);
+        Refund refund;
+        if (Integer.valueOf(3).equals(payment.getStatus()) && remaining.signum() == 0 && !previousRefunds.isEmpty()) {
+            refund = previousRefunds.getFirst();
+        } else {
+            if (!Integer.valueOf(1).equals(payment.getStatus()) || remaining.signum() < 0) {
+                throw new BusinessException(PaymentErrorCode.PAYMENT_NOT_PAID);
+            }
+            refund = insertRefund(payment, remaining, request.reason());
+            payment.setStatus(3);
+            paymentMapper.updateById(payment);
+        }
+        var result = new OrderRefundedMessage(refund.getRefundNo(), payment.getOrderNo(), payment.getUserId(),
+                payment.getAmount(), "FULL", "SUCCESS", LocalDateTime.now(), "compensation-refund:" + payment.getOrderNo());
+        outboxService.enqueue("compensation-refund", payment.getOrderNo(), "order-refunded", result);
+    }
+
     private Payment lockPayment(String orderNo) {
         return paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
                 .eq(Payment::getOrderNo, orderNo).last("FOR UPDATE"));
     }
 
     private void recordRefund(Payment payment, BigDecimal refundAmount, String reason, AfterSaleRefundRequest afterSale) {
+        Refund refund = insertRefund(payment, refundAmount, reason);
+        boolean isPartial = refundAmount.compareTo(payment.getAmount()) < 0;
+        payment.setStatus(isPartial ? 1 : 3);
+        paymentMapper.updateById(payment);
+        publishRefundResult(payment, refund, isPartial, afterSale);
+    }
+
+    private Refund insertRefund(Payment payment, BigDecimal refundAmount, String reason) {
         Refund refund = new Refund();
         refund.setId(SnowflakeUtils.nextId());
         refund.setRefundNo(generateRefundNo());
@@ -198,12 +237,7 @@ public class PaymentServiceImpl implements PaymentService {
         refund.setReason(reason);
         refund.setStatus(1);
         refundMapper.insert(refund);
-
-        boolean isPartial = refundAmount.compareTo(payment.getAmount()) < 0;
-        payment.setStatus(isPartial ? 1 : 3);
-        paymentMapper.updateById(payment);
-
-        publishRefundResult(payment, refund, isPartial, afterSale);
+        return refund;
     }
 
     private void publishRefundResult(Payment payment, Refund refund, boolean partial, AfterSaleRefundRequest afterSale) {
@@ -252,8 +286,8 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public PaymentVO refundByMerchant(Long merchantId, String orderNo, RefundRequest request) {
-        List<String> orderNos = loadMerchantOrderNos(merchantId);
-        if (!orderNos.contains(orderNo)) {
+        var ownership = orderClient.merchantOwnsEntireOrder(merchantId, orderNo);
+        if (ownership == null || ownership.getCode() != 200 || !Boolean.TRUE.equals(ownership.getData())) {
             throw new BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND);
         }
         return refund(orderNo, request);

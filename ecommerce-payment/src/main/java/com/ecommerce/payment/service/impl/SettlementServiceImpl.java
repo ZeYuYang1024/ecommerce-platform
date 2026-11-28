@@ -59,9 +59,11 @@ public class SettlementServiceImpl implements SettlementService {
         LocalDateTime dayEnd = date.plusDays(1).atStartOfDay();
         List<Payment> payments = paymentMapper.selectList(
                 new LambdaQueryWrapper<Payment>()
-                        .ge(Payment::getCreatedAt, dayStart)
-                        .lt(Payment::getCreatedAt, dayEnd)
-                        .eq(Payment::getStatus, 1));
+                        .in(Payment::getStatus, 1, 3)
+                        .and(window -> window
+                                .nested(paid -> paid.ge(Payment::getPaidAt, dayStart).lt(Payment::getPaidAt, dayEnd))
+                                .or(legacy -> legacy.isNull(Payment::getPaidAt)
+                                        .ge(Payment::getCreatedAt, dayStart).lt(Payment::getCreatedAt, dayEnd))));
         BigDecimal totalPaymentAmount = payments.stream()
                 .map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -114,14 +116,14 @@ public class SettlementServiceImpl implements SettlementService {
 
         List<Payment> payments = paymentMapper.selectList(new LambdaQueryWrapper<Payment>()
                 .in(Payment::getOrderNo, orderNos)
-                .eq(Payment::getStatus, 1));
+                .in(Payment::getStatus, 1, 3));
         List<Refund> refunds = refundMapper.selectList(new LambdaQueryWrapper<Refund>()
                 .in(Refund::getOrderNo, orderNos)
                 .eq(Refund::getStatus, 1));
 
         Map<LocalDate, SettlementAccumulator> grouped = new HashMap<>();
         for (Payment payment : payments) {
-            LocalDate settlementDate = resolveDate(payment.getCreatedAt(), payment.getPaidAt());
+            LocalDate settlementDate = resolveDate(payment.getPaidAt(), payment.getCreatedAt());
             SettlementAccumulator accumulator = grouped.computeIfAbsent(settlementDate, key -> new SettlementAccumulator());
             accumulator.totalPaymentCount++;
             accumulator.totalPaymentAmount = accumulator.totalPaymentAmount.add(amountOrZero(payment.getAmount()));

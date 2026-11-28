@@ -56,7 +56,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -85,7 +84,8 @@ class OrderSagaFlowContractTest {
 
         verify(stockService).deduct(11L, 2);
         verify(inventoryEventLogMapper).markProcessed(any(Long.class));
-        verifyNoInteractions(inventoryOutboxService);
+        verify(inventoryOutboxService).enqueue("inventory", inventoryMessage.getOrderNo(),
+                OrderInventoryMessage.RESERVED_TOPIC, inventoryMessage);
 
         PaymentMapper paymentMapper = mock(PaymentMapper.class);
         RefundMapper refundMapper = mock(RefundMapper.class);
@@ -235,6 +235,7 @@ class OrderSagaFlowContractTest {
         SkuBatchVO sku = new SkuBatchVO();
         sku.setSkuId(skuId);
         sku.setSpuId(spuId);
+        sku.setSpuStatus(1);
         sku.setSkuName(name);
         sku.setImage(image);
         sku.setPrice(new BigDecimal(price));

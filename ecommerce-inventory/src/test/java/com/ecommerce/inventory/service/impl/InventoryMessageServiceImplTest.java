@@ -92,7 +92,22 @@ class InventoryMessageServiceImplTest {
         verify(stockService).deduct(22L, 3);
         verify(inventoryEventLogMapper).markProcessed(any(Long.class));
         verify(inventoryEventLogMapper, never()).markFailed(any(Long.class));
-        verify(outboxService, never()).enqueue(any(), any(), any(), any());
+        verify(outboxService).enqueue("inventory", "ORD-1001", OrderInventoryMessage.RESERVED_TOPIC, message);
+    }
+
+    @Test
+    void handleConsumptionShouldFinalizeOnlyConfirmedStockAndIgnoreReplay() {
+        when(inventoryEventLogMapper.wasProcessed("ORD-1001", "order-created")).thenReturn(true);
+        when(inventoryEventLogMapper.wasProcessed("ORD-1001", OrderInventoryMessage.CONSUMED_TOPIC))
+                .thenReturn(false, true);
+        when(inventoryEventLogMapper.insert(any(InventoryEventLog.class))).thenReturn(1);
+
+        inventoryMessageService.handleConsumption(message);
+        inventoryMessageService.handleConsumption(message);
+
+        verify(stockService).consume(11L, 2);
+        verify(stockService).consume(22L, 3);
+        verify(inventoryEventLogMapper).markProcessed(any(Long.class));
     }
 
     @Test

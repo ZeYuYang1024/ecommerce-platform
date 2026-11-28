@@ -113,6 +113,7 @@ public class ShippingServiceImpl implements ShippingService {
 
         OrderInternalVO orderSnapshot = loadOrderSnapshot(request.getOrderId());
         validateOrderForShipping(orderSnapshot);
+        validateWholeOrderItems(orderSnapshot, request.getItems());
 
         String shippingNo = "SH" + LocalDateTime.now().format(NO_SUFFIX) + String.format("%05d", shippingNoCounter.getAndUpdate(n -> (n + 1) % 100000));
 
@@ -144,6 +145,7 @@ public class ShippingServiceImpl implements ShippingService {
         order.setPackageSize(request.getPackageSize());
         order.setMerchantId(resolvedMerchantId);
         order.setVersion(0);
+        order.setWholeOrder(true);
 
         // Managed warehouse: create outbound and wait for outbound-shipped event.
         // Light warehouse: dispatch immediately.
@@ -197,6 +199,7 @@ public class ShippingServiceImpl implements ShippingService {
             msg.setOrderNo(order.getOrderNo());
             msg.setTrackingNo(order.getTrackingNo());
             msg.setShippingStatus(order.getShippingStatus());
+            msg.setWholeOrder(true);
             msg.setUserId(orderSnapshot.getUserId());
             msg.setMerchantId(resolvedMerchantId);
             msg.setTransactionId("logistics-dispatch-" + shippingNo);
@@ -648,6 +651,24 @@ public class ShippingServiceImpl implements ShippingService {
         }
     }
 
+    private void validateWholeOrderItems(OrderInternalVO snapshot,
+                                         List<CreateShippingRequest.ShippingItemRequest> requested) {
+        if (snapshot.getItems() == null || snapshot.getItems().isEmpty()
+                || requested.size() != snapshot.getItems().size()) {
+            throw new BusinessException(LogisticsErrorCode.WHOLE_ORDER_REQUIRED);
+        }
+        Map<Long, OrderInternalVO.OrderItemSnapshot> remaining = snapshot.getItems().stream()
+                .collect(Collectors.toMap(OrderInternalVO.OrderItemSnapshot::getOrderItemId, item -> item));
+        for (CreateShippingRequest.ShippingItemRequest item : requested) {
+            OrderInternalVO.OrderItemSnapshot expected = remaining.remove(item.getOrderItemId());
+            if (expected == null || !Objects.equals(expected.getSkuId(), item.getSkuId())
+                    || !Objects.equals(expected.getQuantity(), item.getQuantity())
+                    || item.getQuantity() == null || item.getQuantity() <= 0) {
+                throw new BusinessException(LogisticsErrorCode.WHOLE_ORDER_REQUIRED);
+            }
+        }
+    }
+
     private void validateOrderForShipping(OrderInternalVO orderSnapshot) {
         if (orderSnapshot.getStatus() == null) {
             throw new BusinessException(LogisticsErrorCode.ORDER_NOT_FOUND);
@@ -735,6 +756,9 @@ public class ShippingServiceImpl implements ShippingService {
     private void updateShippingStatusFromCallback(ShippingOrder order, CallbackPayload payload) {
         LocalDateTime traceTime = payload.resolveTime();
         String traceDesc = payload.getDesc() != null ? payload.getDesc() : payload.getStatus();
+        if ((order.getLastTraceTime() != null && traceTime.isBefore(order.getLastTraceTime()))
+                || (Integer.valueOf(ShippingStatus.SIGNED).equals(order.getShippingStatus())
+                    && !"SIGNED".equals(payload.getStatus()))) return;
         order.setLastTraceTime(traceTime);
         order.setLastTraceDesc(traceDesc);
 
@@ -742,19 +766,25 @@ public class ShippingServiceImpl implements ShippingService {
             case "SIGNED" -> {
                 order.setShippingStatus(ShippingStatus.SIGNED);
                 order.setSignedAt(traceTime);
-                shippingOrderMapper.updateById(order);
+                updateShippingFromCallback(order);
                 publishOrderDeliveredIfAllSigned(order, traceTime);
             }
             case "EXCEPTION" -> {
                 order.setShippingStatus(ShippingStatus.EXCEPTION);
-                shippingOrderMapper.updateById(order);
+                updateShippingFromCallback(order);
                 publishShippingException(order, traceDesc);
             }
             case "RETURNED" -> {
                 order.setShippingStatus(ShippingStatus.RETURNED);
-                shippingOrderMapper.updateById(order);
+                updateShippingFromCallback(order);
             }
-            default -> shippingOrderMapper.updateById(order);
+            default -> updateShippingFromCallback(order);
+        }
+    }
+
+    private void updateShippingFromCallback(ShippingOrder order) {
+        if (shippingOrderMapper.updateById(order) == 0) {
+            throw new IllegalStateException("Shipment changed concurrently: " + order.getId());
         }
     }
 
@@ -767,6 +797,7 @@ public class ShippingServiceImpl implements ShippingService {
             return;
         }
         OrderInternalVO orderSnapshot = loadOrderSnapshot(order.getOrderId());
+        if (!coversAllOrderItems(orderSnapshot, shipments)) return;
 
         OrderDeliveredMessage message = new OrderDeliveredMessage();
         message.setShippingId(order.getId());
@@ -776,8 +807,20 @@ public class ShippingServiceImpl implements ShippingService {
         message.setTransactionId("logistics-delivered-" + order.getOrderNo());
         message.setIdempotencyKey("order-delivered:" + order.getOrderNo());
         message.setSignedAt(signedAt);
+        message.setWholeOrder(shipments.stream().anyMatch(shipping -> Boolean.TRUE.equals(shipping.getWholeOrder())));
         message.setOccurredAt(signedAt);
         outboxService.enqueue("shipping", order.getOrderNo(), "order-delivered", message);
+    }
+
+    private boolean coversAllOrderItems(OrderInternalVO snapshot, List<ShippingOrder> shipments) {
+        if (snapshot.getItems() == null || snapshot.getItems().isEmpty()) return false;
+        List<ShippingOrderItem> shippedItems = shippingOrderItemMapper.selectList(
+                new LambdaQueryWrapper<ShippingOrderItem>().in(ShippingOrderItem::getShippingId,
+                        shipments.stream().map(ShippingOrder::getId).toList()));
+        Map<Long, Integer> shipped = shippedItems.stream().collect(Collectors.toMap(
+                ShippingOrderItem::getOrderItemId, ShippingOrderItem::getQuantity, Integer::sum));
+        return shipped.size() == snapshot.getItems().size() && snapshot.getItems().stream()
+                .allMatch(item -> Objects.equals(item.getQuantity(), shipped.get(item.getOrderItemId())));
     }
 
     private void publishShippingException(ShippingOrder order, String exceptionDesc) {

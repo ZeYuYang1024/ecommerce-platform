@@ -179,6 +179,7 @@ class AfterSaleServiceTest {
         order.setUserId(9L);
         order.setOrderNo("ORDER-1");
         order.setStatus(OrderStatus.PAID);
+        order.setInventoryReserved(true);
         order.setTotalAmount(new BigDecimal("10.00"));
         return order;
     }
