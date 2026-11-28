@@ -37,6 +37,25 @@
       </scroll-view>
     </view>
 
+    <view v-if="feed?.items.length" class="section">
+      <view class="section-header">
+        <text class="section-title">猜你喜欢</text>
+      </view>
+      <view class="product-grid">
+        <view v-for="p in feed.items" :id="'recommendation-' + p.id" :key="p.id"
+              class="product-card" @click="openRecommendation(p.id)">
+          <ProductImage :source="p.mainImage" height="340rpx" />
+          <view class="product-info">
+            <text class="product-name">{{ p.name }}</text>
+            <view class="product-price-row">
+              <text class="text-price">¥{{ p.minPrice ?? "—" }}</text>
+              <text class="price-range" v-if="Number(p.maxPrice) > Number(p.minPrice)">– ¥{{ p.maxPrice }}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
     <!-- Hot products -->
     <view class="section">
       <view class="section-header">
@@ -59,8 +78,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { getCurrentInstance, nextTick, onMounted, ref, watch } from 'vue'
+import { onHide, onShow, onUnload } from '@dcloudio/uni-app'
 import { request } from '@/utils/api'
+import { loadRecommendations, recordRecommendationEvents } from '@/utils/recommendation'
+import { token } from '@/utils/session'
 import ProductImage from '@/components/ProductImage.vue'
 
 const banners = [
@@ -71,6 +93,64 @@ const banners = [
 const categories = ref([])
 const products = ref([])
 const seckillItems = ref([])
+const feed = ref(null)
+const pageContext = getCurrentInstance()?.proxy
+const impressions = new Set()
+const observers = []
+let visible = false
+let loadVersion = 0
+
+function stopObserving() {
+  observers.splice(0).forEach(observer => observer.disconnect())
+}
+
+async function refreshRecommendations() {
+  const version = ++loadVersion
+  stopObserving()
+  feed.value = null
+  impressions.clear()
+  const result = await loadRecommendations()
+  if (!visible || version !== loadVersion || !result?.items?.length) return
+  feed.value = result
+  await nextTick()
+  if (!visible || version !== loadVersion || !result.requestId) return
+
+  for (const product of result.items) {
+    const observer = uni.createIntersectionObserver(pageContext, { thresholds: [0.5] })
+    observers.push(observer)
+    observer.relativeToViewport().observe(`#recommendation-${product.id}`, event => {
+      if (!visible || version !== loadVersion || event.intersectionRatio < 0.5 || impressions.has(product.id)) return
+      impressions.add(product.id)
+      observer.disconnect()
+      recordRecommendationEvents([{ type: 'IMPRESSION', spuId: product.id, requestId: result.requestId }])
+    })
+  }
+}
+
+onShow(() => {
+  visible = true
+  void refreshRecommendations()
+})
+function hideRecommendations() {
+  visible = false
+  ++loadVersion
+  stopObserving()
+}
+onHide(hideRecommendations)
+onUnload(hideRecommendations)
+watch(token, () => {
+  if (visible) void refreshRecommendations()
+})
+
+function openRecommendation(spuId) {
+  const requestId = feed.value?.requestId
+  if (requestId) {
+    impressions.add(spuId)
+    // A click confirms visibility even when the observer request is still in flight.
+    recordRecommendationEvents([{ type: 'IMPRESSION', spuId, requestId }, { type: 'CLICK', spuId, requestId }])
+  }
+  goDetail(spuId)
+}
 
 onMounted(async () => {
   try {

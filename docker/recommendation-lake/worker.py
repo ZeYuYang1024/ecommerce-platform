@@ -24,12 +24,14 @@ BATCH_SIZE = 5000
 MAX_BATCHES_PER_RUN = 20
 EVENT_COLUMNS = """
     event_id VARCHAR, user_id BIGINT, spu_id BIGINT, category_id BIGINT, brand_id BIGINT,
-    price DECIMAL(12, 2), event_type VARCHAR, request_id VARCHAR, occurred_at TIMESTAMP
+    price DECIMAL(12, 2), event_type VARCHAR, request_id VARCHAR, surface VARCHAR, strategy VARCHAR,
+    occurred_at TIMESTAMP
 """
 RESULTS = (
     ("recommendation_user_category", "user_category", "user_id, category_id, score_7d, score_30d"),
     ("recommendation_related_product", "related_product", "spu_id, related_spu_id, shared_users, affinity"),
     ("recommendation_daily_report", "daily_report", "event_date, impressions, clicks, click_rate"),
+    ("recommendation_funnel_report", "funnel_report", "event_date, surface, strategy, impressions, clicks, cart_adds, payments"),
 )
 
 
@@ -116,7 +118,7 @@ def claim(db):
 def export_batch(db, analytics, s3, bucket, batch_id):
     with db.cursor() as cursor:
         cursor.execute("""
-            SELECT event_id, user_id, spu_id, category_id, brand_id, price, event_type, request_id, occurred_at
+            SELECT event_id, user_id, spu_id, category_id, brand_id, price, event_type, request_id, surface, strategy, occurred_at
             FROM recommendation_event WHERE exported_at IS NULL AND lake_batch_id = %s ORDER BY id
         """, (batch_id,))
         by_date = defaultdict(list)
@@ -127,7 +129,7 @@ def export_batch(db, analytics, s3, bucket, batch_id):
     with TemporaryDirectory(prefix="recommendation-") as directory:
         for date, rows in by_date.items():
             analytics.execute("DELETE FROM batch_events")
-            analytics.executemany("INSERT INTO batch_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+            analytics.executemany("INSERT INTO batch_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
             path = Path(directory) / f"{date}.parquet"
             analytics.execute(f"COPY batch_events TO {literal(str(path))} (FORMAT parquet, COMPRESSION zstd)")
             key = f"events/event_date={date}/{batch_id}.parquet"
@@ -150,9 +152,14 @@ def publish(db, analytics, s3, bucket):
     if s3.list_objects_v2(Bucket=bucket, Prefix="events/", MaxKeys=1).get("KeyCount", 0):
         analytics.execute(f"""
             CREATE TEMP TABLE lake_events AS
-            SELECT * EXCLUDE (event_date)
-            FROM read_parquet({literal(f"s3://{bucket}/events/event_date=*/*.parquet")}, hive_partitioning = true)
-            WHERE event_date BETWEEN DATE '{start}' AND DATE '{today}'
+            SELECT * FROM (
+                SELECT * EXCLUDE (event_date)
+                FROM read_parquet({literal(f"s3://{bucket}/events/event_date=*/*.parquet")},
+                                  hive_partitioning = true, union_by_name = true)
+                WHERE event_date BETWEEN DATE '{start}' AND DATE '{today}'
+                UNION ALL BY NAME
+                SELECT * FROM batch_events WHERE FALSE
+            ) events
             QUALIFY row_number() OVER (PARTITION BY event_id ORDER BY occurred_at DESC) = 1
         """)
     else:

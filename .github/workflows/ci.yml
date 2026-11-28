@@ -1,0 +1,61 @@
+name: Build and shopping smoke test
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ecommerce-web/package-lock.json
+      - name: Run all Java tests
+        run: mvn -B -ntp test
+      - name: Package runnable service JARs
+        run: mvn -B -ntp -Dmaven.test.skip=true package
+      - name: Start the demo and verify checkout in Chromium
+        env:
+          PLAYWRIGHT_VERIFY_OUTBOX: '1'
+        run: |
+          mkdir -p .build-local
+          bash scripts/start-demo.sh --shop-only --skip-java-build > .build-local/ci-demo.log 2>&1 &
+          demo_pid=$!
+          trap 'kill "$demo_pid" 2>/dev/null || true; wait "$demo_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..450}; do
+            if grep -q '^Demo ready\.' .build-local/ci-demo.log; then break; fi
+            if ! kill -0 "$demo_pid" 2>/dev/null; then
+              cat .build-local/ci-demo.log
+              exit 1
+            fi
+            sleep 2
+          done
+          grep -q '^Demo ready\.' .build-local/ci-demo.log
+          cd ecommerce-web
+          npx playwright install --with-deps chromium
+          npx playwright test tests/e2e/full-shopping-flow-real.spec.ts
+      - name: Collect failure logs and reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-diagnostics
+          include-hidden-files: true
+          path: |
+            .build-local/**/*.log
+            **/target/surefire-reports/*.xml
+            ecommerce-web/test-results/

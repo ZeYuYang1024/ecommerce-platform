@@ -111,26 +111,19 @@ class AddressServiceImplTest {
         @Test
         @SuppressWarnings("unchecked")
         void shouldGetDefaultAddressByUserId() {
-            when(addressMapper.selectOne(any(LambdaQueryWrapper.class)))
-                    .thenReturn(addr);
+            when(addressMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(List.of(addr));
 
             AddressVO vo = service.getDefaultByUserId(1L);
 
             ArgumentCaptor<LambdaQueryWrapper<Address>> queryCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
-            verify(addressMapper).selectOne(queryCaptor.capture());
+            verify(addressMapper).selectList(queryCaptor.capture());
             assertThat(vo).isNotNull();
             assertThat(vo.getUserId()).isEqualTo(1L);
             assertThat(vo.getIsDefault()).isEqualTo(1);
-            assertThat(queryCaptor.getValue().getSqlSegment()).contains("user_id").contains("is_default");
-            assertThat(queryCaptor.getValue().getParamNameValuePairs()).containsValue(1L).containsValue(1);
-        }
-
-        @Test
-        void shouldReturnNullWhenDefaultAddressMissing() {
-            when(addressMapper.selectOne(any(LambdaQueryWrapper.class)))
-                    .thenReturn(null);
-
-            assertThat(service.getDefaultByUserId(1L)).isNull();
+            assertThat(queryCaptor.getValue().getSqlSegment())
+                    .contains("user_id", "ORDER BY is_default DESC", "limit 1");
+            assertThat(queryCaptor.getValue().getParamNameValuePairs()).containsValue(1L);
         }
 
         @Test
@@ -154,7 +147,7 @@ class AddressServiceImplTest {
         }
 
         @Test
-        void shouldReturnNullWhenNoDefaultAddressExists() {
+        void shouldReturnNullWhenUserHasNoAddresses() {
             when(addressMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(Collections.emptyList());
 

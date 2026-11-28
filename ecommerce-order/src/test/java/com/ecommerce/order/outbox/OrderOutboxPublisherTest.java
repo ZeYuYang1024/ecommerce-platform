@@ -47,14 +47,14 @@ class OrderOutboxPublisherTest {
         message.setTopic("order-created");
         message.setPayloadJson("{\"orderNo\":\"ORD-1\",\"items\":[]}");
         when(outboxService.loadPendingBatch(50)).thenReturn(List.of(message));
-        when(outboxService.markSending(1L)).thenReturn(true);
+        when(outboxService.markSending(message)).thenReturn(true);
         when(jsonMapper.readValue(message.getPayloadJson(), OrderInventoryMessage.class))
                 .thenReturn(new OrderInventoryMessage("ORD-1", List.of()));
 
         publisher.publishPending();
 
         verify(rocketMQTemplate).syncSend(eq("order-created"), any(OrderInventoryMessage.class));
-        verify(outboxService).markSent(1L);
+        verify(outboxService).markSent(message);
     }
 
     @Test
@@ -66,12 +66,12 @@ class OrderOutboxPublisherTest {
         message.setTopic(RecommendationSignal.TOPIC);
         message.setPayloadJson(mapper.writeValueAsString(signal));
         when(outboxService.loadPendingBatch(50)).thenReturn(List.of(message));
-        when(outboxService.markSending(1L)).thenReturn(true);
+        when(outboxService.markSending(message)).thenReturn(true);
 
         new OrderOutboxPublisher(outboxService, rocketMQTemplate, mapper, 50).publishPending();
 
         verify(rocketMQTemplate).syncSend(RecommendationSignal.TOPIC, signal);
-        verify(outboxService).markSent(1L);
+        verify(outboxService).markSent(message);
     }
 
     @Test
@@ -81,7 +81,7 @@ class OrderOutboxPublisherTest {
         message.setTopic("order-cancelled");
         message.setPayloadJson("{\"orderNo\":\"ORD-1\",\"items\":[]}");
         when(outboxService.loadPendingBatch(50)).thenReturn(List.of(message));
-        when(outboxService.markSending(1L)).thenReturn(true);
+        when(outboxService.markSending(message)).thenReturn(true);
         when(jsonMapper.readValue(message.getPayloadJson(), OrderInventoryMessage.class))
                 .thenReturn(new OrderInventoryMessage("ORD-1", List.of()));
         doThrow(new RuntimeException("mq down")).when(rocketMQTemplate)

@@ -44,6 +44,7 @@ import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { request } from '@/utils/api'
 import { productImages } from '@/utils/image'
+import { recordRecommendationEvents } from '@/utils/recommendation'
 import { useAuthStore } from '@/stores/auth'
 import { useCartStore } from '@/stores/cart'
 import ProductImage from '@/components/ProductImage.vue'
@@ -86,6 +87,7 @@ async function loadProduct() {
     product.value = res.data.spu
     skus.value = (res.data.skus || []).filter(sku => sku.id != null && sku.price != null)
     selectedSkuId.value = skus.value.length === 1 ? skus.value[0].id : null
+    recordRecommendationEvents([{ type: 'VIEW', spuId: product.value.id }])
   } else {
     error.value = res.message || '商品加载失败'
   }

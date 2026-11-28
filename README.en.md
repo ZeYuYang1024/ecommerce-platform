@@ -10,6 +10,18 @@ The Java build uses Spring Boot `4.2.0`, Spring Cloud `2026.0.0`, Hutool `5.8.48
 
 Docker runs the middleware. Java and the two Web development servers run on your host. Follow the steps in order for a fresh installation. The sample credentials and loopback addresses are intended for local development.
 
+### Start the storefront and admin demo
+
+On Linux or macOS, install the tools listed below and Python 3. Start Docker, then run this from the repository root:
+
+```bash
+bash scripts/start-demo.sh
+```
+
+After `Demo ready.` appears, open `http://127.0.0.1:3000` and sign in with `testuser / test123`. The admin console runs at `http://127.0.0.1:5173` with `admin / admin123`. The script seeds accounts, products, inventory, and images. The first run may build MinIO and RocketMQ. The demo covers browsing, cart, checkout, simulated payment, product management, and inventory. Follow the full setup below for logistics, warehouse, the knowledge base, or the offline lake.
+
+Press `Ctrl+C` to stop the apps launched by the script. Logs are in `.build-local/demo/`. The middleware stays up for reuse. Run `docker compose stop` to stop it. On Windows, use the PowerShell steps below. See [Contributing](CONTRIBUTING.md) for local testing and CI.
+
 ### 1. Install the tools and clone the repository
 
 | Tool | What to install |
@@ -254,7 +266,7 @@ With Ollama and Milvus running, you can try ingestion. After starting the knowle
 
 ### 5. Build and start the Java services
 
-Build the Maven reactor from the repository root. Each service gets a runnable JAR in its own `target/` directory. The first-run command skips test compilation because the full suite currently has a known compile error in the user module and failures in the knowledge tests.
+Build the Maven reactor from the repository root. Each service gets a runnable JAR in its own `target/` directory. To verify code changes, run `mvn test` first, then run the packaging command below separately.
 
 ```bash
 mvn '-Dmaven.test.skip=true' clean package
@@ -429,11 +441,17 @@ docker compose exec -T mysql mysql -uroot -proot ecommerce_recommendation -e "SE
 
 The report counts visible recommendation cards and their corresponding clicks for signed-in users. A related-product pair needs at least two users who viewed, added to cart, or paid for both products. The homepage continues to use recent activity when the worker is paused.
 
+Recommendations appear on both the Web and Mini Program homepages. For an existing recommendation database, rerun `ecommerce-recommendation/sql/init.sql` as shown above, then rebuild the recommendation service and offline worker. The new `recommendation_funnel_report` counts impressions, clicks, and cards credited with cart additions and payments, grouped by date, surface, and strategy. Conversions are credited to the latest recommendation click for the same user and product, within 30 minutes for cart additions or 24 hours for payments.
+
+The existing ranking stays active by default. To compare strategies, start the recommendation service with `RECOMMENDATION_HOME_EXPERIMENT_ENABLED=true`. Signed-in users are consistently assigned to `EXPERIMENT_POPULAR` or `EXPERIMENT_PERSONALIZED`. Compare cart and payment conversion rates when both groups have enough traffic.
+
 ### 9. Optional: run the WeChat Mini Program
 
 Open [ecommerce-miniprogram](ecommerce-miniprogram/) in HBuilderX, set your WeChat Mini Program AppID in [manifest.json](ecommerce-miniprogram/manifest.json), and run the app in WeChat Developer Tools. The local WeChat simulator and H5 development proxy use `http://127.0.0.1:8080` by default. Sign in to the store with the local demo account `testuser / test123`.
 
 To use another gateway, set `VITE_API_BASE_URL=https://your-gateway.example` in `.env.local` inside the mini program directory and rebuild. To override only the H5 development proxy, set `VITE_DEV_PROXY_TARGET`. For a physical phone, use a reachable HTTPS gateway configured as a request domain in the WeChat Mini Program dashboard.
+
+On a physical device, check that recommendation card images load. Then sign in, open a recommended product, select a SKU, add it to the cart, check out, and verify the amount and status on the order details page. Under a slow connection, check that the catalog stays usable and that request failures offer a way to retry.
 
 ### 10. Stop, restart, and troubleshoot
 
@@ -480,6 +498,7 @@ docker compose --progress plain build --build-arg HTTP_PROXY="$HTTP_PROXY" --bui
 
 - Start with [the root Maven project](pom.xml) and the [gateway route configuration](ecommerce-gateway/src/main/resources/application.yml) to follow requests from the frontends to each service.
 - To follow checkout, read [order](ecommerce-order/), [inventory](ecommerce-inventory/), and [payment](ecommerce-payment/) together with the [Outbox SQL](docs/sql/migrations/2026-05-28-transactional-outbox.sql).
+- Outbox publishers reclaim messages after the 120-second send lease expires. The shopping smoke test can replay an expired send and verify that stock is deducted once. A local Broker stop-and-start test also verified that queued orders can continue through payment after recovery.
 - For personalized recommendations, see [the recommendation service](ecommerce-recommendation/) and [the data lake job](docker/recommendation-lake/).
 - To follow retrieval, start with the [knowledge service](ecommerce-knowledge/) and its [database schema](ecommerce-knowledge/sql/init.sql).
 - For diagrams and business sequences, see the [Chinese architecture overview](README.md#系统架构图). For volume and data migration details, see the [middleware upgrade guide](docs/middleware-upgrade.md).

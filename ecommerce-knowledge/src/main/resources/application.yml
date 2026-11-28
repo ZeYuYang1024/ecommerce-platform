@@ -8,6 +8,21 @@ spring:
     nacos:
       discovery:
         server-addr: localhost:8848
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 200
+            readTimeout: 500
+  boot:
+    admin:
+      client:
+        url: ${SPRING_BOOT_ADMIN_URL:http://localhost:8094/admin}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:root}
   datasource:
     url: jdbc:mysql://localhost:3306/ecommerce_knowledge?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
     username: root
@@ -58,3 +73,6 @@ management:
     web:
       exposure:
         include: "*"
+  endpoint:
+    health:
+      show-details: ALWAYS

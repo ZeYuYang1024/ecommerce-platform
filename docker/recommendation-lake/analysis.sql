@@ -40,17 +40,44 @@ JOIN audience a ON pairs.spu_id = a.spu_id
 JOIN audience b ON related_spu_id = b.spu_id
 QUALIFY ROW_NUMBER() OVER (PARTITION BY pairs.spu_id ORDER BY affinity DESC, shared_users DESC, related_spu_id) <= 20;
 
-CREATE TEMP TABLE daily_report AS
-WITH clicked AS (
-    SELECT user_id, request_id, spu_id, MAX(occurred_at) AS clicked_at
-    FROM lake_events WHERE event_type = 'CLICK' AND request_id IS NOT NULL
-    GROUP BY user_id, request_id, spu_id
-)
-SELECT CAST(impression.occurred_at AS DATE) AS event_date, COUNT(*) AS impressions,
-       COUNT(clicked.clicked_at) AS clicks, CAST(COUNT(clicked.clicked_at) AS DOUBLE) / COUNT(*) AS click_rate
+CREATE TEMP TABLE recommendation_impressions AS
+SELECT impression.event_id, impression.user_id, impression.spu_id, impression.request_id,
+       CAST(impression.occurred_at AS DATE) AS event_date,
+       COALESCE(impression.surface, 'WEB') AS surface,
+       COALESCE(impression.strategy, 'DEFAULT') AS strategy,
+       MAX(clicked.occurred_at) AS clicked_at
 FROM lake_events impression
-LEFT JOIN clicked ON impression.user_id = clicked.user_id AND impression.request_id = clicked.request_id
-    AND impression.spu_id = clicked.spu_id AND clicked.clicked_at >= impression.occurred_at
-    AND clicked.clicked_at <= impression.occurred_at + INTERVAL 30 MINUTE
+LEFT JOIN lake_events clicked ON clicked.event_type = 'CLICK'
+    AND impression.user_id = clicked.user_id AND impression.request_id = clicked.request_id
+    AND impression.spu_id = clicked.spu_id AND clicked.occurred_at >= impression.occurred_at
+    AND clicked.occurred_at <= impression.occurred_at + INTERVAL 30 MINUTE
 WHERE impression.event_type = 'IMPRESSION' AND impression.occurred_at >= CURRENT_TIMESTAMP - INTERVAL 30 DAY
-GROUP BY 1;
+GROUP BY 1, 2, 3, 4, 5, 6, 7;
+
+CREATE TEMP TABLE daily_report AS
+SELECT event_date, COUNT(*) AS impressions, COUNT(clicked_at) AS clicks,
+       CAST(COUNT(clicked_at) AS DOUBLE) / COUNT(*) AS click_rate
+FROM recommendation_impressions GROUP BY event_date;
+
+CREATE TEMP TABLE funnel_report AS
+WITH last_touch AS (
+    SELECT impression.event_id AS impression_id, conversion.event_type
+    FROM lake_events conversion
+    JOIN recommendation_impressions impression
+      ON conversion.user_id = impression.user_id AND conversion.spu_id = impression.spu_id
+      AND conversion.occurred_at >= impression.clicked_at
+      AND conversion.occurred_at <= impression.clicked_at
+          + CASE conversion.event_type WHEN 'PAID' THEN INTERVAL 24 HOUR ELSE INTERVAL 30 MINUTE END
+    WHERE conversion.event_type IN ('CART_ADD', 'PAID')
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY conversion.event_id ORDER BY impression.clicked_at DESC, impression.request_id DESC
+    ) = 1
+), stages AS (
+    SELECT impression_id, BOOL_OR(event_type = 'CART_ADD') AS added, BOOL_OR(event_type = 'PAID') AS paid
+    FROM last_touch GROUP BY impression_id
+)
+SELECT event_date, surface, strategy, COUNT(*) AS impressions, COUNT(clicked_at) AS clicks,
+       COUNT(*) FILTER (WHERE stages.added) AS cart_adds, COUNT(*) FILTER (WHERE stages.paid) AS payments
+FROM recommendation_impressions
+LEFT JOIN stages ON recommendation_impressions.event_id = stages.impression_id
+GROUP BY event_date, surface, strategy;

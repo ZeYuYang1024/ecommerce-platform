@@ -2,8 +2,8 @@ package com.ecommerce.knowledge.config;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.env.YamlPropertySourceLoader;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.env.PropertySource;
+import org.springframework.core.io.FileSystemResource;
 
 import java.util.List;
 
@@ -14,7 +14,8 @@ class KnowledgeFeignTimeoutConfigTest {
     @Test
     void applicationYamlShouldDefineFeignTimeoutsForKnowledgeClients() throws Exception {
         YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
-        List<PropertySource<?>> sources = loader.load("application", new ClassPathResource("application.yml"));
+        List<PropertySource<?>> sources = loader.load("application",
+                new FileSystemResource("src/main/resources/application.yml"));
 
         assertThat(sources).isNotEmpty();
         PropertySource<?> source = sources.getFirst();

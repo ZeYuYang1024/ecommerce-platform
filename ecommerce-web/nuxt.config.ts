@@ -4,7 +4,7 @@ export default defineNuxtConfig({
   modules: ['@pinia/nuxt', '@nuxtjs/tailwindcss'],
   nitro: {
     devProxy: {
-      '/api': { target: 'http://localhost:8080/api', changeOrigin: true }
+      '/api': { target: `${process.env.DEV_GATEWAY_URL || 'http://127.0.0.1:8080'}/api`, changeOrigin: true }
     }
   },
   app: {

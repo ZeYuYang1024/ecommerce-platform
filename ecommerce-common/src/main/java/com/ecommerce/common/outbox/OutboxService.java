@@ -9,9 +9,9 @@ public interface OutboxService {
 
     List<OutboxMessage> loadPendingBatch(int limit);
 
-    boolean markSending(Long id);
+    boolean markSending(OutboxMessage message);
 
-    void markSent(Long id);
+    void markSent(OutboxMessage message);
 
     void markFailed(OutboxMessage message, String error);
 

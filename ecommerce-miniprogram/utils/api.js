@@ -13,6 +13,7 @@ export function request(options) {
       url: API_BASE + options.url,
       method: options.method || 'GET',
       data: options.data,
+      ...(options.timeout ? { timeout: options.timeout } : {}),
       header: {
         'Content-Type': 'application/json',
         ...(requestToken ? { Authorization: `Bearer ${requestToken}` } : {}),

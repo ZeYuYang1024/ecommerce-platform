@@ -1,101 +1,103 @@
-import { test, expect } from '@playwright/test'
+import { randomUUID } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import type { APIResponse, Response } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
-test.describe('Full Shopping Flow [REAL API]', () => {
+async function result(response: APIResponse | Response) {
+  expect(response.ok(), `${response.url()} returned HTTP ${response.status()}`).toBe(true)
+  const body = await response.json()
+  expect(body.code, body.message).toBe(200)
+  return body.data
+}
 
-  test('complete flow: login → product detail → add to cart → checkout → pay → verify order', async ({ page }) => {
-    test.setTimeout(60000)
+const repository = fileURLToPath(new URL('../../../', import.meta.url))
 
-    // 第 1 步：登录 / step 1: login
-    await page.goto('/login')
-    await page.fill('input[placeholder="用户名"]', 'e2euser')
-    await page.fill('input[placeholder="密码"]', 'test123456')
-    await page.click('button:has-text("登 录")')
-    await page.waitForTimeout(3000)
-    // 登录后应离开当前页，或者出现错误提示也算发生了交互 / after login, should redirect away (or show error which also means we're interacting)
-    const url = page.url()
-    // 登录成功或返回错误都算有效交互 / either logged in successfully, or got error - both are valid interactions
+function orderSql(statement: string) {
+  return execFileSync('docker', [
+    'compose', 'exec', '-T', 'mysql', 'sh', '-c',
+    'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -Nse "$1" ecommerce_order', 'mysql', statement,
+  ], { cwd: repository, encoding: 'utf-8', timeout: 5000 }).trim()
+}
 
-    // 第 2 步：浏览首页并确认商品可见 / step 2: browse home page - verify products visible
-    await page.goto('/')
-    await page.waitForTimeout(2000)
-    const homeCards = page.locator('a[href^="/products/"]')
-    await expect(homeCards.first()).toBeVisible({ timeout: 5000 })
-    expect(await homeCards.count()).toBeGreaterThan(0)
+test('seeded SKU goes from cart to paid order and consumes one unit of available stock', async ({ page, request }) => {
+  test.setTimeout(90_000)
+  const login = { username: `e2e_${randomUUID().slice(0, 12)}`, password: randomUUID().slice(0, 30) }
+  const account = await result(await request.post('/api/v1/auth/register', { data: login }))
+  const headers = { Authorization: `Bearer ${account.token}` }
+  await result(await request.post('/api/v1/users/addresses', {
+    headers,
+    data: {
+      receiverName: '冒烟测试', receiverPhone: '13800000001', province: '北京市',
+      city: '北京市', district: '朝阳区', detail: '测试地址 1 号', isDefault: 1,
+    },
+  }))
 
-    // 第 3 步：点击首个商品进入详情页 / step 3: click first product to go to detail
-    const firstProductHref = await homeCards.first().getAttribute('href')
-    await homeCards.first().click()
-    await page.waitForTimeout(2000)
-    expect(page.url()).toContain('/products/')
+  const skuId = '1'
+  const stockBefore = await result(await request.get(`/api/v1/inventory/${skuId}`, { headers }))
+  expect(stockBefore.availableStock).toBeGreaterThan(0)
 
-    // 第 4 步：在商品详情页检查 SKU 和价格区域 / step 4: product detail - check for SKU selector and price
-    const body = await page.textContent('body')
-    expect(body).toBeTruthy()
-    // 页面应该展示基础商品信息 / should show some product info
-    const productName = page.locator('h1').first()
-    await expect(productName).toBeVisible({ timeout: 3000 })
+  await page.goto('/login')
+  await page.getByPlaceholder('用户名').fill(login.username)
+  await page.getByPlaceholder('密码').fill(login.password)
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page).toHaveURL(/\/$/)
 
-    // 第 5 步：尝试加入购物车，查找数量或 SKU 操作按钮 / step 5: try to add to cart - look for quantity/SKU buttons
-    const addToCartBtn = page.locator('button').filter({ hasText: /加入|添加|购买/ }).first()
-    const hasAddBtn = await addToCartBtn.isVisible({ timeout: 2000 }).catch(() => false)
-    if (hasAddBtn) {
-      await addToCartBtn.click()
-      await page.waitForTimeout(1000)
-    }
+  await page.goto('/products/1')
+  await expect(page.getByRole('heading', { name: '海尔双开门冰箱 BCD-500' })).toBeVisible()
+  await page.getByRole('button', { name: /BCD-500 银灰色/ }).click()
+  const added = page.waitForResponse(res =>
+    new URL(res.url()).pathname === '/api/v1/cart/items' && res.request().method() === 'POST')
+  await page.getByRole('button', { name: '加入购物车', exact: true }).click()
+  await result(await added)
 
-    // 第 6 步：进入购物车 / step 6: go to cart
-    await page.goto('/cart')
-    await page.waitForTimeout(2000)
-    await expect(page.locator('h1')).toContainText('购物车')
+  await page.goto('/cart')
+  await expect(page.getByText('海尔双开门冰箱 BCD-500 - BCD-500 银灰色')).toBeVisible()
+  await page.getByRole('button', { name: '去结算' }).click()
+  await expect(page).toHaveURL(/\/checkout$/)
+  await expect(page.getByText(/测试地址 1 号/)).toBeVisible()
+  const submitted = page.waitForResponse(res =>
+    new URL(res.url()).pathname === '/api/v1/orders' && res.request().method() === 'POST')
+  await page.getByRole('button', { name: '提交订单' }).click()
+  const { orderNo } = await result(await submitted)
+  expect(orderNo).toMatch(/^[A-Z0-9]+$/)
+  await expect(page).toHaveURL(new RegExp(`/payment/${orderNo}$`))
 
-    // 第 7 步：尝试结算（仅在购物车有商品时执行） / step 7: try checkout (only if cart has items)
-    const checkoutBtn = page.locator('button:has-text("去结算")')
-    const hasCheckoutBtn = await checkoutBtn.isVisible({ timeout: 2000 }).catch(() => false)
-    if (hasCheckoutBtn) {
-      await checkoutBtn.click()
-      await page.waitForTimeout(2000)
-      expect(page.url()).toContain('/checkout')
+  await expect.poll(async () => {
+    const stock = await result(await request.get(`/api/v1/inventory/${skuId}`, { headers }))
+    return stock.availableStock
+  }, { timeout: 30_000 }).toBe(stockBefore.availableStock - 1)
 
-      // 结算页应该展示收货地址区域 / checkout page should ask for address
-      const checkoutBody = await page.textContent('body')
-      expect(checkoutBody).toContain('收货地址')
+  await page.getByRole('button', { name: '确认支付' }).click()
+  await expect(page.getByText('支付成功！')).toBeVisible()
+  const getOrder = async () => result(await request.get(`/api/v1/orders/no/${orderNo}`, { headers }))
+  await expect.poll(async () => (await getOrder()).status, { timeout: 30_000 }).toBe(1)
+  const order = await getOrder()
+  expect(order.orderNo).toBe(orderNo)
+  expect(order.items).toMatchObject([{ skuId, quantity: 1 }])
 
-      // 如果有地址则尝试提交订单 / try to submit order if we have an address
-      const submitBtn = page.locator('button:has-text("提交订单")')
-      const hasSubmit = await submitBtn.isVisible({ timeout: 2000 }).catch(() => false)
-      if (hasSubmit) {
-        await submitBtn.click()
-        await page.waitForTimeout(3000)
+  const stockAfter = await result(await request.get(`/api/v1/inventory/${skuId}`, { headers }))
+  expect(stockAfter.availableStock).toBe(stockBefore.availableStock - 1)
+  await page.getByRole('link', { name: /查看订单/ }).click()
+  await expect(page.getByText(orderNo, { exact: false })).toBeVisible()
 
-        // 提交后应该进入支付页 / should redirect to payment page
-        const url = page.url()
-        if (url.includes('/payment/')) {
-          // 在支付页检查支付按钮 / on payment page - verify pay button
-          const payBtn = page.locator('button:has-text("确认支付")')
-          const hasPayBtn = await payBtn.isVisible({ timeout: 2000 }).catch(() => false)
-          if (hasPayBtn) {
-            await payBtn.click()
-            await page.waitForTimeout(2000)
-            // 支付完成后应看到成功提示 / should show payment success
-            const payBody = await page.textContent('body')
-            expect(payBody).toContain('支付成功')
-          }
-        }
-      }
-    }
+  if (process.env.PLAYWRIGHT_VERIFY_OUTBOX === '1') {
+    await test.step('reclaim an expired send and consume the replay without deducting stock again', async () => {
+      const row = `aggregate_id = '${orderNo}' AND topic = 'order-created'`
+      const status = () => orderSql(`SELECT status FROM message_outbox WHERE ${row}`)
+      await expect.poll(status, { timeout: 30_000 }).toBe('2')
+      expect(orderSql(`UPDATE message_outbox SET status = 1, next_retry_at = '2000-01-01 00:00:00'
+                       WHERE ${row} AND status = 2; SELECT ROW_COUNT()`)).toBe('1')
+      await expect.poll(status, { timeout: 30_000 }).toBe('2')
 
-    // 第 8 步：查看订单列表并确认页面可用 / step 8: view orders - verify order list loads
-    await page.goto('/user/orders')
-    await page.waitForTimeout(2000)
-    await expect(page.locator('h1')).toContainText('我的订单')
-
-    // 如果存在订单详情入口，则进入第一条订单 / click first order detail if exists
-    const orderLink = page.locator('a[href*="/user/orders/"]').first()
-    const hasOrderLink = await orderLink.isVisible({ timeout: 2000 }).catch(() => false)
-    if (hasOrderLink) {
-      await orderLink.click()
-      await page.waitForTimeout(2000)
-      expect(page.url()).toMatch(/\/user\/orders\/\d+/)
-    }
-  })
+      const log = resolve(repository, process.env.DEMO_LOG_DIR || '.build-local/demo', 'ecommerce-inventory.log')
+      await expect.poll(() => readFileSync(log, 'utf-8'), { timeout: 30_000 })
+        .toContain(`Skip duplicated inventory event: topic=order-created orderNo=${orderNo}`)
+      const stock = await result(await request.get(`/api/v1/inventory/${skuId}`, { headers }))
+      expect(stock.availableStock).toBe(stockBefore.availableStock - 1)
+      expect((await getOrder()).status).toBe(1)
+    })
+  }
 })

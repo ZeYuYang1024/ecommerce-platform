@@ -32,13 +32,13 @@ public class InventoryOutboxPublisher {
     @Scheduled(fixedDelayString = "${outbox.publisher.fixed-delay-ms:5000}")
     public void publishPendingMessages() {
         for (OutboxMessage message : outboxService.loadPendingBatch(batchSize)) {
-            if (!outboxService.markSending(message.getId())) {
+            if (!outboxService.markSending(message)) {
                 continue;
             }
             try {
                 OrderPaidMessage payload = jsonMapper.readValue(message.getPayloadJson(), OrderPaidMessage.class);
                 rocketMQTemplate.syncSend(message.getTopic(), payload);
-                outboxService.markSent(message.getId());
+                outboxService.markSent(message);
             } catch (RuntimeException ex) {
                 log.warn("publish inventory outbox failed, id={}", message.getId(), ex);
                 outboxService.markFailed(message, ex.getMessage());

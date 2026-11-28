@@ -33,7 +33,7 @@ public class LogisticsOutboxPublisher {
     @Scheduled(fixedDelayString = "${outbox.publisher.fixed-delay-ms:5000}")
     public void publishPending() {
         for (OutboxMessage message : outboxService.loadPendingBatch(batchSize)) {
-            if (!outboxService.markSending(message.getId())) continue;
+            if (!outboxService.markSending(message)) continue;
             try {
                 Object payload = switch (message.getTopic()) {
                     case "shipping-dispatched" -> jsonMapper.readValue(message.getPayloadJson(), ShippingDispatchedMessage.class);
@@ -42,7 +42,7 @@ public class LogisticsOutboxPublisher {
                     default -> throw new IllegalStateException("Unknown logistics topic: " + message.getTopic());
                 };
                 rocketMQTemplate.syncSend(message.getTopic(), payload);
-                outboxService.markSent(message.getId());
+                outboxService.markSent(message);
             } catch (RuntimeException e) {
                 log.warn("Publish logistics outbox failed, id={}", message.getId(), e);
                 outboxService.markFailed(message, e.getMessage());

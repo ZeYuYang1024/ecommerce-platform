@@ -4,6 +4,7 @@ import com.ecommerce.common.dto.RecommendationProduct;
 import com.ecommerce.common.dto.RecommendationSignal;
 import com.ecommerce.common.result.Result;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -11,9 +12,11 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -35,20 +38,25 @@ class RecommendationService {
     private final InventoryClient inventory;
     private final StringRedisTemplate redis;
     private final JsonMapper json;
+    private final boolean experimentEnabled;
 
     RecommendationService(RecommendationRepository repository, ProductClient products, InventoryClient inventory,
-                          StringRedisTemplate redis, JsonMapper json) {
+                          StringRedisTemplate redis, JsonMapper json,
+                          @Value("${recommendation.home-experiment-enabled:false}") boolean experimentEnabled) {
         this.repository = repository;
         this.products = products;
         this.inventory = inventory;
         this.redis = redis;
         this.json = json;
+        this.experimentEnabled = experimentEnabled;
     }
 
-    Feed feed(Long userId, int limit) {
-        List<RecommendationRepository.Behavior> history = userId == null ? List.of()
+    Feed feed(Long userId, int limit, Surface surface) {
+        Strategy strategy = strategy(userId);
+        boolean useHistory = userId != null && strategy != Strategy.EXPERIMENT_POPULAR;
+        List<RecommendationRepository.Behavior> history = !useHistory ? List.of()
                 : cached("history:" + userId, RecommendationRepository.Behavior[].class, () -> repository.recent(userId));
-        List<RecommendationRepository.CategoryScore> categoryScores = userId == null ? List.of()
+        List<RecommendationRepository.CategoryScore> categoryScores = !useHistory ? List.of()
                 : cached("categories:" + userId, RecommendationRepository.CategoryScore[].class,
                         () -> repository.categories(userId));
         var taste = taste(history, categoryScores);
@@ -69,8 +77,15 @@ class RecommendationService {
                         score(product, taste, related)).reversed())
                 .toList();
         List<Card> cards = diversify(candidates, categories, limit).stream().map(Card::from).toList();
-        return new Feed(userId == null ? null : issueRequest(userId, cards), !categories.isEmpty() || !related.isEmpty(),
-                cards);
+        return new Feed(userId == null ? null : issueRequest(userId, cards, surface, strategy),
+                !categories.isEmpty() || !related.isEmpty(), cards);
+    }
+
+    private Strategy strategy(Long userId) {
+        if (!experimentEnabled || userId == null) return Strategy.DEFAULT;
+        byte[] assignment = ("recommendation-home-v1:" + userId).getBytes(StandardCharsets.UTF_8);
+        return (UUID.nameUUIDFromBytes(assignment).getLeastSignificantBits() & 1) == 0
+                ? Strategy.EXPERIMENT_POPULAR : Strategy.EXPERIMENT_PERSONALIZED;
     }
 
     void recordBrowserEvents(long userId, List<BrowserEvent> events) {
@@ -86,7 +101,7 @@ class RecommendationService {
                     RecommendationProduct product = viewed.get(event.spuId());
                     if (product == null) continue;
                     String id = "view:" + userId + ":" + event.spuId() + ":" + now.getEpochSecond() / 300;
-                    changed |= store(id, userId, event.spuId(), event.type(), null, product, now);
+                    changed |= store(id, userId, event.spuId(), event.type(), product, now);
                 }
                 case IMPRESSION, CLICK -> {
                     if (event.requestId() == null) continue;
@@ -94,7 +109,8 @@ class RecommendationService {
                     if (issued.userId() != userId || !issued.spuIds().contains(Long.toString(event.spuId()))) continue;
                     String requestId = event.requestId().toString();
                     String id = event.type().name() + ":" + requestId + ":" + event.spuId();
-                    store(id, userId, event.spuId(), event.type(), requestId, null, now);
+                    repository.store(id, userId, event.spuId(), event.type(), requestId,
+                            issued.surface(), issued.strategy(), null, null, null, now);
                 }
                 default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported browser event");
             }
@@ -113,15 +129,16 @@ class RecommendationService {
                 RecommendationProduct product = metadata.get(spuId);
                 if (type == RecommendationEventType.CART_ADD
                         && (product == null || !product.skuIds().contains(signal.skuId()))) continue;
-                store(type.name() + ":" + signal.eventId() + ":" + spuId, signal.userId(), spuId, type, null, product, now);
+                store(type.name() + ":" + signal.eventId() + ":" + spuId, signal.userId(), spuId, type, product, now);
             }
         }
         invalidateHistory(signal.userId());
     }
 
-    private boolean store(String id, long userId, long spuId, RecommendationEventType type, String requestId,
+    private boolean store(String id, long userId, long spuId, RecommendationEventType type,
                           RecommendationProduct product, Instant now) {
-        return repository.store(id, userId, spuId, type, requestId, product == null ? null : product.categoryId(),
+        return repository.store(id, userId, spuId, type, null, null, null,
+                product == null ? null : product.categoryId(),
                 product == null ? null : product.brandId(), product == null ? null : product.minPrice(), now);
     }
 
@@ -180,11 +197,12 @@ class RecommendationService {
         }
     }
 
-    private String issueRequest(long userId, List<Card> cards) {
+    private String issueRequest(long userId, List<Card> cards, Surface surface, Strategy strategy) {
         if (cards.isEmpty()) return null;
         String requestId = UUID.randomUUID().toString();
         try {
-            String value = userId + "," + cards.stream().map(Card::id).collect(Collectors.joining(","));
+            String value = userId + "," + cards.stream().map(Card::id).collect(Collectors.joining(","))
+                    + "," + surface.name() + ":" + strategy.name();
             redis.opsForValue().set("recommendation:request:" + requestId, value, REQUEST_TTL);
             return requestId;
         } catch (RuntimeException error) {
@@ -195,9 +213,15 @@ class RecommendationService {
 
     private IssuedRequest issuedRequest(UUID requestId) {
         String value = redis.opsForValue().get("recommendation:request:" + requestId);
-        if (value == null) return new IssuedRequest(0, Set.of());
-        String[] parts = value.split(",", 2);
-        return new IssuedRequest(Long.parseLong(parts[0]), Set.of(parts[1].split(",")));
+        if (value == null) return new IssuedRequest(0, Set.of(), Surface.WEB, Strategy.DEFAULT);
+        String[] parts = value.split(",");
+        String[] labels = parts[parts.length - 1].split(":", 2);
+        boolean labeled = labels.length == 2;
+        // Old request values have only a user ID and product IDs.
+        Set<String> ids = Set.copyOf(Arrays.asList(parts).subList(1, parts.length - (labeled ? 1 : 0)));
+        return new IssuedRequest(Long.parseLong(parts[0]), ids,
+                labeled ? Surface.valueOf(labels[0]) : Surface.WEB,
+                labeled ? Strategy.valueOf(labels[1]) : Strategy.DEFAULT);
     }
 
     private Taste taste(List<RecommendationRepository.Behavior> history,
@@ -269,7 +293,9 @@ class RecommendationService {
 
     record BrowserEvent(RecommendationEventType type, Long spuId, UUID requestId) {}
     record Feed(String requestId, boolean personalized, List<Card> items) {}
-    private record IssuedRequest(long userId, Set<String> spuIds) {}
+    enum Surface { WEB, MINI_PROGRAM }
+    enum Strategy { DEFAULT, EXPERIMENT_POPULAR, EXPERIMENT_PERSONALIZED }
+    private record IssuedRequest(long userId, Set<String> spuIds, Surface surface, Strategy strategy) {}
     private record DailySignal(long spuId, RecommendationEventType type, long day) {}
     private record Taste(Map<Long, Double> categories, Map<Long, Double> brands, Set<Long> seenProducts, double price,
                          double maxCategory, double maxBrand) {}

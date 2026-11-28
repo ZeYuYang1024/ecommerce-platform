@@ -41,14 +41,14 @@ class InventoryOutboxPublisherTest {
         message.setPayloadJson("{\"orderNo\":\"ORD-1\"}");
         OrderPaidMessage payload = new OrderPaidMessage("ORD-1", 4, LocalDateTime.of(2026, 5, 28, 10, 0));
         when(outboxService.loadPendingBatch(20)).thenReturn(List.of(message));
-        when(outboxService.markSending(1L)).thenReturn(true);
+        when(outboxService.markSending(message)).thenReturn(true);
         when(jsonMapper.readValue(message.getPayloadJson(), OrderPaidMessage.class)).thenReturn(payload);
 
         InventoryOutboxPublisher publisher = new InventoryOutboxPublisher(outboxService, rocketMQTemplate, jsonMapper, 20);
         publisher.publishPendingMessages();
 
         verify(rocketMQTemplate).syncSend("order-paid", payload);
-        verify(outboxService).markSent(1L);
+        verify(outboxService).markSent(message);
     }
 
     @Test
@@ -60,7 +60,7 @@ class InventoryOutboxPublisherTest {
         message.setPayloadJson("{\"orderNo\":\"ORD-2\"}");
         OrderPaidMessage payload = new OrderPaidMessage("ORD-2", 4, LocalDateTime.of(2026, 5, 28, 11, 0));
         when(outboxService.loadPendingBatch(20)).thenReturn(List.of(message));
-        when(outboxService.markSending(2L)).thenReturn(true);
+        when(outboxService.markSending(message)).thenReturn(true);
         when(jsonMapper.readValue(message.getPayloadJson(), OrderPaidMessage.class)).thenReturn(payload);
         doThrow(new RuntimeException("mq down")).when(rocketMQTemplate).syncSend(eq("order-paid"), any(OrderPaidMessage.class));
 
@@ -68,6 +68,6 @@ class InventoryOutboxPublisherTest {
         publisher.publishPendingMessages();
 
         verify(outboxService).markFailed(message, "mq down");
-        verify(outboxService, never()).markSent(2L);
+        verify(outboxService, never()).markSent(message);
     }
 }

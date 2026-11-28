@@ -15,6 +15,18 @@
 
 本文以**本机开发环境**为例。Docker 运行中间件，Java 服务和两个 Web 前端在宿主机运行。首次启动按下面的顺序执行，后续启动可以直接复用镜像、数据卷和 JAR。示例服务绑定本机地址，内含演示账号与宽松的开发配置。
 
+### 一键体验商城和后台
+
+在 Linux 或 macOS 安装下表工具和 Python 3，启动 Docker 后，从仓库根目录运行：
+
+```bash
+bash scripts/start-demo.sh
+```
+
+看到 `Demo ready.` 后，打开 `http://127.0.0.1:3000`，用 `testuser / test123` 登录商城。后台在 `http://127.0.0.1:5173`，演示账号是 `admin / admin123`。脚本会准备样例账号、商品、库存和图片，启动商城与后台。首次启动可能需要构建 MinIO 和 RocketMQ 镜像。这个入口覆盖浏览、加购、下单、模拟支付、商品与库存管理。需要物流、仓储、知识库或离线数据湖时，继续看下面的完整启动步骤。
+
+脚本在前台运行，按 `Ctrl+C` 停止它启动的应用。日志位于 `.build-local/demo/`。中间件继续运行以便下次复用，可以用 `docker compose stop` 停止。Windows 使用下文的 PowerShell 步骤。修改代码和运行回归测试见 [贡献说明](CONTRIBUTING.md)。
+
 ### 1. 安装工具并克隆仓库
 
 | 工具 | 建议 |
@@ -259,7 +271,7 @@ $env:DEEPSEEK_API_KEY = Read-Host 'DeepSeek API key' -MaskInput
 
 ### 5. 构建和启动 Java 服务
 
-回到仓库根目录打包。根 POM 会构建所有模块，随后从每个模块的 `target/` 取可运行 JAR。首次体验建议用下面的参数跳过测试编译，仓库的全量测试里有已知的用户模块测试编译问题与知识库测试失败。
+回到仓库根目录打包。根 POM 会构建所有模块，随后从每个模块的 `target/` 取可运行 JAR。需要验证代码时先运行 `mvn test`，然后单独执行下面的打包命令。
 
 ```bash
 mvn '-Dmaven.test.skip=true' clean package
@@ -434,11 +446,17 @@ docker compose exec -T mysql mysql -uroot -proot ecommerce_recommendation -e "SE
 
 报表统计登录用户的推荐卡片实际曝光和对应点击。商品关联至少需要两个用户都与同一对商品发生浏览、加购或支付行为。暂停离线容器时，首页仍用新采集的行为更新推荐。
 
+PC 和小程序首页都接入「猜你喜欢」。升级已有推荐库时，重新执行本节的 `ecommerce-recommendation/sql/init.sql`，再重建推荐服务和离线容器。新版 `recommendation_funnel_report` 按日期、渠道和策略统计曝光、点击、有归因的加购卡片和支付卡片。同一个转化归到最近一次同用户同商品的推荐点击，加购窗口为 30 分钟，支付窗口为 24 小时。
+
+默认沿用当前推荐策略。需要比较策略时，以 `RECOMMENDATION_HOME_EXPERIMENT_ENABLED=true` 启动推荐服务。登录用户按账号稳定分入 `EXPERIMENT_POPULAR` 或 `EXPERIMENT_PERSONALIZED`，可以在积累足够流量后比较每组的加购和支付转化率。
+
 ### 9. 可选：运行微信小程序
 
 用 HBuilderX 打开 [ecommerce-miniprogram](ecommerce-miniprogram/)，在 [manifest.json](ecommerce-miniprogram/manifest.json) 填写自己的小程序 AppID，然后运行到微信开发者工具。本机微信模拟器和 H5 开发代理默认连接 `http://127.0.0.1:8080`。登录商城可用本地示例账号 `testuser / test123`。
 
 要连接其他网关，在小程序目录的 `.env.local` 里设置 `VITE_API_BASE_URL=https://你的网关域名`，然后重新编译。只需调整 H5 开发代理时，设置 `VITE_DEV_PROXY_TARGET`。手机真机使用可从手机访问、且已在微信小程序后台配置的 HTTPS 请求域名。
+
+真机冒烟时，先确认「猜你喜欢」卡片的图片能加载，再登录、进入推荐商品、选规格、加购、结算，并在订单详情核对金额和状态。打开弱网模式后确认商品列表仍可浏览，失败提示和重试入口可用。
 
 ### 10. 关闭、重启和排错
 
@@ -1051,6 +1069,7 @@ sequenceDiagram
 
 当前还没有覆盖到的故障注入范围：
 
-- 服务重启中的恢复行为
-- broker 故障后的自动重试与堆积恢复
+- Broker 故障后的大规模积压恢复
 - 更大规模的乱序消息和长期积压
+
+Outbox 对 `SENDING` 使用 120 秒发送租约。进程中断后，过期消息由定时发布器重新领取。购物冒烟测试会模拟一条已发送订单事件留下过期租约，检查它重新发送后库存只扣减一次。本地还验证了 Broker 暂停期间订单可以落库，Broker 恢复后消息成功重试，订单最终完成支付。

@@ -26,13 +26,15 @@ class RecommendationController {
 
     @GetMapping("/me")
     ResponseEntity<Result<RecommendationService.Feed>> me(@RequestHeader("X-User-Id") long userId,
-                                                            @RequestParam(defaultValue = "12") int limit) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Result.ok(service.feed(userId, limit(limit))));
+                                                            @RequestParam(defaultValue = "12") int limit,
+                                                            @RequestParam(defaultValue = "WEB") RecommendationService.Surface surface) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(Result.ok(service.feed(userId, limit(limit), surface)));
     }
 
     @GetMapping("/popular")
     Result<RecommendationService.Feed> popular(@RequestParam(defaultValue = "12") int limit) {
-        return Result.ok(service.feed(null, limit(limit)));
+        return Result.ok(service.feed(null, limit(limit), RecommendationService.Surface.WEB));
     }
 
     @PostMapping("/events")

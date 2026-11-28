@@ -39,13 +39,13 @@ public class PaymentOutboxPublisher {
     @Scheduled(fixedDelayString = "${outbox.publisher.fixed-delay-ms:5000}")
     public void publishPendingMessages() {
         for (OutboxMessage message : outboxService.loadPendingBatch(batchSize)) {
-            if (!outboxService.markSending(message.getId())) {
+            if (!outboxService.markSending(message)) {
                 continue;
             }
             try {
                 Object payload = deserializePayload(message);
                 rocketMQTemplate.syncSend(message.getTopic(), payload);
-                outboxService.markSent(message.getId());
+                outboxService.markSent(message);
             } catch (RuntimeException e) {
                 log.warn("publish payment outbox failed, id={}", message.getId(), e);
                 outboxService.markFailed(message, e.getMessage());

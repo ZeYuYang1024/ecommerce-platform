@@ -58,21 +58,67 @@ class OutboxServiceImplTest {
     }
 
     @Test
+    void publisherShouldReclaimAnExpiredSendAndIgnoreTheOldCompletion() {
+        OutboxServiceImpl service = new OutboxServiceImpl(outboxMapper, serializer);
+        OutboxMessage expired = message(1L, "order", "ORD-1", "order-created", OutboxStatus.SENDING.getCode());
+        LocalDateTime expiredAt = LocalDateTime.now().minusMinutes(3).withNano(0);
+        expired.setNextRetryAt(expiredAt);
+        OutboxMessage orphanedAttempt = message(1L, "order", "ORD-1", "order-created", OutboxStatus.SENDING.getCode());
+        orphanedAttempt.setNextRetryAt(expiredAt);
+
+        when(outboxMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenAnswer(invocation -> {
+            LambdaQueryWrapper<?> scan = invocation.getArgument(1);
+            assertThat(scan.getSqlSegment()).contains("status", "nextRetryAt");
+            assertThat(scan.getParamNameValuePairs().values()).contains(OutboxStatus.SENDING.getCode());
+            return pageWith(expired);
+        });
+        assertThat(service.loadPendingBatch(10)).containsExactly(expired);
+
+        LocalDateTime[] lease = {expiredAt};
+        when(outboxMapper.update(any(OutboxMessage.class), any(LambdaUpdateWrapper.class))).thenAnswer(invocation -> {
+            OutboxMessage update = invocation.getArgument(0);
+            LambdaUpdateWrapper<?> guard = invocation.getArgument(1);
+            assertThat(guard.getSqlSegment()).contains("id", "status", "nextRetryAt");
+            var parameters = guard.getParamNameValuePairs().values();
+            if (!parameters.contains(lease[0])) {
+                assertThat(parameters).contains(expiredAt);
+                return 0;
+            }
+            if (update.getStatus() == OutboxStatus.SENDING.getCode()) {
+                assertThat(update.getNextRetryAt()).isAfter(LocalDateTime.now());
+                lease[0] = update.getNextRetryAt();
+            }
+            return 1;
+        });
+
+        assertThat(service.markSending(expired)).isTrue();
+        assertThat(service.markSending(orphanedAttempt)).isFalse();
+        service.markSent(orphanedAttempt);
+        service.markSent(expired);
+        assertThat(expired.getNextRetryAt()).isEqualTo(lease[0]);
+    }
+
+    @Test
     void markFailedShouldIncrementRetryAndScheduleRetry() {
         OutboxServiceImpl service = new OutboxServiceImpl(outboxMapper, serializer);
         OutboxMessage message = new OutboxMessage();
         message.setId(1L);
         message.setRetryCount(1);
+        LocalDateTime lease = LocalDateTime.now().plusMinutes(2).withNano(0);
+        message.setNextRetryAt(lease);
 
         service.markFailed(message, "mq down");
 
-        verify(outboxMapper).updateById(argThat((OutboxMessage updated) ->
-                Long.valueOf(1L).equals(updated.getId())
-                        && Integer.valueOf(2).equals(updated.getRetryCount())
+        verify(outboxMapper).update(argThat((OutboxMessage updated) ->
+                Integer.valueOf(2).equals(updated.getRetryCount())
                         && Integer.valueOf(OutboxStatus.FAILED.getCode()).equals(updated.getStatus())
                         && updated.getLastError() != null
                         && updated.getLastError().contains("mq down")
-                        && updated.getNextRetryAt() != null));
+                        && updated.getNextRetryAt() != null), argThat((LambdaUpdateWrapper<OutboxMessage> guard) -> {
+                            guard.getSqlSegment();
+                            return guard.getParamNameValuePairs().values()
+                                    .containsAll(List.of(1L, OutboxStatus.SENDING.getCode(), lease));
+                        }));
     }
 
     @Test

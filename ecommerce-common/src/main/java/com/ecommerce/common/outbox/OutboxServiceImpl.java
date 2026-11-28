@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.util.SnowflakeUtils;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
 
@@ -15,6 +16,7 @@ public class OutboxServiceImpl implements OutboxService {
     private static final int MAX_BATCH_RETRY_LIMIT = 100;
     private static final int BASE_RETRY_DELAY_SECONDS = 5;
     private static final int MAX_RETRY_DELAY_SECONDS = 300;
+    private static final int SEND_LEASE_SECONDS = 120;
     private static final int MAX_ERROR_LENGTH = 512;
 
     private final OutboxMapper outboxMapper;
@@ -44,7 +46,8 @@ public class OutboxServiceImpl implements OutboxService {
     public List<OutboxMessage> loadPendingBatch(int limit) {
         Page<OutboxMessage> page = new Page<>(1, Math.max(limit, 1), false);
         LambdaQueryWrapper<OutboxMessage> wrapper = new LambdaQueryWrapper<OutboxMessage>()
-                .in(OutboxMessage::getStatus, OutboxStatus.PENDING.getCode(), OutboxStatus.FAILED.getCode())
+                .in(OutboxMessage::getStatus, OutboxStatus.PENDING.getCode(),
+                        OutboxStatus.FAILED.getCode(), OutboxStatus.SENDING.getCode())
                 .le(OutboxMessage::getNextRetryAt, LocalDateTime.now())
                 .apply("retry_count < max_retry_count")
                 .orderByAsc(OutboxMessage::getId);
@@ -52,35 +55,52 @@ public class OutboxServiceImpl implements OutboxService {
     }
 
     @Override
-    public boolean markSending(Long id) {
+    public boolean markSending(OutboxMessage message) {
+        LocalDateTime now = LocalDateTime.now();
+        // next_retry_at is a lease while SENDING. Match its stored second precision.
+        LocalDateTime lease = now.plusSeconds(SEND_LEASE_SECONDS).truncatedTo(ChronoUnit.SECONDS);
         OutboxMessage update = new OutboxMessage();
         update.setStatus(OutboxStatus.SENDING.getCode());
-        update.setLastError(null);
-        return outboxMapper.update(update, new LambdaUpdateWrapper<OutboxMessage>()
-                .eq(OutboxMessage::getId, id)
-                .in(OutboxMessage::getStatus, OutboxStatus.PENDING.getCode(), OutboxStatus.FAILED.getCode()))
-                == 1;
+        update.setNextRetryAt(lease);
+        boolean claimed = outboxMapper.update(update, new LambdaUpdateWrapper<OutboxMessage>()
+                .eq(OutboxMessage::getId, message.getId())
+                .eq(OutboxMessage::getStatus, message.getStatus())
+                .in(OutboxMessage::getStatus, OutboxStatus.PENDING.getCode(),
+                        OutboxStatus.FAILED.getCode(), OutboxStatus.SENDING.getCode())
+                .eq(OutboxMessage::getRetryCount, message.getRetryCount())
+                .eq(OutboxMessage::getNextRetryAt, message.getNextRetryAt())
+                .le(OutboxMessage::getNextRetryAt, now)
+                .apply("retry_count < max_retry_count")) == 1;
+        if (claimed) {
+            message.setStatus(OutboxStatus.SENDING.getCode());
+            message.setNextRetryAt(lease);
+        }
+        return claimed;
     }
 
     @Override
-    public void markSent(Long id) {
+    public void markSent(OutboxMessage message) {
         OutboxMessage update = new OutboxMessage();
-        update.setId(id);
         update.setStatus(OutboxStatus.SENT.getCode());
-        update.setLastError(null);
-        outboxMapper.updateById(update);
+        outboxMapper.update(update, currentLease(message).set(OutboxMessage::getLastError, null));
     }
 
     @Override
     public void markFailed(OutboxMessage message, String error) {
         int nextRetryCount = (message.getRetryCount() == null ? 0 : message.getRetryCount()) + 1;
         OutboxMessage update = new OutboxMessage();
-        update.setId(message.getId());
         update.setStatus(OutboxStatus.FAILED.getCode());
         update.setRetryCount(nextRetryCount);
         update.setLastError(trimError(error));
         update.setNextRetryAt(LocalDateTime.now().plusSeconds(retryDelaySeconds(nextRetryCount)));
-        outboxMapper.updateById(update);
+        outboxMapper.update(update, currentLease(message));
+    }
+
+    private LambdaUpdateWrapper<OutboxMessage> currentLease(OutboxMessage message) {
+        return new LambdaUpdateWrapper<OutboxMessage>()
+                .eq(OutboxMessage::getId, message.getId())
+                .eq(OutboxMessage::getStatus, OutboxStatus.SENDING.getCode())
+                .eq(OutboxMessage::getNextRetryAt, message.getNextRetryAt());
     }
 
     @Override
@@ -124,6 +144,8 @@ public class OutboxServiceImpl implements OutboxService {
         applyQueryFilters(wrapper, query);
         if (query.getStatus() == null) {
             wrapper.in(OutboxMessage::getStatus, OutboxStatus.PENDING.getCode(), OutboxStatus.FAILED.getCode());
+        } else if (query.getStatus() == OutboxStatus.SENDING.getCode()) {
+            wrapper.le(OutboxMessage::getNextRetryAt, LocalDateTime.now());
         }
         wrapper.last("limit " + limit);
         return outboxMapper.update(retryResetUpdate(), wrapper);

@@ -20,15 +20,21 @@ class RecommendationRepository {
     }
 
     boolean store(String eventId, long userId, long spuId, RecommendationEventType type, String requestId,
+                  RecommendationService.Surface surface, RecommendationService.Strategy strategy,
                   Long categoryId, Long brandId, BigDecimal price, Instant occurredAt) {
         try {
             jdbc.sql("""
                     INSERT INTO recommendation_event
-                        (event_id, user_id, spu_id, event_type, request_id, category_id, brand_id, price, occurred_at)
-                    VALUES (:eventId, :userId, :spuId, :type, :requestId, :categoryId, :brandId, :price, :occurredAt)
+                        (event_id, user_id, spu_id, event_type, request_id, surface, strategy,
+                         category_id, brand_id, price, occurred_at)
+                    VALUES (:eventId, :userId, :spuId, :type, :requestId, :surface, :strategy,
+                            :categoryId, :brandId, :price, :occurredAt)
                     """)
                     .param("eventId", eventId).param("userId", userId).param("spuId", spuId).param("type", type.name())
-                    .param("requestId", requestId, Types.VARCHAR).param("categoryId", categoryId, Types.BIGINT)
+                    .param("requestId", requestId, Types.VARCHAR)
+                    .param("surface", surface == null ? null : surface.name(), Types.VARCHAR)
+                    .param("strategy", strategy == null ? null : strategy.name(), Types.VARCHAR)
+                    .param("categoryId", categoryId, Types.BIGINT)
                     .param("brandId", brandId, Types.BIGINT).param("price", price, Types.DECIMAL)
                     .param("occurredAt", LocalDateTime.ofInstant(occurredAt, ZoneOffset.UTC)).update();
             return true;

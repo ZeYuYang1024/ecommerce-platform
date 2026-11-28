@@ -43,14 +43,14 @@ class PaymentOutboxPublisherTest {
         message.setPayloadJson("{\"orderNo\":\"ORD-1\"}");
         OrderPaidMessage payload = new OrderPaidMessage("ORD-1", 1, LocalDateTime.of(2026, 5, 28, 10, 0));
         when(outboxService.loadPendingBatch(20)).thenReturn(List.of(message));
-        when(outboxService.markSending(1L)).thenReturn(true);
+        when(outboxService.markSending(message)).thenReturn(true);
         when(jsonMapper.readValue(message.getPayloadJson(), OrderPaidMessage.class)).thenReturn(payload);
 
         PaymentOutboxPublisher publisher = new PaymentOutboxPublisher(outboxService, rocketMQTemplate, jsonMapper);
         publisher.publishPendingMessages();
 
         verify(rocketMQTemplate).syncSend("order-paid", payload);
-        verify(outboxService).markSent(1L);
+        verify(outboxService).markSent(message);
     }
 
     @Test
@@ -62,7 +62,7 @@ class PaymentOutboxPublisherTest {
         message.setPayloadJson("{\"orderNo\":\"ORD-2\"}");
         OrderPaidMessage payload = new OrderPaidMessage("ORD-2", 5, LocalDateTime.of(2026, 5, 28, 11, 0));
         when(outboxService.loadPendingBatch(20)).thenReturn(List.of(message));
-        when(outboxService.markSending(2L)).thenReturn(true);
+        when(outboxService.markSending(message)).thenReturn(true);
         when(jsonMapper.readValue(message.getPayloadJson(), OrderPaidMessage.class)).thenReturn(payload);
         doThrow(new RuntimeException("mq down")).when(rocketMQTemplate).syncSend(eq("order-paid"), any(OrderPaidMessage.class));
 
@@ -70,7 +70,7 @@ class PaymentOutboxPublisherTest {
         publisher.publishPendingMessages();
 
         verify(outboxService).markFailed(message, "mq down");
-        verify(outboxService, never()).markSent(2L);
+        verify(outboxService, never()).markSent(message);
     }
 
     @Test
@@ -84,13 +84,13 @@ class PaymentOutboxPublisherTest {
                 "REF-3", "ORD-3", 1L, new BigDecimal("88.00"), "FULL", "SUCCESS",
                 LocalDateTime.of(2026, 6, 2, 13, 0), "payment-refund:ORD-3:REF-3");
         when(outboxService.loadPendingBatch(20)).thenReturn(List.of(message));
-        when(outboxService.markSending(3L)).thenReturn(true);
+        when(outboxService.markSending(message)).thenReturn(true);
         when(jsonMapper.readValue(message.getPayloadJson(), OrderRefundedMessage.class)).thenReturn(payload);
 
         PaymentOutboxPublisher publisher = new PaymentOutboxPublisher(outboxService, rocketMQTemplate, jsonMapper);
         publisher.publishPendingMessages();
 
         verify(rocketMQTemplate).syncSend("order-refunded", payload);
-        verify(outboxService).markSent(3L);
+        verify(outboxService).markSent(message);
     }
 }
