@@ -2,9 +2,9 @@
   <div class="max-w-sm mx-auto px-4 py-20">
     <h1 class="text-2xl font-bold text-center text-gray-900">登录</h1>
     <div class="mt-8 space-y-4">
-      <input v-model="form.username" placeholder="用户名" class="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm" />
-      <input v-model="form.password" type="password" placeholder="密码" class="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm" />
-      <button @click="doLogin" :disabled="loading" class="w-full h-12 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-200 text-white font-medium rounded-xl transition-colors">
+      <input v-model="form.username" :disabled="!ready" placeholder="用户名" class="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm" />
+      <input v-model="form.password" :disabled="!ready" type="password" placeholder="密码" class="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm" />
+      <button @click="doLogin" :disabled="!ready || loading" class="w-full h-12 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-200 text-white font-medium rounded-xl transition-colors">
         {{ loading ? '登录中...' : '登录' }}
       </button>
       <p v-if="error" class="text-sm text-red-500 text-center">{{ error }}</p>
@@ -18,9 +18,12 @@
 <script setup lang="ts">
 const auth = useAuthStore()
 const router = useRouter()
+const ready = ref(false)
 const loading = ref(false)
 const error = ref('')
 const form = reactive({ username: '', password: '' })
+
+onMounted(() => { ready.value = true })
 
 async function doLogin() {
   error.value = ''

@@ -42,7 +42,10 @@ test('seeded SKU goes from cart to paid order and consumes one unit of available
   await page.goto('/login')
   await page.getByPlaceholder('用户名').fill(login.username)
   await page.getByPlaceholder('密码').fill(login.password)
+  const signedIn = page.waitForResponse(res =>
+    new URL(res.url()).pathname === '/api/v1/auth/login' && res.request().method() === 'POST')
   await page.getByRole('button', { name: '登录', exact: true }).click()
+  await result(await signedIn)
   await expect(page).toHaveURL(/\/$/)
 
   await page.goto('/products/1')
