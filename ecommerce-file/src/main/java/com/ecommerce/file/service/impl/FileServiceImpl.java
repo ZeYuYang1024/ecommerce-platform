@@ -6,8 +6,8 @@ import com.ecommerce.file.common.FileErrorCode;
 import com.ecommerce.file.config.MinioConfig;
 import com.ecommerce.file.service.FileService;
 import io.minio.*;
+import io.minio.Http.Method;
 import io.minio.errors.ErrorResponseException;
-import io.minio.http.Method;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -50,7 +50,7 @@ public class FileServiceImpl implements FileService {
             minioClient.putObject(PutObjectArgs.builder()
                     .bucket(minioConfig.getBucket())
                     .object(objectName)
-                    .stream(file.getInputStream(), file.getSize(), -1)
+                    .stream(file.getInputStream(), file.getSize(), -1L)
                     .contentType(file.getContentType())
                     .build());
             return objectName;

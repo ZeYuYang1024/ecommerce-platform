@@ -39,17 +39,17 @@
         <spring-cloud.version>2026.0.0</spring-cloud.version>
         <mybatis-plus.version>3.5.18.1</mybatis-plus.version>
         <hutool.version>5.8.48</hutool.version>
-        <jjwt.version>0.12.6</jjwt.version>
+        <jjwt.version>0.13.0</jjwt.version>
         <mysql.version>26.10.0</mysql.version>
-        <minio.version>8.6.0</minio.version>
+        <minio.version>9.0.4</minio.version>
         <nacos.version>2025.1.0.0</nacos.version>
-        <rocketmq.version>2.3.0</rocketmq.version>
+        <rocketmq.version>2.3.6</rocketmq.version>
         <lombok.version>1.18.48</lombok.version>
         <elasticsearch.version>9.5.7</elasticsearch.version>
         <druid.version>1.2.28</druid.version>
         <spring-boot-admin.version>4.1.5</spring-boot-admin.version>
-        <langchain4j.version>1.24.0</langchain4j.version>
-        <protobuf.version>4.29.3</protobuf.version>
+        <langchain4j.version>1.24.1</langchain4j.version>
+        <protobuf.version>4.36.2</protobuf.version>
     </properties>
 
     <dependencyManagement>
