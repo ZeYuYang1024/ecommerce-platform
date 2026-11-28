@@ -10,6 +10,8 @@ public final class ShippingStatus {
     public static final int EXCEPTION = 5;      // 异常
     public static final int RETURNED = 6;       // 已退回
 
+    public static final int CANCELLED = 7;
+
     public static String text(int status) {
         return switch (status) {
             case PENDING -> "待交运";
@@ -19,6 +21,7 @@ public final class ShippingStatus {
             case SIGNED -> "已签收";
             case EXCEPTION -> "异常";
             case RETURNED -> "已退回";
+            case CANCELLED -> "已取消";
             default -> "未知";
         };
     }

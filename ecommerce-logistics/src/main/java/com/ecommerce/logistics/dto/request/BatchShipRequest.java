@@ -12,6 +12,8 @@ public class BatchShipRequest {
     public static class BatchShipItem {
         private Long orderId;
         private Long providerId;
+        private Long warehouseId;
+        private String clientRequestId;
         private String trackingNo;
         private Integer packageWeight;
     }

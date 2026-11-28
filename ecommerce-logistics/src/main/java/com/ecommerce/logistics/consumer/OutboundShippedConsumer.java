@@ -43,8 +43,8 @@ public class OutboundShippedConsumer implements RocketMQListener<OutboundShipped
 
         ShippingOrder order = shippingOrderMapper.selectById(message.getShippingId());
         if (order == null) {
-            log.warn("Shipping order not found: shippingId={}", message.getShippingId());
-            return;
+            throw new IllegalStateException("Shipped outbound " + message.getOutboundId()
+                    + " needs reconciliation: shipping record " + message.getShippingId() + " is missing");
         }
 
         // Transition from PENDING to DISPATCHED

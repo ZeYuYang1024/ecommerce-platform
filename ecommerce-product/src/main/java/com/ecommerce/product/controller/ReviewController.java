@@ -17,6 +17,8 @@ import com.ecommerce.product.entity.Review;
 import com.ecommerce.product.entity.Spu;
 import com.ecommerce.product.mapper.ReviewMapper;
 import com.ecommerce.product.service.ProductService;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -47,6 +49,7 @@ public class ReviewController {
     record ReviewRequest(@NotNull Long orderId, @NotNull @Min(1) @Max(5) Integer rating,
                          @Size(max = 1024) String content, @Size(max = 8192) String images) {}
 
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     @PostMapping("/products/{spuId}/reviews")
     public Result<Review> create(@PathVariable Long spuId,
                                   @RequestHeader("X-User-Id") Long userId,
@@ -56,6 +59,7 @@ public class ReviewController {
             return Result.fail(503, "暂时无法核实订单，请稍后重试");
         }
         if (!eligibility.getData()) throw new BusinessException(ProductErrorCode.REVIEW_ORDER_REQUIRED);
+        if (reviewMapper.lockProduct(spuId) == null) throw new BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND);
         Review review = new Review();
         review.setId(SnowflakeUtils.nextId());
         review.setOrderId(request.orderId());
@@ -70,6 +74,7 @@ public class ReviewController {
         } catch (DuplicateKeyException duplicate) {
             throw new BusinessException(ProductErrorCode.REVIEW_ALREADY_SUBMITTED);
         }
+        reviewMapper.refreshRating(spuId);
         return Result.ok(review);
     }
 
@@ -98,12 +103,15 @@ public class ReviewController {
                 .orderByDesc(Review::getCreatedAt)));
     }
 
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     @DeleteMapping("/admin/reviews/{id}")
     public Result<Void> delete(@PathVariable Long id) {
-        reviewMapper.deleteById(id);
+        Review review = reviewMapper.selectById(id);
+        if (review != null) deleteReview(review);
         return Result.ok();
     }
 
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     @DeleteMapping("/admin/merchant/reviews/{id}")
     public Result<Void> deleteMerchant(@PathVariable Long id,
                                        @RequestHeader("X-Merchant-Id") Long merchantId) {
@@ -115,7 +123,12 @@ public class ReviewController {
         if (!merchantId.equals(spu.getMerchantId())) {
             throw new BusinessException(ProductErrorCode.REVIEW_FORBIDDEN);
         }
-        reviewMapper.deleteById(id);
+        deleteReview(review);
         return Result.ok();
+    }
+    private void deleteReview(Review review) {
+        Long spuId = review.getSpuId();
+        reviewMapper.lockProduct(spuId);
+        if (reviewMapper.deleteById(review.getId()) > 0) reviewMapper.refreshRating(spuId);
     }
 }

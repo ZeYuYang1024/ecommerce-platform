@@ -251,11 +251,15 @@ public class PointsServiceImpl implements PointsService {
 
     @Override
     @Transactional
-    public void reverseEarn(PointsTransaction original, String orderNo) {
+    public void reverseEarn(PointsTransaction original, String orderNo, int target, String bizKey) {
+        int previouslyReversed = pointsTransactionMapper.selectList(new LambdaQueryWrapper<PointsTransaction>()
+                        .eq(PointsTransaction::getReversalOfTxId, original.getId())
+                        .eq(PointsTransaction::getSourceType, "REFUND").eq(PointsTransaction::getDirection, "SPEND"))
+                .stream().mapToInt(PointsTransaction::getAmount).sum();
         PointsTransaction expiry = pointsTransactionMapper.selectOne(new LambdaQueryWrapper<PointsTransaction>()
                 .eq(PointsTransaction::getBizKey, "EXPIRE:" + original.getId()));
         int expired = expiry == null ? 0 : expiry.getAmount();
-        int amount = original.getAmount() - expired;
+        int amount = Math.min(target, original.getAmount() - expired) - previouslyReversed;
         if (amount <= 0) return;
         MemberProfile profile = memberProfileMapper.selectOne(new LambdaQueryWrapper<MemberProfile>()
                 .eq(MemberProfile::getUserId, original.getUserId()));
@@ -267,7 +271,8 @@ public class PointsServiceImpl implements PointsService {
                 .setSql("available_points = available_points - " + amount)
                 .setSql("version = version + 1"));
         if (updated == 0) throw new BusinessException(MemberErrorCode.CONCURRENT_UPDATE_FAILED);
-        original.setConsumedAmount(original.getAmount());
+        int consumed = original.getConsumedAmount() == null ? 0 : original.getConsumedAmount();
+        original.setConsumedAmount(Math.min(original.getAmount(), consumed + amount));
         pointsTransactionMapper.updateById(original);
 
         PointsTransaction reversal = new PointsTransaction();
@@ -278,9 +283,9 @@ public class PointsServiceImpl implements PointsService {
         reversal.setBalanceAfter(profile.getAvailablePoints() - amount);
         reversal.setSourceType("REFUND");
         reversal.setSourceId(orderNo);
-        reversal.setBizKey("ORDER:" + orderNo + ":EARN_REVERSED");
+        reversal.setBizKey(bizKey);
         reversal.setReversalOfTxId(original.getId());
-        reversal.setRemark("全额退款扣回订单奖励积分");
+        reversal.setRemark("退款扣回订单奖励积分");
         pointsTransactionMapper.insert(reversal);
     }
 

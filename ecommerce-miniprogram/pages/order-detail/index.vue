@@ -41,12 +41,12 @@
         <button v-if="['PENDING', 'REFUNDING'].includes(afterSale.application.status)" class="btn-cancel" @click="loadAfterSale">刷新进度</button>
       </template>
       <template v-else-if="applying">
-        <text class="text-muted">申请全额退款 ¥{{ order.totalAmount }}</text>
+        <text class="text-muted">{{ refundLabel }} ¥{{ afterSale.refundableAmount ?? order.totalAmount }}</text>
         <textarea v-model="reason" class="reason" placeholder="填写退款原因" maxlength="256" />
         <button class="btn-primary" :disabled="submitting" @click="submitAfterSale">提交退款申请</button>
         <button class="btn-cancel" :disabled="submitting" @click="applying = false">返回</button>
       </template>
-      <button v-else class="btn-cancel" @click="applying = true">申请全额退款</button>
+      <button v-else class="btn-cancel" @click="applying = true">{{ refundLabel }}</button>
     </view>
     <view v-else-if="afterSaleError" class="card">
       <text class="text-muted">{{ afterSaleError }}</text>
@@ -64,7 +64,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { request } from '@/utils/api'
 import ProductImage from '@/components/ProductImage.vue'
@@ -79,6 +79,8 @@ const submitting = ref(false)
 const reason = ref('')
 const actionError = ref('')
 const orderStatuses = ['待支付', '已支付', '已发货', '已完成', '已取消', '已退款']
+const refundLabel = computed(() => Number(afterSale.value?.refundableAmount ?? order.value?.totalAmount) < Number(order.value?.totalAmount)
+  ? '申请退回剩余金额' : '申请全额退款')
 const afterSaleStatuses = {
   PENDING: '待审核', REJECTED: '已拒绝', REFUNDING: '退款处理中', REFUNDED: '已退款', FAILED: '退款失败'
 }

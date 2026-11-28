@@ -37,15 +37,26 @@ class ShippingClaimReaperTest {
     }
 
     @Test
-    void preservesManagedOutboundWhenShipmentTransactionDidNotCommit() {
+    void preservesAnOrphanThatWarehouseAlreadyShipped() {
         var claim = new ShippingClaimMapper.Claim(1L, "SHIP-1", 15L, true);
         when(claims.findExpiredForOrder(1L)).thenReturn(List.of(claim));
         when(logistics.getFulfillmentSummary(List.of(1L))).thenReturn(Result.ok(List.of(summary(0))));
-        when(warehouse.hasOutbound(15L)).thenReturn(Result.ok(true));
+        when(warehouse.cancelUnshipped(15L)).thenReturn(Result.ok(false));
 
         assertThat(reaper.hasShipping(1L)).isTrue();
         verify(claims).confirmExpired(1L, "SHIP-1");
         verify(claims, never()).releaseExpired(1L, "SHIP-1");
+    }
+
+    @Test
+    void releasesConfirmedOrphanAfterWarehouseCancelsItsUnshippedOutbound() {
+        var claim = new ShippingClaimMapper.Claim(1L, "SHIP-1", 15L, true);
+        when(claims.findConfirmedManagedForOrder(1L)).thenReturn(List.of(claim));
+        when(logistics.getFulfillmentSummary(List.of(1L))).thenReturn(Result.ok(List.of(summary(0))));
+        when(warehouse.cancelUnshipped(15L)).thenReturn(Result.ok(true));
+        when(claims.releaseManaged(1L, "SHIP-1")).thenReturn(1);
+
+        assertThat(reaper.releaseExpired(1L)).isEqualTo(1);
     }
 
     @Test

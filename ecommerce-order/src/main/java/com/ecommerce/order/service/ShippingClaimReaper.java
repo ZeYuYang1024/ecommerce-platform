@@ -1,6 +1,8 @@
 package com.ecommerce.order.service;
 
+import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.result.Result;
+import com.ecommerce.order.common.OrderErrorCode;
 import com.ecommerce.order.client.LogisticsClient;
 import com.ecommerce.order.client.WarehouseShipmentClient;
 import com.ecommerce.order.client.dto.FulfillmentSummaryVO;
@@ -16,6 +18,8 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ShippingClaimReaper {
+    private enum Evidence { NONE, SHIPMENT, SHIPPED_WITHOUT_SHIPMENT }
+
     private final ShippingClaimMapper claims;
     private final LogisticsClient logistics;
     private final WarehouseShipmentClient warehouse;
@@ -23,7 +27,7 @@ public class ShippingClaimReaper {
     public boolean hasShipping(Long orderId) {
         if (claims.existsForOrder(orderId)) return true;
         for (ShippingClaimMapper.Claim claim : claims.findExpiredForOrder(orderId)) {
-            if (hasEvidence(claim)) {
+            if (verifyShipment(claim) != Evidence.NONE) {
                 claims.confirmExpired(orderId, claim.shippingNo());
                 return true;
             }
@@ -42,7 +46,15 @@ public class ShippingClaimReaper {
     }
 
     public int releaseExpired(Long orderId) {
-        return claims.findExpiredForOrder(orderId).stream().mapToInt(this::reconcile).sum();
+        int released = claims.findExpiredForOrder(orderId).stream().mapToInt(this::reconcile).sum();
+        for (ShippingClaimMapper.Claim claim : claims.findConfirmedManagedForOrder(orderId)) {
+            switch (verifyShipment(claim)) {
+                case NONE -> released += claims.releaseManaged(claim.orderId(), claim.shippingNo());
+                case SHIPPED_WITHOUT_SHIPMENT -> throw new BusinessException(OrderErrorCode.SHIPMENT_RECONCILIATION_REQUIRED);
+                case SHIPMENT -> { }
+            }
+        }
+        return released;
     }
 
     @Scheduled(fixedDelayString = "${after-sale.shipping-claim-cleanup-ms:60000}")
@@ -58,21 +70,24 @@ public class ShippingClaimReaper {
     }
 
     private int reconcile(ShippingClaimMapper.Claim claim) {
-        if (hasEvidence(claim)) {
+        if (verifyShipment(claim) != Evidence.NONE) {
             claims.confirmExpired(claim.orderId(), claim.shippingNo());
             return 0;
         }
         return claims.releaseExpired(claim.orderId(), claim.shippingNo());
     }
 
-    private boolean hasEvidence(ShippingClaimMapper.Claim claim) {
+    private Evidence verifyShipment(ShippingClaimMapper.Claim claim) {
         List<FulfillmentSummaryVO> rows = requireData(logistics.getFulfillmentSummary(List.of(claim.orderId())));
         FulfillmentSummaryVO fulfillment = rows.stream().filter(row -> claim.orderId().equals(row.getOrderId()))
                 .findFirst().orElseThrow(() -> new IllegalStateException("Shipping summary is missing"));
-        if (fulfillment.getShippingCount() > 0) return true;
-        if (!claim.managed()) return false;
+        if (fulfillment.getShippingCount() > 0) return Evidence.SHIPMENT;
+        if (!claim.managed()) return Evidence.NONE;
         if (claim.shippingId() == null) throw new IllegalStateException("Managed claim has no shipment ID");
-        return requireData(warehouse.hasOutbound(claim.shippingId()));
+        if (requireData(warehouse.cancelUnshipped(claim.shippingId()))) return Evidence.NONE;
+        log.error("Managed outbound already shipped without a logistics record: orderId={}, shipmentId={}, shippingNo={}",
+                claim.orderId(), claim.shippingId(), claim.shippingNo());
+        return Evidence.SHIPPED_WITHOUT_SHIPMENT;
     }
 
     private static <T> T requireData(Result<T> result) {

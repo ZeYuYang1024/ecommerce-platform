@@ -18,6 +18,7 @@ import com.ecommerce.logistics.service.ShippingTemplateService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import com.ecommerce.logistics.service.ManagedOutboundService;
 
 import java.util.List;
 
@@ -28,6 +29,7 @@ public class AdminLogisticsController {
 
     private final LogisticsProviderService providerService;
     private final ShippingService shippingService;
+    private final ManagedOutboundService managedOutbounds;
     private final ShippingTemplateService templateService;
 
     // ===== 物流公司管理 =====
@@ -165,6 +167,15 @@ public class AdminLogisticsController {
                 userType,
                 MerchantTenantSupport.resolveRequestMerchantId(
                         userType, headerMerchantId, LogisticsErrorCode.SHIPPING_FORBIDDEN)));
+    }
+
+    @PostMapping("/shipping/{id}/cancel-outbound")
+    public Result<Void> cancelManagedOutbound(@PathVariable Long id,
+                                              @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                                              @RequestHeader(value = "X-Merchant-Id", required = false) Long merchantId) {
+        managedOutbounds.cancel(id, MerchantTenantSupport.resolveRequestMerchantId(
+                userType, merchantId, LogisticsErrorCode.SHIPPING_FORBIDDEN));
+        return Result.ok();
     }
 
     @PostMapping("/shipping/{id}/waybill")

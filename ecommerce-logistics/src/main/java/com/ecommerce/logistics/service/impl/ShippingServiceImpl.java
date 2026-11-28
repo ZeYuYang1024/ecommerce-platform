@@ -3,7 +3,6 @@ package com.ecommerce.logistics.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.ecommerce.common.constant.OutboundType;
 import com.ecommerce.common.constant.OrderStatus;
 import com.ecommerce.common.constant.WarehouseStockMode;
 import com.ecommerce.common.dto.OrderDeliveredMessage;
@@ -17,12 +16,11 @@ import com.ecommerce.common.tenant.MerchantTenantSupport;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.logistics.client.OrderClient;
 import com.ecommerce.logistics.client.WarehouseClient;
-import com.ecommerce.logistics.client.dto.CreateOutboundRequest;
-import com.ecommerce.logistics.client.dto.OutboundOrderVO;
 import com.ecommerce.logistics.client.dto.WarehouseInfoVO;
 import com.ecommerce.logistics.common.FulfillmentStatus;
 import com.ecommerce.logistics.common.LogisticsErrorCode;
 import com.ecommerce.logistics.common.ShippingStatus;
+import com.ecommerce.logistics.common.ManagedOutboundState;
 import com.ecommerce.logistics.dto.request.CreateShippingRequest;
 import com.ecommerce.logistics.dto.response.FulfillmentSummaryVO;
 import com.ecommerce.logistics.dto.response.ShippingOrderVO;
@@ -99,13 +97,16 @@ public class ShippingServiceImpl implements ShippingService {
         // duplicate trackingNo check
         if (shippingOrderMapper.exists(new LambdaQueryWrapper<ShippingOrder>()
                 .eq(ShippingOrder::getProviderId, request.getProviderId())
-                .eq(ShippingOrder::getTrackingNo, request.getTrackingNo()))) {
+                .eq(ShippingOrder::getTrackingNo, request.getTrackingNo())
+                .ne(ShippingOrder::getShippingStatus, ShippingStatus.CANCELLED))) {
             throw new BusinessException(LogisticsErrorCode.SHIPPING_DUPLICATE);
         }
 
         // prevent duplicate order items from being shipped
         List<ShippingOrderItem> allShipped = shippingOrderItemMapper.selectList(
                 new LambdaQueryWrapper<ShippingOrderItem>()
+                        .inSql(ShippingOrderItem::getShippingId, "SELECT id FROM shipping_order WHERE deleted = 0 AND shipping_status <> "
+                                + ShippingStatus.CANCELLED)
                         .in(ShippingOrderItem::getOrderItemId,
                                 request.getItems().stream().map(CreateShippingRequest.ShippingItemRequest::getOrderItemId).toList()));
         if (!allShipped.isEmpty()) {
@@ -128,7 +129,8 @@ public class ShippingServiceImpl implements ShippingService {
                 .map(OrderInternalVO.OrderItemSnapshot::getMerchantId).distinct().toList();
         Long resolvedMerchantId = owners.size() == 1 ? owners.getFirst() : null;
         MerchantTenantSupport.requireOwnerAccess(merchantId, resolvedMerchantId, LogisticsErrorCode.SHIPPING_FORBIDDEN);
-        if (owners.size() > 1 && warehouse != null && warehouse.getMerchantId() != null) {
+        if (warehouse != null && warehouse.getMerchantId() != null
+                && (owners.size() != 1 || !Objects.equals(warehouse.getMerchantId(), resolvedMerchantId))) {
             throw new BusinessException(LogisticsErrorCode.WAREHOUSE_FORBIDDEN);
         }
         long shippingId = SnowflakeUtils.nextId();
@@ -156,6 +158,7 @@ public class ShippingServiceImpl implements ShippingService {
         // Light warehouse: dispatch immediately.
         if (managedWarehouse) {
             order.setShippingStatus(ShippingStatus.PENDING);
+            order.setOutboundState(ManagedOutboundState.REQUESTED);
         } else {
             order.setShippingStatus(ShippingStatus.DISPATCHED);
             order.setShippedAt(LocalDateTime.now());
@@ -171,33 +174,7 @@ public class ShippingServiceImpl implements ShippingService {
             shippingOrderItemMapper.insert(item);
         }
 
-        if (managedWarehouse) {
-            CreateOutboundRequest outboundReq = new CreateOutboundRequest();
-            outboundReq.setWarehouseId(request.getWarehouseId());
-            outboundReq.setOutboundType(OutboundType.SALES);
-            outboundReq.setShippingId(order.getId());
-            outboundReq.setMerchantId(resolvedMerchantId);
-            outboundReq.setItems(request.getItems().stream().map(i -> {
-                CreateOutboundRequest.OutboundItemRequest oi = new CreateOutboundRequest.OutboundItemRequest();
-                oi.setSkuId(i.getSkuId());
-                oi.setQuantity(i.getQuantity());
-                return oi;
-            }).toList());
-
-            try {
-                Result<OutboundOrderVO> result = warehouseClient.createOutbound(outboundReq);
-                if (result == null || result.getCode() != 200) {
-                    throw new BusinessException(LogisticsErrorCode.WAREHOUSE_OUTBOUND_FAILED);
-                }
-                // Managed warehouse: outbound created, stock locked — wait for outbound-shipped event
-            } catch (BusinessException e) {
-                throw e;
-            } catch (Exception e) {
-                log.error("Failed to create outbound order for shipping {}", shippingNo, e);
-                throw new BusinessException(LogisticsErrorCode.WAREHOUSE_OUTBOUND_FAILED);
-            }
-        } else {
-            // Light warehouse mode: enqueue shipping-dispatched event immediately
+        if (!managedWarehouse) {
             ShippingDispatchedMessage msg = new ShippingDispatchedMessage();
             msg.setShippingId(order.getId());
             msg.setOrderId(order.getOrderId());
@@ -242,8 +219,7 @@ public class ShippingServiceImpl implements ShippingService {
 
             @Override
             public void afterCompletion(int status) {
-                // Managed warehouse may already have committed the outbound. Resolve it using the lease reconciler.
-                if (status != STATUS_ROLLED_BACK || managedWarehouse) return;
+                if (status != STATUS_ROLLED_BACK) return;
                 try {
                     orderClient.releaseShipping(orderId, shippingNo);
                 } catch (RuntimeException failure) {
@@ -304,6 +280,7 @@ public class ShippingServiceImpl implements ShippingService {
     public ShippingOrderVO getShippingByOrderId(Long orderId) {
         ShippingOrder order = shippingOrderMapper.selectOne(
                 new LambdaQueryWrapper<ShippingOrder>().eq(ShippingOrder::getOrderId, orderId)
+                        .ne(ShippingOrder::getShippingStatus, ShippingStatus.CANCELLED)
                         .orderByDesc(ShippingOrder::getCreatedAt).last("LIMIT 1"));
         if (order == null) throw new BusinessException(LogisticsErrorCode.SHIPPING_NOT_FOUND);
         return toVO(order);
@@ -371,6 +348,7 @@ public class ShippingServiceImpl implements ShippingService {
         ShippingOrder order = shippingOrderMapper.selectOne(
                 new LambdaQueryWrapper<ShippingOrder>()
                         .eq(ShippingOrder::getTrackingNo, trackingNo)
+                        .ne(ShippingOrder::getShippingStatus, ShippingStatus.CANCELLED)
                         .eq(ShippingOrder::getProviderCode, providerCode)
                         .orderByDesc(ShippingOrder::getCreatedAt).last("LIMIT 1"));
         if (order == null) throw new BusinessException(LogisticsErrorCode.SHIPPING_NOT_FOUND);
@@ -384,7 +362,8 @@ public class ShippingServiceImpl implements ShippingService {
         if (orderIds == null || orderIds.isEmpty()) return Collections.emptyList();
 
         List<ShippingOrder> orders = shippingOrderMapper.selectList(
-                new LambdaQueryWrapper<ShippingOrder>().in(ShippingOrder::getOrderId, orderIds));
+                new LambdaQueryWrapper<ShippingOrder>().in(ShippingOrder::getOrderId, orderIds)
+                        .ne(ShippingOrder::getShippingStatus, ShippingStatus.CANCELLED));
 
         Map<Long, List<ShippingOrder>> grouped = orders.stream()
                 .collect(Collectors.groupingBy(ShippingOrder::getOrderId));
@@ -400,7 +379,9 @@ public class ShippingServiceImpl implements ShippingService {
                 boolean allSigned = shippings.stream().allMatch(s -> s.getShippingStatus() == ShippingStatus.SIGNED);
                 boolean allDispatched = shippings.stream().allMatch(s -> s.getShippingStatus() >= ShippingStatus.DISPATCHED);
 
-                if (hasException) vo.setFulfillmentStatus(FulfillmentStatus.EXCEPTION);
+                boolean awaitingOutbound = shippings.stream().allMatch(s -> s.getShippingStatus() == ShippingStatus.PENDING);
+                if (awaitingOutbound) vo.setFulfillmentStatus(FulfillmentStatus.PENDING_OUTBOUND);
+                else if (hasException) vo.setFulfillmentStatus(FulfillmentStatus.EXCEPTION);
                 else if (allSigned) vo.setFulfillmentStatus(FulfillmentStatus.DELIVERED);
                 else if (allDispatched) vo.setFulfillmentStatus(FulfillmentStatus.DISPATCHED);
                 else vo.setFulfillmentStatus(FulfillmentStatus.PARTIALLY_DISPATCHED);
@@ -443,6 +424,8 @@ public class ShippingServiceImpl implements ShippingService {
         ShippingOrder order = shippingOrderMapper.selectOne(
                 new LambdaQueryWrapper<ShippingOrder>()
                         .eq(ShippingOrder::getTrackingNo, payload.getTrackingNo())
+                        .gt(ShippingOrder::getShippingStatus, ShippingStatus.PENDING)
+                        .ne(ShippingOrder::getShippingStatus, ShippingStatus.CANCELLED)
                         .eq(ShippingOrder::getProviderCode, carrierCode)
                         .orderByDesc(ShippingOrder::getCreatedAt)
                         .last("LIMIT 1"));
@@ -480,11 +463,11 @@ public class ShippingServiceImpl implements ShippingService {
             OrderInternalVO orderSnapshot;
             try {
                 orderSnapshot = loadOrderSnapshot(item.getOrderId());
-                validateOrderForShipping(orderSnapshot);
             } catch (BusinessException e) {
                 log.warn("Batch ship failed for orderId={}: {}", item.getOrderId(), e.getMessage());
                 ShippingOrderVO errVo = new ShippingOrderVO();
                 errVo.setOrderId(item.getOrderId());
+                errVo.setOutboundError(e.getMessage());
                 results.add(errVo);
                 continue;
             }
@@ -492,9 +475,11 @@ public class ShippingServiceImpl implements ShippingService {
             CreateShippingRequest shipReq = new CreateShippingRequest();
             shipReq.setOrderId(item.getOrderId());
             shipReq.setProviderId(item.getProviderId());
+            shipReq.setWarehouseId(item.getWarehouseId());
             shipReq.setTrackingNo(item.getTrackingNo());
             shipReq.setPackageWeight(item.getPackageWeight());
-            shipReq.setClientRequestId("batch-" + item.getOrderId() + "-" + System.currentTimeMillis());
+            shipReq.setClientRequestId(item.getClientRequestId() != null ? item.getClientRequestId()
+                    : "batch-" + item.getOrderId() + "-" + System.currentTimeMillis());
             shipReq.setItems(orderSnapshot.getItems() == null ? Collections.emptyList() : orderSnapshot.getItems().stream().map(orderItem -> {
                 CreateShippingRequest.ShippingItemRequest shippingItem = new CreateShippingRequest.ShippingItemRequest();
                 shippingItem.setOrderItemId(orderItem.getOrderItemId());
@@ -510,6 +495,7 @@ public class ShippingServiceImpl implements ShippingService {
                 log.warn("Batch ship failed for orderId={}: {}", item.getOrderId(), e.getMessage());
                 ShippingOrderVO errVo = new ShippingOrderVO();
                 errVo.setOrderId(item.getOrderId());
+                errVo.setOutboundError(e.getMessage());
                 results.add(errVo);
             }
         }
@@ -527,7 +513,10 @@ public class ShippingServiceImpl implements ShippingService {
         vo.setProviderCode(order.getProviderCode());
         vo.setTrackingNo(order.getTrackingNo());
         vo.setShippingStatus(order.getShippingStatus());
-        vo.setShippingStatusText(ShippingStatus.text(order.getShippingStatus()));
+        vo.setShippingStatusText(order.getWarehouseId() != null && order.getShippingStatus() == ShippingStatus.PENDING
+                ? "待出库" : ShippingStatus.text(order.getShippingStatus()));
+        vo.setOutboundError(order.getOutboundError());
+        vo.setOutboundState(order.getOutboundState() == null ? null : order.getOutboundState().name());
         vo.setDispatchType(order.getDispatchType());
         vo.setSourceType(order.getSourceType());
         vo.setShippingFee(order.getShippingFee());
@@ -568,7 +557,10 @@ public class ShippingServiceImpl implements ShippingService {
         vo.setProviderCode(order.getProviderCode());
         vo.setTrackingNo(order.getTrackingNo());
         vo.setShippingStatus(order.getShippingStatus());
-        vo.setShippingStatusText(ShippingStatus.text(order.getShippingStatus()));
+        vo.setShippingStatusText(order.getWarehouseId() != null && order.getShippingStatus() == ShippingStatus.PENDING
+                ? "待出库" : ShippingStatus.text(order.getShippingStatus()));
+        vo.setOutboundError(order.getOutboundError());
+        vo.setOutboundState(order.getOutboundState() == null ? null : order.getOutboundState().name());
         vo.setDispatchType(order.getDispatchType());
         vo.setSourceType(order.getSourceType());
         vo.setShippingFee(order.getShippingFee());
@@ -626,6 +618,9 @@ public class ShippingServiceImpl implements ShippingService {
         try {
             Result<WarehouseInfoVO> result = warehouseClient.getWarehouse(warehouseId);
             if (result == null || result.getCode() != 200 || result.getData() == null) {
+                throw new BusinessException(LogisticsErrorCode.WAREHOUSE_OUTBOUND_FAILED);
+            }
+            if (!Integer.valueOf(1).equals(result.getData().getStatus()) && result.getData().getStatus() != null) {
                 throw new BusinessException(LogisticsErrorCode.WAREHOUSE_OUTBOUND_FAILED);
             }
             return result.getData();
@@ -775,7 +770,8 @@ public class ShippingServiceImpl implements ShippingService {
 
     private void publishOrderDeliveredIfAllSigned(ShippingOrder order, LocalDateTime signedAt) {
         List<ShippingOrder> shipments = shippingOrderMapper.selectList(
-                new LambdaQueryWrapper<ShippingOrder>().eq(ShippingOrder::getOrderId, order.getOrderId()));
+                new LambdaQueryWrapper<ShippingOrder>().eq(ShippingOrder::getOrderId, order.getOrderId())
+                        .ne(ShippingOrder::getShippingStatus, ShippingStatus.CANCELLED));
         boolean allSigned = !shipments.isEmpty() && shipments.stream()
                 .allMatch(shipping -> shipping.getShippingStatus() == ShippingStatus.SIGNED);
         if (!allSigned) {

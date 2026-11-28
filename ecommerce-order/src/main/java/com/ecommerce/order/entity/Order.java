@@ -15,6 +15,8 @@ public class Order extends BaseEntity {
     private String checkoutFingerprint;
     private Long userId;
     private BigDecimal totalAmount;
+    private BigDecimal refundedAmount;
+    private String manualRefundKey;
     private BigDecimal originalAmount;
     private String pointsReservationNo;
     private Integer pointsUsed;

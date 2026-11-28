@@ -12,6 +12,8 @@ public interface OutboundService {
 
     OutboundOrderVO createOutbound(CreateOutboundRequest req);
 
+    boolean cancelUnshipped(Long shippingId);
+
     void startPicking(Long id);
 
     void confirmShipped(Long id);

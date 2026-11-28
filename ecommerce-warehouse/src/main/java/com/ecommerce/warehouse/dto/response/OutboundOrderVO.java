@@ -1,5 +1,6 @@
 package com.ecommerce.warehouse.dto.response;
 
+import com.ecommerce.warehouse.mapper.OutboundStockAllocationMapper.Allocation;
 import lombok.Data;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -25,5 +26,6 @@ public class OutboundOrderVO {
         private Long skuId;
         private Integer quantity;
         private Long binId;
+        private List<Allocation> allocations;
     }
 }

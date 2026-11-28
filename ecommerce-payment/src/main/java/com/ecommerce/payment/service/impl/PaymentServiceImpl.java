@@ -3,6 +3,7 @@ package com.ecommerce.payment.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ecommerce.common.dto.AfterSaleRefundRequest;
 import com.ecommerce.common.dto.CompensationRefundRequest;
+import com.ecommerce.common.dto.ManualRefundCommand;
 import com.ecommerce.common.dto.OrderRefundedMessage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.OrderPaidMessage;
@@ -11,6 +12,7 @@ import com.ecommerce.common.outbox.OutboxQuery;
 import com.ecommerce.common.outbox.OutboxSummary;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
+import com.ecommerce.common.result.ErrorCode;
 import com.ecommerce.common.transaction.DistributedTransactionContext;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.payment.client.OrderClient;
@@ -36,6 +38,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -125,29 +128,33 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    @Transactional
     public PaymentVO refund(String orderNo, RefundRequest request) {
-        Payment payment = lockPayment(orderNo);
-        if (payment == null) {
-            throw new BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND);
-        }
-        if (payment.getStatus() != 1) {
+        return requestManualRefund(orderNo, request, false);
+    }
+
+    @Override
+    public PaymentVO refundAfterShipment(String orderNo, RefundRequest request) {
+        return requestManualRefund(orderNo, request, true);
+    }
+
+    private record RefundRejection(int getCode, String getMessage) implements ErrorCode {}
+
+    private PaymentVO requestManualRefund(String orderNo, RefundRequest request, boolean afterShipment) {
+        Payment payment = requirePayment(new LambdaQueryWrapper<Payment>().eq(Payment::getOrderNo, orderNo));
+        if (!Integer.valueOf(1).equals(payment.getStatus()) && !Integer.valueOf(3).equals(payment.getStatus())) {
             throw new BusinessException(PaymentErrorCode.PAYMENT_NOT_PAID);
         }
-
-        Long count = refundMapper.selectCount(
-                new LambdaQueryWrapper<Refund>().eq(Refund::getOrderNo, orderNo));
-        if (count > 0) {
-            throw new BusinessException(PaymentErrorCode.REFUND_ALREADY_EXISTS);
-        }
-
-        BigDecimal refundAmount = request.getAmount() != null ? request.getAmount() : payment.getAmount();
-        if (refundAmount.signum() < 0 || (refundAmount.signum() == 0 && payment.getAmount().signum() != 0)
-                || refundAmount.compareTo(payment.getAmount()) > 0) {
+        BigDecimal amount = request.getAmount();
+        if (amount != null && (amount.signum() <= 0 || !hasCentPrecision(amount)
+                || payment.getAmount() == null || amount.compareTo(payment.getAmount()) > 0)) {
             throw new BusinessException(PaymentErrorCode.REFUND_AMOUNT_INVALID);
         }
 
-        recordRefund(payment, refundAmount, request.getReason(), null);
+        String requestId = request.getClientRequestId() == null ? UUID.randomUUID().toString() : request.getClientRequestId();
+        var reply = orderClient.requestManualRefund(orderNo,
+                new ManualRefundCommand(requestId, request.getReason().trim(), amount, afterShipment));
+        if (reply == null) throw new BusinessException(PaymentErrorCode.REFUND_REQUEST_UNAVAILABLE);
+        if (reply.getCode() != 200) throw new BusinessException(new RefundRejection(reply.getCode(), reply.getMessage()));
         return toVO(payment);
     }
 
@@ -155,37 +162,59 @@ public class PaymentServiceImpl implements PaymentService {
     @Transactional
     public void refundAfterSale(AfterSaleRefundRequest request) {
         Payment payment = lockPayment(request.orderNo());
-        if (!outboxService.queryMessages(new OutboxQuery("after-sale", "order-refunded", null, request.outcomeKey()),
+        String aggregate = request.manual() ? "manual-refund" : "after-sale";
+        if (!outboxService.queryMessages(new OutboxQuery(aggregate, "order-refunded", null, request.outcomeKey()),
                 1, 1).getRecords().isEmpty()) return;
 
-        if (payment == null || !Objects.equals(payment.getUserId(), request.userId())
+        if (payment == null || payment.getAmount() == null || !Objects.equals(payment.getUserId(), request.userId())
                 || !Objects.equals(payment.getOrderId(), request.orderId())) {
-            publishAfterSaleFailure(request, "未找到对应的支付记录");
+            publishRefundFailure(request, aggregate, "未找到对应的支付记录");
             return;
         }
-        if (request.amount() != null && (payment.getAmount() == null
-                || request.amount().compareTo(payment.getAmount()) != 0)) {
-            log.error("After-sale refund amount does not match payment: orderNo={}, afterSaleId={}, attempt={}, requested={}, paid={}",
-                    request.orderNo(), request.afterSaleId(), request.refundAttempt(), request.amount(), payment.getAmount());
-            publishAfterSaleFailure(request, "售后退款金额与支付记录不一致");
+
+        List<Refund> history = successfulRefunds(payment);
+        BigDecimal refunded = refundedAmount(history);
+        BigDecimal remaining = payment.getAmount().subtract(refunded);
+        if (!request.manual() && Integer.valueOf(3).equals(payment.getStatus())
+                && remaining.signum() == 0 && !history.isEmpty()) {
+            publishRefundResult(payment, history.getFirst(), refunded, request, aggregate);
             return;
         }
-        Refund existing = refundMapper.selectOne(new LambdaQueryWrapper<Refund>()
-                .eq(Refund::getOrderNo, request.orderNo()).orderByDesc(Refund::getId).last("LIMIT 1"));
-        if (existing != null) {
-            if (Integer.valueOf(3).equals(payment.getStatus()) && Integer.valueOf(1).equals(existing.getStatus())
-                    && existing.getAmount().compareTo(payment.getAmount()) == 0) {
-                publishRefundResult(payment, existing, false, request);
-            } else {
-                publishAfterSaleFailure(request, "订单已有退款记录，无法办理本次全额退款");
-            }
+        if (!Integer.valueOf(1).equals(payment.getStatus()) || remaining.signum() < 0) {
+            publishRefundFailure(request, aggregate, "支付状态不支持此次退款");
             return;
         }
-        if (!Integer.valueOf(1).equals(payment.getStatus()) || payment.getAmount().signum() < 0) {
-            publishAfterSaleFailure(request, "支付状态不支持全额退款");
+
+        BigDecimal amount = request.amount() == null ? remaining : request.amount();
+        if (amount.signum() < 0 || !hasCentPrecision(amount) || amount.compareTo(remaining) > 0
+                || (amount.signum() == 0 && (payment.getAmount().signum() != 0 || !history.isEmpty()))
+                || (!request.manual() && amount.compareTo(remaining) != 0)) {
+            log.error("Invalid refund amount: orderNo={}, request={}, requested={}, remaining={}",
+                    request.orderNo(), request.outcomeKey(), amount, remaining);
+            publishRefundFailure(request, aggregate, "申请金额与当前剩余可退金额不符");
             return;
         }
-        recordRefund(payment, payment.getAmount(), request.reason(), request);
+
+        Refund refund = insertRefund(payment, amount, request.reason());
+        BigDecimal cumulative = refunded.add(amount);
+        if (cumulative.compareTo(payment.getAmount()) == 0) {
+            payment.setStatus(3);
+            paymentMapper.updateById(payment);
+        }
+        publishRefundResult(payment, refund, cumulative, request, aggregate);
+    }
+
+    private boolean hasCentPrecision(BigDecimal amount) {
+        return amount.stripTrailingZeros().scale() <= 2;
+    }
+
+    private List<Refund> successfulRefunds(Payment payment) {
+        return refundMapper.selectList(new LambdaQueryWrapper<Refund>()
+                .eq(Refund::getPaymentId, payment.getId()).eq(Refund::getStatus, 1).orderByDesc(Refund::getId));
+    }
+
+    private BigDecimal refundedAmount(List<Refund> refunds) {
+        return refunds.stream().map(Refund::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     @Override
@@ -198,10 +227,8 @@ public class PaymentServiceImpl implements PaymentService {
         if (!request.replay() && !outboxService.queryMessages(new OutboxQuery("compensation-refund", "order-refunded", null,
                 request.orderNo()), 1, 1).getRecords().isEmpty()) return;
 
-        List<Refund> previousRefunds = refundMapper.selectList(new LambdaQueryWrapper<Refund>()
-                .eq(Refund::getPaymentId, payment.getId()).eq(Refund::getStatus, 1).orderByDesc(Refund::getId));
-        BigDecimal refunded = previousRefunds.stream().map(Refund::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal remaining = payment.getAmount().subtract(refunded);
+        List<Refund> previousRefunds = successfulRefunds(payment);
+        BigDecimal remaining = payment.getAmount().subtract(refundedAmount(previousRefunds));
         Refund refund;
         if (Integer.valueOf(3).equals(payment.getStatus()) && remaining.signum() == 0 && !previousRefunds.isEmpty()) {
             refund = previousRefunds.getFirst();
@@ -214,7 +241,8 @@ public class PaymentServiceImpl implements PaymentService {
             paymentMapper.updateById(payment);
         }
         var result = new OrderRefundedMessage(refund.getRefundNo(), payment.getOrderNo(), payment.getUserId(),
-                payment.getAmount(), "FULL", "SUCCESS", LocalDateTime.now(), "compensation-refund:" + payment.getOrderNo());
+                refund.getAmount(), "FULL", "SUCCESS", LocalDateTime.now(), "compensation-refund:" + payment.getOrderNo());
+        result.setCumulativeRefundAmount(payment.getAmount());
         outboxService.enqueue("compensation-refund", payment.getOrderNo(), "order-refunded", result);
     }
 
@@ -223,18 +251,10 @@ public class PaymentServiceImpl implements PaymentService {
                 .eq(Payment::getOrderNo, orderNo).last("FOR UPDATE"));
     }
 
-    private void recordRefund(Payment payment, BigDecimal refundAmount, String reason, AfterSaleRefundRequest afterSale) {
-        Refund refund = insertRefund(payment, refundAmount, reason);
-        boolean isPartial = refundAmount.compareTo(payment.getAmount()) < 0;
-        payment.setStatus(isPartial ? 1 : 3);
-        paymentMapper.updateById(payment);
-        publishRefundResult(payment, refund, isPartial, afterSale);
-    }
-
     private Refund insertRefund(Payment payment, BigDecimal refundAmount, String reason) {
         Refund refund = new Refund();
         refund.setId(SnowflakeUtils.nextId());
-        refund.setRefundNo(generateRefundNo());
+        refund.setRefundNo("REF" + refund.getId());
         refund.setPaymentId(payment.getId());
         refund.setOrderNo(payment.getOrderNo());
         refund.setAmount(refundAmount);
@@ -244,20 +264,21 @@ public class PaymentServiceImpl implements PaymentService {
         return refund;
     }
 
-    private void publishRefundResult(Payment payment, Refund refund, boolean partial, AfterSaleRefundRequest afterSale) {
+    private void publishRefundResult(Payment payment, Refund refund, BigDecimal cumulative,
+                                     AfterSaleRefundRequest request, String aggregate) {
         String key = "payment-refund:" + payment.getOrderNo() + ":" + refund.getRefundNo();
         var event = new OrderRefundedMessage(refund.getRefundNo(), payment.getOrderNo(),
-                payment.getUserId(), refund.getAmount(), partial ? "PARTIAL" : "FULL",
-                "SUCCESS", LocalDateTime.now(), key, afterSale == null ? null : afterSale.afterSaleId(), null,
-                afterSale == null ? null : afterSale.refundAttempt());
-        outboxService.enqueue(afterSale == null ? "payment" : "after-sale",
-                afterSale == null ? payment.getOrderNo() : afterSale.outcomeKey(), "order-refunded", event);
+                payment.getUserId(), refund.getAmount(), cumulative.compareTo(payment.getAmount()) == 0 ? "FULL" : "PARTIAL",
+                "SUCCESS", LocalDateTime.now(), key, request.afterSaleId(), null,
+                request.refundAttempt(), cumulative, request.manualRefundKey());
+        outboxService.enqueue(aggregate, request.outcomeKey(), "order-refunded", event);
     }
 
-    private void publishAfterSaleFailure(AfterSaleRefundRequest request, String reason) {
+    private void publishRefundFailure(AfterSaleRefundRequest request, String aggregate, String reason) {
         var event = new OrderRefundedMessage(null, request.orderNo(), request.userId(), null, "FULL",
-                "FAILED", LocalDateTime.now(), null, request.afterSaleId(), reason, request.refundAttempt());
-        outboxService.enqueue("after-sale", request.outcomeKey(), "order-refunded", event);
+                "FAILED", LocalDateTime.now(), null, request.afterSaleId(), reason, request.refundAttempt(),
+                null, request.manualRefundKey());
+        outboxService.enqueue(aggregate, request.outcomeKey(), "order-refunded", event);
     }
 
     @Override
@@ -288,7 +309,6 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    @Transactional
     public PaymentVO refundByMerchant(Long merchantId, String orderNo, RefundRequest request) {
         var ownership = orderClient.merchantOwnsEntireOrder(merchantId, orderNo);
         if (ownership == null || ownership.getCode() != 200 || !Boolean.TRUE.equals(ownership.getData())) {
@@ -372,11 +392,6 @@ public class PaymentServiceImpl implements PaymentService {
 
     private String generatePaymentNo() {
         return "PAY" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
-                + String.format("%04d", SnowflakeUtils.nextId() % 10000);
-    }
-
-    private String generateRefundNo() {
-        return "REF" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
                 + String.format("%04d", SnowflakeUtils.nextId() % 10000);
     }
 

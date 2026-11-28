@@ -74,13 +74,25 @@ public class ReconciliationServiceImpl implements ReconciliationService {
         }
 
         List<Payment> payments = paymentMapper.selectList(new LambdaQueryWrapper<Payment>()
-                .ge(Payment::getCreatedAt, start).le(Payment::getCreatedAt, now));
+                .and(window -> window.nested(created -> created.ge(Payment::getCreatedAt, start).le(Payment::getCreatedAt, now))
+                        .or(paid -> paid.ge(Payment::getPaidAt, start).le(Payment::getPaidAt, now))));
         Map<String, Payment> byPayment = payments.stream().filter(row -> row.getOrderNo() != null)
                 .collect(Collectors.toMap(Payment::getOrderNo, row -> row, (first, second) -> first));
+        List<Refund> recentRefunds = refundMapper.selectList(new LambdaQueryWrapper<Refund>()
+                .ge(Refund::getCreatedAt, start).le(Refund::getCreatedAt, now).eq(Refund::getStatus, 1));
+        Set<String> refundOrderNos = recentRefunds.stream().map(Refund::getOrderNo).filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        List<String> historicalPayments = refundOrderNos.stream().filter(no -> !byPayment.containsKey(no)).toList();
+        if (!historicalPayments.isEmpty()) {
+            paymentMapper.selectList(new LambdaQueryWrapper<Payment>().in(Payment::getOrderNo, historicalPayments))
+                    .forEach(row -> byPayment.putIfAbsent(row.getOrderNo(), row));
+        }
         Map<String, ReconOrderVO> byOrder = orders.stream().filter(row -> row.getOrderNo() != null)
                 .collect(Collectors.toMap(ReconOrderVO::getOrderNo, row -> row, (first, second) -> first));
         try {
-            List<String> missing = byPayment.keySet().stream().filter(number -> !byOrder.containsKey(number)).toList();
+            Set<String> orderNos = new TreeSet<>(byPayment.keySet());
+            orderNos.addAll(refundOrderNos);
+            List<String> missing = orderNos.stream().filter(number -> !byOrder.containsKey(number)).toList();
             for (int startAt = 0; startAt < missing.size(); startAt += 100) {
                 var response = orderClient.getOrdersByNumberForRecon(
                         missing.subList(startAt, Math.min(startAt + 100, missing.size())));
@@ -92,13 +104,16 @@ public class ReconciliationServiceImpl implements ReconciliationService {
         } catch (RuntimeException unavailable) {
             return failSource(batch);
         }
-        Map<String, List<Refund>> byRefund = byPayment.isEmpty() ? Map.of() : refundMapper.selectList(
-                        new LambdaQueryWrapper<Refund>().in(Refund::getOrderNo, byPayment.keySet())
+        Set<String> refundLookup = new TreeSet<>(byPayment.keySet());
+        refundLookup.addAll(refundOrderNos);
+        Map<String, List<Refund>> byRefund = refundLookup.isEmpty() ? Map.of() : refundMapper.selectList(
+                        new LambdaQueryWrapper<Refund>().in(Refund::getOrderNo, refundLookup)
                                 .eq(Refund::getStatus, 1))
                 .stream().collect(Collectors.groupingBy(Refund::getOrderNo));
 
         Set<String> orderNumbers = new TreeSet<>(byOrder.keySet());
         orderNumbers.addAll(byPayment.keySet());
+        orderNumbers.addAll(refundOrderNos);
         List<ReconciliationDetail> details = new ArrayList<>();
         for (String orderNo : orderNumbers) {
             ReconOrderVO order = byOrder.get(orderNo);
@@ -114,6 +129,10 @@ public class ReconciliationServiceImpl implements ReconciliationService {
             if (order != null) {
                 addDetail(details, batch.getId(), "ORDER", orderNo, null,
                         order.getAmount(), order.getStatus(), match.status(), match.reason());
+            }
+            if (order == null && payment == null) {
+                BigDecimal amount = refunds.stream().map(Refund::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+                addDetail(details, batch.getId(), "REFUND", orderNo, null, amount, null, match.status(), match.reason());
             }
             if (payment != null && (order == null || !("MATCHED".equals(match.status()) || "NOT_REQUIRED".equals(match.status())))) {
                 addDetail(details, batch.getId(), "PAYMENT", orderNo, payment.getPaymentNo(),
@@ -138,11 +157,14 @@ public class ReconciliationServiceImpl implements ReconciliationService {
     private record Match(String status, String reason) {}
 
     private Match compare(ReconOrderVO order, Payment payment, List<Refund> refunds, LocalDateTime graceStart) {
-        if (order == null) return new Match("PAYMENT_ONLY", "缺少订单记录");
+        if (order == null) return payment == null
+                ? new Match("REFUND_ONLY", "退款缺少原订单和支付记录")
+                : new Match("PAYMENT_ONLY", "缺少订单记录");
         Integer status = order.getStatus();
         boolean unpaidOrder = Objects.equals(status, OrderStatus.PENDING) || Objects.equals(status, OrderStatus.CANCELLED);
         boolean captured = payment != null && Set.of(1, 3).contains(Objects.requireNonNullElse(payment.getStatus(), -1));
         if (!captured) {
+            if (!refunds.isEmpty()) return new Match("STATUS_MISMATCH", "退款缺少原支付记录");
             return unpaidOrder ? new Match("NOT_REQUIRED", "订单未收款")
                     : new Match(payment == null ? "ORDER_ONLY" : "STATUS_MISMATCH", "订单缺少成功支付");
         }

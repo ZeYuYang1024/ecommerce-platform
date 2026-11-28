@@ -12,4 +12,5 @@ public class CartItem {
     private BigDecimal price;
     private Integer quantity;
     private Boolean checked;
+    private Boolean available;
 }

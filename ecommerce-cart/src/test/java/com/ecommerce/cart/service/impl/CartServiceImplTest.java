@@ -46,10 +46,21 @@ class CartServiceImplTest {
         return item;
     }
 
+    private SkuBatchVO catalogItem(BigDecimal price, int status) {
+        SkuBatchVO snapshot = new SkuBatchVO();
+        snapshot.setSkuId(1L);
+        snapshot.setSpuId(100L);
+        snapshot.setSkuName("Test");
+        snapshot.setPrice(price);
+        snapshot.setSpuStatus(status);
+        return snapshot;
+    }
+
     @Nested
     class AddTests {
         @Test
         void shouldAddNewItem() throws Exception {
+            when(products.getSkus(List.of(1L))).thenReturn(Result.ok(List.of(catalogItem(new BigDecimal("99.00"), 1))));
             CartItem item = createItem(1L, new BigDecimal("99.00"), 1);
             when(hashOps.get(anyString(), eq("1"))).thenReturn(null);
             service.addItem(1L, item);
@@ -59,6 +70,7 @@ class CartServiceImplTest {
 
         @Test
         void shouldIncrementQuantityWhenExisting() throws Exception {
+            when(products.getSkus(List.of(1L))).thenReturn(Result.ok(List.of(catalogItem(new BigDecimal("99.00"), 1))));
             CartItem existing = createItem(1L, new BigDecimal("99.00"), 2);
             when(hashOps.get("cart:user:1", "1"))
                     .thenReturn("{\"skuId\":1,\"spuId\":100,\"name\":\"Test\",\"price\":99.00,\"quantity\":2,\"checked\":true}");
@@ -82,6 +94,7 @@ class CartServiceImplTest {
 
         @Test
         void shouldSetCheckedTrueWhenNull() throws Exception {
+            when(products.getSkus(List.of(1L))).thenReturn(Result.ok(List.of(catalogItem(new BigDecimal("99.00"), 1))));
             CartItem item = createItem(1L, new BigDecimal("99.00"), 1);
             item.setChecked(null);
             when(hashOps.get(anyString(), anyString())).thenReturn(null);
@@ -171,6 +184,21 @@ class CartServiceImplTest {
     @Nested
     class GetCartTests {
         @Test
+        void downlistedItemStaysVisibleButCannotBeAddedOrPurchased() {
+            when(hashOps.entries("cart:user:1")).thenReturn(Map.of("1",
+                    "{\"skuId\":1,\"spuId\":100,\"name\":\"Test\",\"price\":99.00,\"quantity\":1,\"checked\":true}"));
+            when(products.getSkus(List.of(1L))).thenReturn(Result.ok(List.of(catalogItem(new BigDecimal("99.00"), 0))));
+
+            assertThat(service.getCart(1L)).singleElement().satisfies(item -> {
+                assertThat(item.getAvailable()).isFalse();
+                assertThat(item.getChecked()).isTrue();
+            });
+            assertThatThrownBy(() -> service.addItem(1L, createItem(1L, BigDecimal.ONE, 1)))
+                    .isInstanceOf(BusinessException.class);
+            verify(hashOps, never()).put(anyString(), anyString(), anyString());
+        }
+
+        @Test
         void shouldReturnCartItems() {
             Map<Object, Object> entries = new HashMap<>();
             entries.put("1", "{\"skuId\":1,\"spuId\":100,\"name\":\"Test\",\"price\":99.00,\"quantity\":1,\"checked\":true}");
@@ -230,6 +258,7 @@ class CartServiceImplTest {
     class BoundaryTests {
         @Test
         void shouldHandleLargeQuantity() throws Exception {
+            when(products.getSkus(List.of(1L))).thenReturn(Result.ok(List.of(catalogItem(new BigDecimal("0.01"), 1))));
             CartItem item = createItem(1L, new BigDecimal("0.01"), Integer.MAX_VALUE);
             when(hashOps.get(anyString(), anyString())).thenReturn(null);
             assertThatCode(() -> service.addItem(1L, item)).doesNotThrowAnyException();
@@ -237,6 +266,7 @@ class CartServiceImplTest {
 
         @Test
         void shouldHandleZeroPrice() throws Exception {
+            when(products.getSkus(List.of(1L))).thenReturn(Result.ok(List.of(catalogItem(BigDecimal.ZERO, 1))));
             CartItem item = createItem(1L, BigDecimal.ZERO, 1);
             when(hashOps.get(anyString(), anyString())).thenReturn(null);
             assertThatCode(() -> service.addItem(1L, item)).doesNotThrowAnyException();
@@ -244,6 +274,7 @@ class CartServiceImplTest {
 
         @Test
         void shouldHandleVeryLargePrice() throws Exception {
+            when(products.getSkus(List.of(1L))).thenReturn(Result.ok(List.of(catalogItem(new BigDecimal("99999999.99"), 1))));
             CartItem item = createItem(1L, new BigDecimal("99999999.99"), 1);
             when(hashOps.get(anyString(), anyString())).thenReturn(null);
             assertThatCode(() -> service.addItem(1L, item)).doesNotThrowAnyException();

@@ -2,19 +2,39 @@ import { defineStore } from 'pinia'
 
 export const useCartStore = defineStore('cart', () => {
   const items = ref<any[]>([])
-  const count = ref(0)
+  const count = computed(() => items.value.reduce((sum, item) => sum + item.quantity, 0))
+  const ready = ref(false)
+  const loadError = ref('')
+  const auth = useAuthStore()
+  const api = useApi()
+  let fetchSequence = 0
+
+  watch(() => auth.token, token => {
+    fetchSequence++
+    items.value = []
+    ready.value = false
+    loadError.value = ''
+    if (token && import.meta.client) void fetchCart()
+  }, { flush: 'sync' })
 
   async function fetchCart() {
-    const auth = useAuthStore()
-    if (!auth.isLoggedIn) return
-    const api = useApi()
+    if (!auth.isLoggedIn) return false
+    const sequence = ++fetchSequence
     try {
       const res: any = await api.get('/cart')
-      if (res.code === 200) {
-        items.value = res.data || []
-        count.value = items.value.reduce((s: number, i: any) => s + i.quantity, 0)
+      if (sequence !== fetchSequence) return false
+      if (res.code !== 200) throw new Error(res.message || '购物车加载失败')
+      items.value = Array.isArray(res.data) ? res.data : []
+      ready.value = true
+      loadError.value = ''
+      return true
+    } catch {
+      if (sequence === fetchSequence) {
+        ready.value = false
+        loadError.value = '购物车加载失败，请重试'
       }
-    } catch {}
+      return false
+    }
   }
 
   async function addItem(item: any) {
@@ -24,7 +44,8 @@ export const useCartStore = defineStore('cart', () => {
       return
     }
     const api = useApi()
-    await api.post('/cart/items', item)
+    const result: any = await api.post('/cart/items', item)
+    if (result.code !== 200) throw new Error(result.message || '加入购物车失败')
     await fetchCart()
   }
 
@@ -48,8 +69,9 @@ export const useCartStore = defineStore('cart', () => {
 
   async function removePurchased(purchased: { skuId: string | number; quantity: number }[]) {
     const api = useApi()
+    const token = auth.token
     const response: any = await api.get('/cart')
-    if (response.code !== 200) return
+    if (response.code !== 200 || token !== auth.token) return
     const current = new Map<string, number>(
       (response.data || []).map((item: any) => [String(item.skuId), item.quantity])
     )
@@ -70,10 +92,10 @@ export const useCartStore = defineStore('cart', () => {
 
   async function clearCart() {
     const api = useApi()
+    const token = auth.token
     await api.delete('/cart')
-    items.value = []
-    count.value = 0
+    if (token === auth.token) await fetchCart()
   }
 
-  return { items, count, fetchCart, addItem, updateQuantity, removeItem, toggleCheck, clearCart, removePurchased }
+  return { items, count, ready, loadError, fetchCart, addItem, updateQuantity, removeItem, toggleCheck, clearCart, removePurchased }
 })

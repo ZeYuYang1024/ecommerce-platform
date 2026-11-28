@@ -58,7 +58,7 @@ public class LevelServiceImpl implements LevelService {
             profile.setLevelId(targetLevel.getId());
             memberProfileMapper.updateById(profile);
 
-            log.info("Member level upgraded: userId={}, oldLevel={}, newLevel={}",
+            log.info("Member level changed: userId={}, oldLevel={}, newLevel={}",
                     userId,
                     oldLevel != null ? oldLevel.getLevelCode() : "UNKNOWN",
                     targetLevel.getLevelCode());

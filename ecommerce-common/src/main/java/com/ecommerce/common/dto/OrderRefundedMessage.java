@@ -27,6 +27,19 @@ public class OrderRefundedMessage implements Serializable {
     private Long afterSaleId;
     private String failureReason;
     private Integer refundAttempt;
+    private BigDecimal cumulativeRefundAmount;
+    private String manualRefundKey;
+
+    public OrderRefundedMessage(String refundNo, String orderNo, Long userId, BigDecimal refundAmount,
+                                String refundType, String refundStatus, LocalDateTime occurredAt, String idempotencyKey,
+                                Long afterSaleId, String failureReason, Integer refundAttempt) {
+        this(refundNo, orderNo, userId, refundAmount, refundType, refundStatus, occurredAt, idempotencyKey,
+                afterSaleId, failureReason, refundAttempt, null, null);
+    }
+
+    public BigDecimal cumulativeAmount() {
+        return cumulativeRefundAmount == null ? refundAmount : cumulativeRefundAmount;
+    }
 
     public OrderRefundedMessage(String refundNo, String orderNo, Long userId, BigDecimal refundAmount,
                                 String refundType, String refundStatus, LocalDateTime occurredAt, String idempotencyKey) {

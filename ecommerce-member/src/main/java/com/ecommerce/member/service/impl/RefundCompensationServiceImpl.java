@@ -45,11 +45,7 @@ public class RefundCompensationServiceImpl implements RefundCompensationService 
     @Override
     @Transactional
     public RefundCompensationResult compensate(RefundCompensationRequest request) {
-        RefundCompensationResult result = new RefundCompensationResult();
-        result.setDuplicate(false);
-        result.setRestoredPoints(0);
-        result.setReversedGrowth(0);
-
+        RefundCompensationResult result = newResult();
         String orderNo = request.getOrderNo();
         finance.lockOrder(orderNo);
         if (finance.isFullyRefunded(orderNo)) {
@@ -57,136 +53,107 @@ public class RefundCompensationServiceImpl implements RefundCompensationService 
             return result;
         }
         if ("FULL".equalsIgnoreCase(request.getRefundType())) {
-            compensateFull(request, result);
+            applyBenefits(orderNo, request.getUserId(), null, null, true, result);
             finance.markFullyRefunded(orderNo);
             return result;
         }
 
-        String pointsBizKey = buildPointsBizKey(request);
-        if (pointsTransactionMapper.selectCount(new LambdaQueryWrapper<PointsTransaction>()
-                .eq(PointsTransaction::getBizKey, pointsBizKey)) > 0) {
+        Result<OrderMemberVO> reply = orderClient.getOrderForMember(orderNo);
+        if (reply == null || reply.getCode() != 200 || reply.getData() == null) {
+            throw new IllegalStateException("Cannot load order for member refund: " + orderNo);
+        }
+        OrderMemberVO order = reply.getData();
+        BigDecimal cumulative = request.cumulativeAmount();
+        if (!Objects.equals(order.getUserId(), request.getUserId()) || cumulative == null || cumulative.signum() <= 0
+                || order.getTotalAmount() == null || cumulative.compareTo(order.getTotalAmount()) >= 0) {
+            log.error("Invalid partial refund for member benefits: orderNo={}, refundNo={}", orderNo, request.getRefundNo());
+            return result;
+        }
+
+        BigDecimal previous = finance.partialRefundAmount(orderNo);
+        if (previous != null && cumulative.compareTo(previous) <= 0) {
             result.setDuplicate(true);
             return result;
         }
-
-        PointsReservation reservation = pointsReservationMapper.selectOne(new LambdaQueryWrapper<PointsReservation>()
-                .eq(PointsReservation::getOrderNo, request.getOrderNo()));
-        if (reservation == null) {
-            return result;
-        }
-
-        if ("RESERVED".equals(reservation.getStatus())) {
-            reservations.confirm(new PointsReservationConfirmRequest(
-                    reservation.getReservationNo(), "ORDER:" + orderNo + ":SPEND"));
-            reservation.setConsumedPoints(reservation.getReservedPoints());
-        }
-        int restoredPoints = calculateRestoredPoints(request, reservation);
-        if (restoredPoints <= 0) {
-            updateReservationStatus(reservation, request.getRefundType());
-            return result;
-        }
-
-        pointsService.reverseSpend(request.getUserId(), restoredPoints, "REFUND", request.getRefundNo(),
-                pointsBizKey, "退款退回积分", reservation.getReservationNo(), null);
-        growthService.add(request.getUserId(), request.getRefundAmount().intValue() * -1, "REFUND",
-                request.getRefundNo(), buildGrowthBizKey(request), "退款扣回成长值");
-
-        updateReservationStatus(reservation, request.getRefundType());
-        result.setRestoredPoints(restoredPoints);
-        result.setReversedGrowth(request.getRefundAmount().intValue());
+        finance.recordPartialRefund(orderNo, cumulative);
+        applyBenefits(orderNo, order.getUserId(), order.getTotalAmount(), cumulative, false, result);
         return result;
     }
 
-    private void compensateFull(RefundCompensationRequest request, RefundCompensationResult result) {
-        String orderNo = request.getOrderNo();
+    @Override
+    @Transactional
+    public void settlePendingPartialRefund(OrderMemberVO order) {
+        finance.lockOrder(order.getOrderNo());
+        BigDecimal cumulative = finance.partialRefundAmount(order.getOrderNo());
+        if (cumulative != null && cumulative.signum() > 0 && !finance.isFullyRefunded(order.getOrderNo())) {
+            applyBenefits(order.getOrderNo(), order.getUserId(), order.getTotalAmount(), cumulative, false, newResult());
+        }
+    }
+
+    private RefundCompensationResult newResult() {
+        RefundCompensationResult result = new RefundCompensationResult();
+        result.setDuplicate(false);
+        result.setRestoredPoints(0);
+        result.setReversedGrowth(0);
+        return result;
+    }
+
+    private void applyBenefits(String orderNo, Long userId, BigDecimal paid, BigDecimal refunded, boolean full,
+                               RefundCompensationResult result) {
         PointsReservation reservation = pointsReservationMapper.selectOne(new LambdaQueryWrapper<PointsReservation>()
                 .eq(PointsReservation::getOrderNo, orderNo));
-        List<PointsTransaction> refunds = List.of();
+        List<PointsTransaction> earlierReturns = List.of();
         if (reservation != null && !"RELEASED".equals(reservation.getStatus())) {
             if ("RESERVED".equals(reservation.getStatus())) {
                 reservations.confirm(new PointsReservationConfirmRequest(
                         reservation.getReservationNo(), "ORDER:" + orderNo + ":SPEND"));
                 reservation.setConsumedPoints(reservation.getReservedPoints());
             }
-            refunds = pointsTransactionMapper.selectList(new LambdaQueryWrapper<PointsTransaction>()
+            earlierReturns = pointsTransactionMapper.selectList(new LambdaQueryWrapper<PointsTransaction>()
                     .eq(PointsTransaction::getRelatedReservationNo, reservation.getReservationNo())
                     .eq(PointsTransaction::getSourceType, "REFUND").eq(PointsTransaction::getDirection, "EARN"));
-            int previouslyRestored = refunds.stream().mapToInt(PointsTransaction::getAmount).sum();
+            int previous = earlierReturns.stream().mapToInt(PointsTransaction::getAmount).sum();
             int used = Objects.requireNonNullElse(reservation.getConsumedPoints(), 0);
             if (used == 0) used = Objects.requireNonNullElse(reservation.getReservedPoints(), 0);
-            int restored = Math.max(0, used - previouslyRestored);
-            if (restored > 0) {
-                pointsService.reverseSpend(request.getUserId(), restored, "REFUND", request.getRefundNo(),
-                        buildPointsBizKey(request), "退款退回积分", reservation.getReservationNo(), null);
-                result.setRestoredPoints(restored);
+            int target = targetAmount(used, paid, refunded, full);
+            if (target > previous) {
+                pointsService.reverseSpend(userId, target - previous, "REFUND", orderNo,
+                        "ORDER:" + orderNo + ":RESTORE_POINTS:" + target, "退款退回积分", reservation.getReservationNo(), null);
+                result.setRestoredPoints(target - previous);
             }
-            updateReservationStatus(reservation, "FULL");
+            reservation.setStatus(full ? "REFUNDED" : "PARTIAL_REFUNDED");
+            pointsReservationMapper.updateById(reservation);
         }
 
         PointsTransaction reward = pointsTransactionMapper.selectOne(new LambdaQueryWrapper<PointsTransaction>()
                 .eq(PointsTransaction::getBizKey, "ORDER:" + orderNo + ":EARN"));
-        if (reward != null) pointsService.reverseEarn(reward, orderNo);
+        if (reward != null) {
+            int target = targetAmount(reward.getAmount(), paid, refunded, full);
+            pointsService.reverseEarn(reward, orderNo, target, "ORDER:" + orderNo + ":EARN_REVERSED:" + target);
+        }
 
         GrowthTransaction earned = growthTransactionMapper.selectOne(new LambdaQueryWrapper<GrowthTransaction>()
                 .eq(GrowthTransaction::getBizKey, "ORDER:" + orderNo + ":GROWTH"));
         if (earned != null) {
-            int reversed = refunds.isEmpty() ? 0 : growthTransactionMapper.selectList(new LambdaQueryWrapper<GrowthTransaction>()
-                    .in(GrowthTransaction::getBizKey, refunds.stream()
-                            .map(refund -> "REFUND:" + refund.getSourceId() + ":GROWTH").toList()))
+            List<String> legacyKeys = earlierReturns.stream().map(PointsTransaction::getSourceId)
+                    .filter(sourceId -> !orderNo.equals(sourceId))
+                    .map(refundNo -> "REFUND:" + refundNo + ":GROWTH").toList();
+            int previous = growthTransactionMapper.selectList(new LambdaQueryWrapper<GrowthTransaction>()
+                            .and(q -> q.nested(orderRefund -> orderRefund.eq(GrowthTransaction::getSourceType, "ORDER_REFUND")
+                                            .eq(GrowthTransaction::getSourceId, orderNo))
+                                    .or(!legacyKeys.isEmpty(), legacy -> legacy.in(GrowthTransaction::getBizKey, legacyKeys))))
                     .stream().mapToInt(tx -> -tx.getAmount()).sum();
-            int remaining = Math.max(0, earned.getAmount() - reversed);
-            if (remaining > 0) {
-                growthService.add(request.getUserId(), -remaining, "REFUND", orderNo,
-                        "ORDER:" + orderNo + ":GROWTH_REVERSED", "全额退款扣回成长值");
-                result.setReversedGrowth(remaining);
+            int target = targetAmount(earned.getAmount(), paid, refunded, full);
+            if (target > previous) {
+                growthService.add(userId, previous - target, "ORDER_REFUND", orderNo,
+                        "ORDER:" + orderNo + ":GROWTH_REVERSED:" + target, "退款扣回成长值");
+                result.setReversedGrowth(target - previous);
             }
         }
     }
 
-    private int calculateRestoredPoints(RefundCompensationRequest request, PointsReservation reservation) {
-        Result<OrderMemberVO> orderResult = orderClient.getOrderForMember(request.getOrderNo());
-        if (orderResult == null || orderResult.getData() == null) {
-            log.warn("Skip partial refund compensation due to missing order total: orderNo={}, refundNo={}",
-                    request.getOrderNo(), request.getRefundNo());
-            return 0;
-        }
-
-        OrderMemberVO order = orderResult.getData();
-        if (order.getPointsUsed() != null && order.getPointsUsed() > 0
-                && order.getPointsDeductionAmount() != null
-                && order.getPointsDeductionAmount().compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal effectiveRefund = request.getRefundAmount().min(order.getPointsDeductionAmount());
-            BigDecimal ratio = effectiveRefund.divide(order.getPointsDeductionAmount(), 8, RoundingMode.DOWN);
-            return BigDecimal.valueOf(order.getPointsUsed())
-                    .multiply(ratio)
-                    .setScale(0, RoundingMode.DOWN)
-                    .intValue();
-        }
-
-        if (order.getTotalAmount() == null || order.getTotalAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            log.warn("Skip partial refund compensation due to missing order total: orderNo={}, refundNo={}",
-                    request.getOrderNo(), request.getRefundNo());
-            return 0;
-        }
-
-        BigDecimal ratio = request.getRefundAmount()
-                .divide(order.getTotalAmount(), 8, RoundingMode.DOWN);
-        return BigDecimal.valueOf(reservation.getConsumedPoints() == null ? 0 : reservation.getConsumedPoints())
-                .multiply(ratio)
-                .setScale(0, RoundingMode.DOWN)
-                .intValue();
-    }
-
-    private void updateReservationStatus(PointsReservation reservation, String refundType) {
-        reservation.setStatus("FULL".equalsIgnoreCase(refundType) ? "REFUNDED" : "PARTIAL_REFUNDED");
-        pointsReservationMapper.updateById(reservation);
-    }
-
-    private String buildPointsBizKey(RefundCompensationRequest request) {
-        return "REFUND:" + request.getRefundNo() + ":POINTS";
-    }
-
-    private String buildGrowthBizKey(RefundCompensationRequest request) {
-        return "REFUND:" + request.getRefundNo() + ":GROWTH";
+    private int targetAmount(int initial, BigDecimal paid, BigDecimal refunded, boolean full) {
+        return full ? initial
+                : BigDecimal.valueOf(initial).multiply(refunded).divide(paid, 0, RoundingMode.DOWN).intValueExact();
     }
 }

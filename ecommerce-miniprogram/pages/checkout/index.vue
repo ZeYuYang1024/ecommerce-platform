@@ -36,6 +36,7 @@
 
       <view class="checkout-card">
         <text class="label">商品清单</text>
+        <text v-if="unavailableCount" class="hint">有 {{ unavailableCount }} 件已选商品当前不可购买</text>
         <view v-for="item in items" :key="item.skuId" class="item-row">
           <ProductImage :source="item.image" width="104rpx" height="104rpx" radius="12rpx" />
           <view class="item-info">
@@ -64,12 +65,13 @@ import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { request } from '@/utils/api'
 import { useAuthStore } from '@/stores/auth'
-import { useCartStore } from '@/stores/cart'
+import { isPurchasable, useCartStore } from '@/stores/cart'
 import ProductImage from '@/components/ProductImage.vue'
 
 const auth = useAuthStore()
 const cartStore = useCartStore()
 const items = ref([])
+const unavailableCount = ref(0)
 const addresses = ref([])
 const selectedAddressId = ref(null)
 const address = computed(() => addresses.value.find(item => item.id === selectedAddressId.value))
@@ -89,7 +91,10 @@ onShow(loadCheckout)
 async function loadItems() {
   if (!buyNow) {
     const res = await cartStore.fetchCart()
-    if (res.code === 200) items.value = [...cartStore.checkedItems]
+    if (res.code === 200) {
+      items.value = [...cartStore.checkedItems]
+      unavailableCount.value = cartStore.items.filter(item => item.checked && !isPurchasable(item)).length
+    }
     return res
   }
 
@@ -166,6 +171,15 @@ async function submitOrder() {
   submitError.value = ''
   const purchased = [...items.value]
   try {
+    if (unavailableCount.value) {
+      const confirmed = await new Promise(resolve => uni.showModal({
+        title: '部分商品无法购买',
+        content: '是否继续结算其余已选商品？',
+        success: ({ confirm }) => resolve(confirm),
+        fail: () => resolve(false)
+      }))
+      if (!confirmed) return
+    }
     const res = await request({
       url: '/api/v1/orders',
       method: 'POST',

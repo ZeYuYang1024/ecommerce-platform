@@ -6,6 +6,8 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.dto.OrderInternalVO;
 import com.ecommerce.common.dto.OrderPaidMessage;
+import com.ecommerce.common.dto.AfterSaleRefundRequest;
+import com.ecommerce.common.dto.ManualRefundCommand;
 import com.ecommerce.common.dto.OrderRefundedMessage;
 import com.ecommerce.common.outbox.OutboxMessage;
 import com.ecommerce.common.outbox.OutboxQuery;
@@ -42,6 +44,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -277,78 +280,66 @@ class PaymentServiceImplTest {
     @Nested
     class RefundTests {
         @Test
-        void shouldRefundFullAmountAndEnqueueRefundedStatus() {
+        void adminRefundRequestsOrderGuardBeforeWritingAnyRefund() {
             when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-            when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
-            when(refundMapper.insert(any(Refund.class))).thenReturn(1);
-            when(paymentMapper.updateById(any(Payment.class))).thenReturn(1);
+            when(orderClient.requestManualRefund(eq(payment.getOrderNo()), any())).thenReturn(Result.ok());
+            RefundRequest request = new RefundRequest();
+            request.setReason("partial refund");
+            request.setAmount(new BigDecimal("1000.00"));
+            request.setClientRequestId("partial-1");
 
-            RefundRequest req = new RefundRequest();
-            req.setReason("full refund");
+            service.refund(payment.getOrderNo(), request);
 
-            PaymentVO vo = service.refund("202605091200000001", req);
-
-            assertThat(vo.getStatus()).isEqualTo(3);
-            verify(outboxService).enqueue(
-                    eq("payment"),
-                    eq("202605091200000001"),
-                    eq("order-refunded"),
-                    argThat((OrderRefundedMessage message) ->
-                            message != null
-                                    && message.getRefundNo() != null
-                                    && !message.getRefundNo().isBlank()
-                                    && "202605091200000001".equals(message.getOrderNo())
-                                    && Long.valueOf(1L).equals(message.getUserId())
-                                    && new BigDecimal("6999.00").compareTo(message.getRefundAmount()) == 0
-                                    && "FULL".equals(message.getRefundType())
-                                    && "SUCCESS".equals(message.getRefundStatus())
-                                    && message.getOccurredAt() != null
-                                    && message.getIdempotencyKey() != null
-                                    && message.getIdempotencyKey().startsWith("payment-refund:")));
+            verify(orderClient).requestManualRefund(payment.getOrderNo(),
+                    new ManualRefundCommand("partial-1", "partial refund", new BigDecimal("1000.00"), false));
+            verify(refundMapper, never()).insert(any(Refund.class));
         }
 
         @Test
-        void shouldRefundPartialAmountAndKeepPaidStatus() {
+        void partialRefundLeavesPaymentPaid() {
             when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-            when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
-            when(refundMapper.insert(any(Refund.class))).thenReturn(1);
-            when(paymentMapper.updateById(any(Payment.class))).thenReturn(1);
+            when(outboxService.queryMessages(any(OutboxQuery.class), eq(1), eq(1))).thenReturn(new Page<>());
+            String key = payment.getOrderNo() + ":partial-1";
+            service.refundAfterSale(new AfterSaleRefundRequest(null, 1L, payment.getOrderNo(),
+                    1L, "partial refund", 0, new BigDecimal("1000.00"), key));
 
-            RefundRequest req = new RefundRequest();
-            req.setReason("partial refund");
-            req.setAmount(new BigDecimal("1000.00"));
-
-            PaymentVO vo = service.refund("202605091200000001", req);
-
-            assertThat(vo.getStatus()).isEqualTo(1);
-            verify(outboxService).enqueue(
-                    eq("payment"),
-                    eq("202605091200000001"),
-                    eq("order-refunded"),
-                    argThat((OrderRefundedMessage message) ->
-                            message != null
-                                    && message.getRefundNo() != null
-                                    && !message.getRefundNo().isBlank()
-                                    && "202605091200000001".equals(message.getOrderNo())
-                                    && Long.valueOf(1L).equals(message.getUserId())
-                                    && new BigDecimal("1000.00").compareTo(message.getRefundAmount()) == 0
-                                    && "PARTIAL".equals(message.getRefundType())
-                                    && "SUCCESS".equals(message.getRefundStatus())
-                                    && message.getOccurredAt() != null));
+            assertThat(payment.getStatus()).isEqualTo(1);
+            verify(outboxService).enqueue(eq("manual-refund"), eq(key), eq("order-refunded"),
+                    argThat((OrderRefundedMessage message) -> "PARTIAL".equals(message.getRefundType())
+                            && new BigDecimal("1000.00").compareTo(message.getRefundAmount()) == 0
+                            && new BigDecimal("1000.00").compareTo(message.getCumulativeRefundAmount()) == 0));
         }
 
         @Test
-        void shouldRejectDuplicateRefund() {
+        void buyerRefundOfTheRemainingBalanceCompletesTheOrder() {
             when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-            when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+            when(outboxService.queryMessages(any(OutboxQuery.class), eq(1), eq(1))).thenReturn(new Page<>());
+            Refund previous = new Refund();
+            previous.setAmount(new BigDecimal("1000.00"));
+            when(refundMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(previous));
 
-            RefundRequest req = new RefundRequest();
-            req.setReason("duplicate refund");
+            service.refundAfterSale(new AfterSaleRefundRequest(123L, 1L, payment.getOrderNo(),
+                    1L, "refund the remainder", 1, new BigDecimal("5999.00")));
 
-            assertThatThrownBy(() -> service.refund("202605091200000001", req))
+            assertThat(payment.getStatus()).isEqualTo(3);
+            verify(outboxService).enqueue(eq("after-sale"), eq("123:1"), eq("order-refunded"),
+                    argThat((OrderRefundedMessage message) -> "FULL".equals(message.getRefundType())
+                            && new BigDecimal("5999.00").compareTo(message.getRefundAmount()) == 0
+                            && new BigDecimal("6999.00").compareTo(message.getCumulativeRefundAmount()) == 0));
+        }
+
+        @Test
+        void precisionBeyondCentsIsRejectedBeforeRequestingAnOrderClaim() {
+            when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
+            RefundRequest request = new RefundRequest();
+            request.setReason("invalid amount");
+            request.setAmount(new BigDecimal("6998.999"));
+
+            assertThatThrownBy(() -> service.refund(payment.getOrderNo(), request))
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
-                    .isEqualTo(PaymentErrorCode.REFUND_ALREADY_EXISTS.getCode());
+                    .isEqualTo(PaymentErrorCode.REFUND_AMOUNT_INVALID.getCode());
+            verify(orderClient, never()).requestManualRefund(anyString(), any());
         }
 
         @Test
@@ -368,7 +359,6 @@ class PaymentServiceImplTest {
         @Test
         void shouldRejectRefundAmountGreaterThanPayment() {
             when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-            when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
 
             RefundRequest req = new RefundRequest();
             req.setReason("over refund");

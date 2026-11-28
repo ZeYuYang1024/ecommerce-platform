@@ -14,7 +14,7 @@ watch(token, () => {
 }, { flush: 'sync' })
 
 export function isPurchasable(item) {
-  return item.skuId != null && item.spuId != null && Boolean(item.name)
+  return item.available !== false && item.skuId != null && item.spuId != null && Boolean(item.name)
     && item.price != null && Number.isFinite(Number(item.price))
 }
 

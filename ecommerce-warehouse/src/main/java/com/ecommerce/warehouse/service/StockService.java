@@ -1,6 +1,7 @@
 package com.ecommerce.warehouse.service;
 
 import com.ecommerce.warehouse.dto.response.PhysicalStockVO;
+import com.ecommerce.warehouse.mapper.OutboundStockAllocationMapper.Allocation;
 
 import java.util.List;
 
@@ -19,23 +20,11 @@ public interface StockService {
 
     void reconcileCount(Long warehouseId, Long skuId, Long binId, int expected, int actual);
 
-    /**
-     * Lock available stock for outbound order.
-     * locked_qty += quantity, available_qty -= quantity across bins.
-     */
-    void lockStock(Long warehouseId, Long skuId, int quantity);
+    void allocateOutboundStock(Long warehouseId, Long itemId, Long skuId, Long binId, int quantity);
 
-    /**
-     * Deduct locked stock after shipping.
-     * quantity -= quantity, locked_qty -= quantity (available_qty unchanged).
-     */
-    void deductStock(Long warehouseId, Long skuId, int quantity);
+    void settleOutboundStock(Long itemId, int quantity, boolean shipped);
 
-    /**
-     * Release locked stock back to available.
-     * locked_qty -= quantity, available_qty += quantity.
-     */
-    void releaseStock(Long warehouseId, Long skuId, int quantity);
+    List<Allocation> outboundAllocations(Long itemId);
 
     /**
      * Get stock records where available_qty is at or below safety stock level.

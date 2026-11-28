@@ -91,8 +91,9 @@ class CouponServiceImplTest {
         template.setType("FLAT");
         template.setMinAmount(new BigDecimal("100.00"));
         template.setDiscountAmount(new BigDecimal("10.00"));
-        template.setStartTime(LocalDateTime.of(2026, 5, 1, 0, 0));
-        template.setEndTime(LocalDateTime.of(2026, 6, 1, 0, 0));
+        template.setStatus(1);
+        template.setStartTime(LocalDateTime.now().minusDays(1));
+        template.setEndTime(LocalDateTime.now().minusMinutes(1));
 
         when(userCouponMapper.selectList(any())).thenReturn(List.of(first, second));
         when(templateMapper.selectById(3001L)).thenReturn(template);
@@ -103,7 +104,7 @@ class CouponServiceImplTest {
                 .hasSize(2)
                 .extracting(CouponVO::getUserCouponId, CouponVO::getId, CouponVO::getName, CouponVO::getStatus)
                 .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(7001L, 3001L, "618 coupon", 0),
+                        org.assertj.core.groups.Tuple.tuple(7001L, 3001L, "618 coupon", 2),
                         org.assertj.core.groups.Tuple.tuple(7002L, 3001L, "618 coupon", 1)
                 );
         verify(templateMapper).selectById(3001L);

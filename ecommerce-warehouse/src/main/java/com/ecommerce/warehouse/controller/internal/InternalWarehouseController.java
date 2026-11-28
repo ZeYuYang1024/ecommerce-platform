@@ -2,6 +2,7 @@ package com.ecommerce.warehouse.controller.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ecommerce.common.result.Result;
+import com.ecommerce.warehouse.common.OutboundStatus;
 import com.ecommerce.warehouse.dto.request.CreateOutboundRequest;
 import com.ecommerce.warehouse.dto.response.OutboundOrderVO;
 import com.ecommerce.warehouse.dto.response.PhysicalStockVO;
@@ -56,6 +57,10 @@ public class InternalWarehouseController {
     @GetMapping("/outbounds/shipping/{shippingId}/exists")
     public Result<Boolean> hasOutbound(@PathVariable Long shippingId) {
         return Result.ok(outboundOrders.exists(new LambdaQueryWrapper<OutboundOrder>()
-                .eq(OutboundOrder::getShippingId, shippingId)));
+                .eq(OutboundOrder::getShippingId, shippingId).ne(OutboundOrder::getStatus, OutboundStatus.CANCELLED)));
+    }
+    @PutMapping("/outbounds/shipping/{shippingId}/cancel-unshipped")
+    public Result<Boolean> cancelUnshipped(@PathVariable Long shippingId) {
+        return Result.ok(outboundService.cancelUnshipped(shippingId));
     }
 }

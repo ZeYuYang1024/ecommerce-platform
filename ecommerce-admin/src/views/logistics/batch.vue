@@ -25,6 +25,11 @@
         <el-select v-model="defaultProviderId" placeholder="选择物流公司" clearable style="width: 220px;" @focus="loadProviders">
           <el-option v-for="p in providers" :key="p.id" :label="p.providerName" :value="p.id" />
         </el-select>
+        <el-select v-model="defaultRoute" placeholder="批量选择发货方式" style="width: 220px" @focus="loadWarehouses">
+          <el-option label="自行发货" value="self" />
+          <el-option v-for="warehouse in warehouses" :key="warehouse.id"
+            :label="warehouse.warehouseName + '（托管仓）'" :value="String(warehouse.id)" />
+        </el-select>
         <el-button type="primary" @click="parseInput">解析数据</el-button>
       </div>
     </el-card>
@@ -42,6 +47,15 @@
           <template #default="{ row }">
             <el-select v-model="row.providerId" placeholder="选择" style="width: 150px;" @focus="loadProviders">
               <el-option v-for="p in providers" :key="p.id" :label="p.providerName" :value="p.id" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="发货方式" width="200">
+          <template #default="{ row }">
+            <el-select v-model="row.route" placeholder="选择发货方式" @focus="loadWarehouses">
+              <el-option label="自行发货" value="self" />
+              <el-option v-for="warehouse in warehouses" :key="warehouse.id"
+                :label="warehouse.warehouseName + '（托管仓）'" :value="String(warehouse.id)" />
             </el-select>
           </template>
         </el-table-column>
@@ -72,7 +86,7 @@
       <template #header><span>提交结果</span></template>
       <el-alert :type="results.errorCount > 0 ? 'warning' : 'success'" :closable="false" show-icon>
         <template #title>
-          成功 {{ results.successCount }} 条{{ results.errorCount > 0 ? `，失败 ${results.errorCount} 条` : '' }}
+          已发货 {{ results.dispatchedCount }} 条，待出库 {{ results.pendingCount }} 条{{ results.errorCount > 0 ? `，失败 ${results.errorCount} 条` : '' }}
         </template>
       </el-alert>
       <el-table v-if="results.errors.length > 0" :data="results.errors" style="margin-top: 12px;" stripe>
@@ -93,6 +107,8 @@ import axios from 'axios'
 const inputMode = ref('manual')
 const rawText = ref('')
 const defaultProviderId = ref(null)
+const defaultRoute = ref(null)
+const warehouses = ref([])
 const parsedItems = ref([])
 const providers = ref([])
 const results = ref(null)
@@ -104,6 +120,17 @@ const loadProviders = async () => {
     const { data } = await axios.get('/api/v1/admin/logistics/providers/all')
     if (data.code === 200) providers.value = data.data || []
   } catch { /* ignore */ }
+}
+
+const loadWarehouses = async () => {
+  if (warehouses.value.length > 0) return
+  try {
+    const { data } = await axios.get('/api/v1/admin/warehouses', { params: { size: 999 } })
+    if (data.code !== 200) throw new Error(data.message)
+    warehouses.value = (data.data?.records || []).filter(warehouse => warehouse.stockMode === 1 && warehouse.status === 1)
+  } catch {
+    ElMessage.warning('暂时无法加载托管仓，请稍后重试')
+  }
 }
 
 const handleFileChange = (file) => {
@@ -122,14 +149,16 @@ const parseInput = async () => {
   for (const line of lines) {
     const parts = line.split(/[,\t]/).map(s => s.trim())
     if (parts.length < 3) continue
-    const orderId = parseInt(parts[0])
-    const providerId = parseInt(parts[1])
+    const orderId = parts[0]
+    const providerId = parts[1] || defaultProviderId.value
     const trackingNo = parts[2]
     const packageWeight = parts.length >= 4 ? parseInt(parts[3]) : 0
-    if (isNaN(orderId) || isNaN(providerId) || !trackingNo) continue
+    if (!/^\d+$/.test(orderId) || (providerId && !/^\d+$/.test(String(providerId))) || !trackingNo) continue
     items.push({
       orderId,
-      providerId: isNaN(providerId) ? defaultProviderId.value : providerId,
+      providerId: providerId ? (providers.value.find(p => String(p.id) === String(providerId))?.id ?? providerId) : null,
+      route: defaultRoute.value,
+      clientRequestId: Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, '0')).join(''),
       trackingNo,
       packageWeight: isNaN(packageWeight) ? 0 : packageWeight
     })
@@ -152,7 +181,7 @@ const submitBatch = async () => {
   }
 
   // validate
-  const invalid = parsedItems.value.filter(i => !i.orderId || !i.providerId || !i.trackingNo)
+  const invalid = parsedItems.value.filter(i => !i.orderId || !i.providerId || !i.trackingNo || !i.route)
   if (invalid.length > 0) {
     ElMessage.error(`有 ${invalid.length} 条数据不完整，请检查`)
     return
@@ -161,19 +190,24 @@ const submitBatch = async () => {
   submitting.value = true
   try {
     const { data } = await axios.post('/api/v1/admin/logistics/shipping/batch', {
-      items: parsedItems.value
+      items: parsedItems.value.map(({ route, ...item }) => ({
+        ...item, warehouseId: route === 'self' ? null : route
+      }))
     })
     if (data.code === 200) {
       const list = data.data || []
       const successList = list.filter(v => v.id)
-      const errorList = parsedItems.value.filter((_, i) => !list[i] || !list[i].id)
+      const errorList = parsedItems.value.flatMap((item, i) => list[i]?.id ? [] : [{
+        orderId: item.orderId, reason: list[i]?.outboundError || '发货失败，请检查参数'
+      }])
       results.value = {
-        successCount: successList.length,
+        dispatchedCount: successList.filter(row => row.shippingStatus !== 0).length,
+        pendingCount: successList.filter(row => row.shippingStatus === 0).length,
         errorCount: errorList.length,
-        errors: errorList.map(e => ({ orderId: e.orderId, reason: '发货失败，请检查参数' }))
+        errors: errorList
       }
       if (errorList.length === 0) {
-        ElMessage.success(`全部成功，共 ${successList.length} 条`)
+        ElMessage.success(`已接收 ${successList.length} 条发货请求`)
         parsedItems.value = []
       } else {
         ElMessage.warning(`成功 ${successList.length} 条，失败 ${errorList.length} 条`)

@@ -51,7 +51,6 @@ class PaymentServiceRefundValidationTest {
         payment.setStatus(1);
 
         when(paymentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(payment);
-        when(refundMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
 
         RefundRequest request = new RefundRequest();
         request.setReason("over refund");

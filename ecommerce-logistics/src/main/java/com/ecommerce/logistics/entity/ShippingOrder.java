@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.annotation.Version;
 import com.ecommerce.common.entity.BaseEntity;
 import lombok.Data;
+import com.ecommerce.logistics.common.ManagedOutboundState;
 import lombok.EqualsAndHashCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -24,6 +25,9 @@ public class ShippingOrder extends BaseEntity {
     private Integer sourceType;
     private BigDecimal shippingFee;
     private Integer shippingStatus;
+    private ManagedOutboundState outboundState;
+    private String outboundError;
+    private LocalDateTime outboundRetryAt;
     private Boolean wholeOrder;
     private String senderInfo;
     private String receiverInfo;

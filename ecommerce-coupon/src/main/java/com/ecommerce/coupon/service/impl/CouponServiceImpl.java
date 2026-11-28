@@ -23,7 +23,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -207,14 +206,7 @@ public class CouponServiceImpl implements CouponService {
 
     @Override
     public List<CouponVO> listCurrentUserCouponSummaries(Long userId) {
-        LambdaQueryWrapper<UserCoupon> query = new LambdaQueryWrapper<UserCoupon>()
-                .eq(UserCoupon::getUserId, userId)
-                .orderByDesc(UserCoupon::getCreatedAt);
-        List<UserCoupon> userCoupons = userCouponMapper.selectList(query);
-        if (userCoupons.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return buildUserCouponVOs(userCoupons);
+        return listUserCoupons(userId, null);
     }
 
     private CouponVO toVO(CouponTemplate template) {
@@ -234,37 +226,36 @@ public class CouponServiceImpl implements CouponService {
 
     @Override
     public List<CouponVO> listUserCoupons(Long userId, Integer status) {
-        LambdaQueryWrapper<UserCoupon> query = new LambdaQueryWrapper<UserCoupon>()
-                .eq(UserCoupon::getUserId, userId);
-        if (status != null) {
-            query.eq(UserCoupon::getStatus, status);
-        }
-        query.orderByDesc(UserCoupon::getCreatedAt);
-        List<UserCoupon> userCoupons = userCouponMapper.selectList(query);
-        if (userCoupons.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return buildUserCouponVOs(userCoupons);
+        LocalDateTime now = LocalDateTime.now();
+        return buildUserCouponVOs(userCouponMapper.selectList(userCoupons(userId, status, now)), now);
     }
 
     @Override
     public Page<CouponVO> listUserCoupons(Long userId, Integer status, int page, int size) {
+        LocalDateTime now = LocalDateTime.now();
+        IPage<UserCoupon> rows = userCouponMapper.selectPage(new Page<>(page, size), userCoupons(userId, status, now));
+        return new Page<CouponVO>(rows.getCurrent(), rows.getSize(), rows.getTotal())
+                .setRecords(buildUserCouponVOs(rows.getRecords(), now));
+    }
+
+    private LambdaQueryWrapper<UserCoupon> userCoupons(Long userId, Integer status, LocalDateTime now) {
         LambdaQueryWrapper<UserCoupon> query = new LambdaQueryWrapper<UserCoupon>()
                 .eq(UserCoupon::getUserId, userId);
         if (status != null) {
-            query.eq(UserCoupon::getStatus, status);
+            query.apply("""
+                    CASE WHEN status <> 0 THEN status ELSE COALESCE((
+                        SELECT CASE
+                            WHEN ct.status <> 1 OR ct.status IS NULL OR ct.start_time > {0} THEN 3
+                            WHEN ct.end_time <= {0} THEN 2
+                            ELSE 0 END
+                        FROM coupon_template ct WHERE ct.id = user_coupon.template_id AND ct.deleted = 0
+                    ), 3) END = {1}
+                    """, now, status);
         }
-        query.orderByDesc(UserCoupon::getCreatedAt);
-        IPage<UserCoupon> pageResult = userCouponMapper.selectPage(new Page<>(page, size), query);
-        Page<CouponVO> result = new Page<>(page, size);
-        result.setTotal(pageResult.getTotal());
-        result.setRecords(pageResult.getRecords().isEmpty()
-                ? Collections.emptyList()
-                : buildUserCouponVOs(pageResult.getRecords()));
-        return result;
+        return query.orderByDesc(UserCoupon::getCreatedAt, UserCoupon::getId);
     }
 
-    private List<CouponVO> buildUserCouponVOs(List<UserCoupon> userCoupons) {
+    private List<CouponVO> buildUserCouponVOs(List<UserCoupon> userCoupons, LocalDateTime now) {
         Map<Long, CouponTemplate> templateMap = new HashMap<>();
         List<CouponVO> vos = new ArrayList<>();
         for (UserCoupon userCoupon : userCoupons) {
@@ -277,7 +268,7 @@ public class CouponServiceImpl implements CouponService {
             vo.setMinAmount(template != null ? template.getMinAmount() : null);
             vo.setDiscountAmount(template != null ? template.getDiscountAmount() : null);
             vo.setDiscountRate(template != null ? template.getDiscountRate() : null);
-            vo.setStatus(userCoupon.getStatus());
+            vo.setStatus(userCoupon.getStatus() == 0 ? templateAvailability(template, now) : userCoupon.getStatus());
             vo.setStartTime(template != null ? template.getStartTime() : null);
             vo.setEndTime(template != null ? template.getEndTime() : null);
             vos.add(vo);
@@ -296,12 +287,7 @@ public class CouponServiceImpl implements CouponService {
         }
 
         CouponTemplate template = templateMapper.selectById(userCoupon.getTemplateId());
-        if (template == null || template.getStatus() == 0) {
-            throw new BusinessException(CouponErrorCode.COUPON_NOT_AVAILABLE);
-        }
-        if (template.getEndTime() != null && template.getEndTime().isBefore(LocalDateTime.now())) {
-            throw new BusinessException(CouponErrorCode.COUPON_EXPIRED);
-        }
+        requireUsableTemplate(template, LocalDateTime.now());
 
         BigDecimal minAmount = template.getMinAmount() != null ? template.getMinAmount() : BigDecimal.ZERO;
         if (orderAmount.compareTo(minAmount) < 0) {
@@ -325,10 +311,26 @@ public class CouponServiceImpl implements CouponService {
         if (userCoupon == null || userCoupon.getStatus() != 0) {
             throw new BusinessException(CouponErrorCode.COUPON_ALREADY_USED);
         }
+        requireUsableTemplate(templateMapper.selectById(userCoupon.getTemplateId()), LocalDateTime.now());
         userCoupon.setStatus(1);
         userCoupon.setOrderNo(orderNo);
         userCoupon.setUsedAt(LocalDateTime.now());
         userCouponMapper.updateById(userCoupon);
+    }
+
+    private void requireUsableTemplate(CouponTemplate template, LocalDateTime now) {
+        switch (templateAvailability(template, now)) {
+            case 2 -> throw new BusinessException(CouponErrorCode.COUPON_EXPIRED);
+            case 3 -> throw new BusinessException(CouponErrorCode.COUPON_NOT_AVAILABLE);
+            default -> { }
+        }
+    }
+
+    private int templateAvailability(CouponTemplate template, LocalDateTime now) {
+        if (template == null || !Integer.valueOf(1).equals(template.getStatus())
+                || (template.getStartTime() != null && template.getStartTime().isAfter(now))) return 3;
+        if (template.getEndTime() != null && !template.getEndTime().isAfter(now)) return 2;
+        return 0;
     }
 
     private BigDecimal calculateDiscount(CouponTemplate template, BigDecimal orderAmount) {

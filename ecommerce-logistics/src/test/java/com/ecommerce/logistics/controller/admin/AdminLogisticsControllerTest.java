@@ -55,7 +55,8 @@ class AdminLogisticsControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new AdminLogisticsController(providerService, shippingService, templateService))
+                        new AdminLogisticsController(providerService, shippingService,
+                                org.mockito.Mockito.mock(com.ecommerce.logistics.service.ManagedOutboundService.class), templateService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

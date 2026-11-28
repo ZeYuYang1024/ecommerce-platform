@@ -24,6 +24,7 @@ function orderSql(statement: string) {
 
 test('seeded SKU goes from cart to paid order and consumes one unit of available stock', async ({ page, request }) => {
   test.setTimeout(150_000)
+  await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.abort())
   const login = { username: `e2e_${randomUUID().slice(0, 12)}`, password: randomUUID().slice(0, 30) }
   const account = await result(await request.post('/api/v1/auth/register', { data: login }))
   const headers = { Authorization: `Bearer ${account.token}` }

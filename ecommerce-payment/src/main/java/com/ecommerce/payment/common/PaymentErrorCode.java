@@ -8,6 +8,8 @@ public enum PaymentErrorCode implements ErrorCode {
     PAYMENT_NOT_PAID(50010003, "订单未支付，无法退款"),
     REFUND_ALREADY_EXISTS(50010004, "退款已存在"),
     REFUND_AMOUNT_INVALID(50010005, "退款金额不合法"),
+    REFUND_REQUEST_UNAVAILABLE(50010007, "订单服务暂不可用，请重试"),
+    SETTLEMENT_DATE_INVALID(50010008, "请选择已结束的结算日期"),
     RECONCILIATION_NOT_FOUND(50010006, "对账记录不存在"),
     PAYMENT_ORDER_EXPIRED(50010020, "订单已超过支付时限");
 

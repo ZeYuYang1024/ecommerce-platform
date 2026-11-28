@@ -78,9 +78,7 @@ public class GrowthServiceImpl implements GrowthService {
         log.info("Growth changed: userId={}, amount={}, bizKey={}, balanceAfter={}",
                 userId, amount, bizKey, tx.getBalanceAfter());
 
-        if (amount > 0) {
-            levelService.checkUpgrade(userId, updated.getGrowthValue());
-        }
+        levelService.checkUpgrade(userId, Math.max(0, updated.getGrowthValue()));
     }
 
     @Override

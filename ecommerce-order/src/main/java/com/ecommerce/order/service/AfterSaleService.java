@@ -4,10 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.constant.OrderStatus;
 import com.ecommerce.common.dto.AfterSaleRefundRequest;
+import com.ecommerce.common.dto.ManualRefundCommand;
 import com.ecommerce.common.dto.OrderInventoryMessage;
 import com.ecommerce.common.dto.OrderItemMessage;
 import com.ecommerce.common.dto.OrderRefundedMessage;
 import com.ecommerce.common.dto.SkuBatchVO;
+import com.ecommerce.common.outbox.OutboxQuery;
 import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.util.SnowflakeUtils;
@@ -44,12 +46,12 @@ public class AfterSaleService {
     private final ProductSpuClient catalog;
     private final OutboxService outbox;
 
-    public record BuyerStatus(boolean canApply, AfterSale application) {}
+    public record BuyerStatus(boolean canApply, AfterSale application, BigDecimal refundableAmount) {}
 
     public BuyerStatus buyerStatus(Long userId, String orderNo) {
         Order order = requireBuyer(findOrder(orderNo, false), userId);
         AfterSale application = findCase(order.getId());
-        return new BuyerStatus(application == null && eligible(order), application);
+        return new BuyerStatus(application == null && eligible(order), application, remainingAmount(order));
     }
 
     @Transactional
@@ -65,7 +67,7 @@ public class AfterSaleService {
         application.setOrderNo(order.getOrderNo());
         application.setUserId(userId);
         application.setMerchantId(resolveMerchant(order.getId()));
-        application.setAmount(order.getTotalAmount());
+        application.setAmount(remainingAmount(order));
         application.setReason(reason.trim());
         application.setStatus(AfterSale.Status.PENDING);
         application.setCreatedAt(LocalDateTime.now());
@@ -117,6 +119,7 @@ public class AfterSaleService {
         if (!eligible(order) && !Objects.equals(order.getStatus(), OrderStatus.REFUNDED)) {
             throw new BusinessException(OrderErrorCode.AFTER_SALE_NOT_ELIGIBLE);
         }
+        if (Objects.equals(order.getStatus(), OrderStatus.PAID)) application.setAmount(remainingAmount(order));
         requestRefund(application);
         return application;
     }
@@ -133,6 +136,37 @@ public class AfterSaleService {
     }
 
     @Transactional
+    public void requestManualRefund(String orderNo, ManualRefundCommand command) {
+        Order order = findOrder(orderNo, true);
+        String key = orderNo + ":" + command.requestId();
+        if (Objects.equals(key, order.getManualRefundKey()) ||
+                !outbox.queryMessages(new OutboxQuery("manual-refund", AfterSaleRefundRequest.TOPIC, null, key),
+                        1, 1).getRecords().isEmpty()) return;
+
+        if (order.getManualRefundKey() != null || blocksShipping(findCase(order.getId(), true))) {
+            throw new BusinessException(OrderErrorCode.MANUAL_REFUND_IN_PROGRESS);
+        }
+
+        BigDecimal remaining = remainingAmount(order);
+        BigDecimal amount = command.amount() == null ? remaining : command.amount();
+        // Payment has already checked capture. A full manual refund may precede delivery of order-paid.
+        boolean captureNotYetApplied = Objects.equals(order.getStatus(), OrderStatus.PENDING)
+                && amount.compareTo(remaining) == 0 && !claimReaper.hasShipping(order.getId());
+        boolean validStatus = command.afterShipment()
+                ? Objects.equals(order.getStatus(), OrderStatus.SHIPPED) || Objects.equals(order.getStatus(), OrderStatus.COMPLETED)
+                : eligible(order) || captureNotYetApplied;
+        if (!validStatus || amount.signum() < 0 || amount.compareTo(remaining) > 0
+                || (amount.signum() == 0 && !paidWithOnlyPoints(order))) {
+            throw new BusinessException(OrderErrorCode.MANUAL_REFUND_INVALID);
+        }
+
+        orders.setManualRefundKey(order.getId(), key);
+        outbox.enqueue("manual-refund", key, AfterSaleRefundRequest.TOPIC,
+                new AfterSaleRefundRequest(null, order.getId(), orderNo, order.getUserId(), command.reason(),
+                        0, amount, key));
+    }
+
+    @Transactional
     public void claimShipping(Long orderId, String shippingNo, Long shippingId, boolean managed) {
         // The order row serializes shipment claims with buyer applications.
         Order order = orders.selectOne(new LambdaQueryWrapper<Order>()
@@ -146,9 +180,7 @@ public class AfterSaleService {
         if (claimReaper.hasOtherShipping(orderId, shippingNo)) {
             throw new BusinessException(OrderErrorCode.ORDER_ALREADY_SHIPPED);
         }
-        AfterSale application = findCase(orderId);
-        if (application != null && (application.getStatus() == AfterSale.Status.PENDING
-                || application.getStatus() == AfterSale.Status.REFUNDING)) {
+        if (order.getManualRefundKey() != null || blocksShipping(findCase(orderId, true))) {
             throw new BusinessException(OrderErrorCode.AFTER_SALE_BLOCKS_SHIPPING);
         }
         shippingClaims.claim(orderId, shippingNo, shippingId, managed);
@@ -156,6 +188,10 @@ public class AfterSaleService {
 
     public void releaseShipping(Long orderId, String shippingNo) {
         shippingClaims.release(orderId, shippingNo);
+    }
+
+    public void releaseCancelledShipping(Long orderId, String shippingNo) {
+        shippingClaims.releaseManaged(orderId, shippingNo);
     }
 
     public void confirmShipping(Long orderId, String shippingNo) {
@@ -170,6 +206,10 @@ public class AfterSaleService {
             return;
         }
         AfterSale application = findCase(order.getId(), true);
+        boolean manual = result.getManualRefundKey() != null;
+        if (manual && Objects.equals(result.getManualRefundKey(), order.getManualRefundKey())) {
+            orders.setManualRefundKey(order.getId(), null);
+        }
         boolean correlated = result.getAfterSaleId() != null;
         if (correlated && (application == null || !application.getId().equals(result.getAfterSaleId()))) {
             log.error("Refund outcome has no matching application: orderNo={}, refundNo={}, afterSaleId={}",
@@ -183,7 +223,10 @@ public class AfterSaleService {
             if (currentAttempt) fail(application, result.getFailureReason());
             return;
         }
-        if (!correlated && isExpectedPartial(result, order)) return;
+        if (!correlated && isExpectedPartial(result, order)) {
+            rememberRefundAmount(order, result.cumulativeAmount());
+            return;
+        }
         boolean cancelled = Objects.equals(order.getStatus(), OrderStatus.CANCELLED);
         if (!matchesFullRefund(result, order.getUserId(), order.getTotalAmount(),
                 cancelled || paidWithOnlyPoints(order))) {
@@ -193,6 +236,7 @@ public class AfterSaleService {
             return;
         }
 
+        rememberRefundAmount(order, result.cumulativeAmount());
         if (Objects.equals(order.getStatus(), OrderStatus.REFUNDED)) {
             recordRefund(application, result, null);
             return;
@@ -233,8 +277,9 @@ public class AfterSaleService {
                 .eq(AfterSale::getOrderNo, result.getOrderNo()).last("FOR UPDATE"));
         if (application == null || application.getStatus() != AfterSale.Status.REFUNDING
                 || application.getRefundAttempt() != Objects.requireNonNullElse(result.getRefundAttempt(), 0)) return;
-        if ("SUCCESS".equals(result.getRefundStatus())
-                && matchesFullRefund(result, application.getUserId(), application.getAmount(), false)) {
+        if ("SUCCESS".equals(result.getRefundStatus()) && result.getRefundAmount() != null
+                && result.getRefundAmount().compareTo(application.getAmount()) == 0
+                && matchesFullRefund(result, application.getUserId(), result.cumulativeAmount(), true)) {
             recordRefund(application, result, "退款已成功，订单不存在，库存未自动释放");
         } else {
             fail(application, "无法核对退款结果，订单不存在");
@@ -244,14 +289,16 @@ public class AfterSaleService {
     private boolean isExpectedPartial(OrderRefundedMessage result, Order order) {
         return "PARTIAL".equals(result.getRefundType()) && Objects.equals(result.getUserId(), order.getUserId())
                 && result.getRefundAmount() != null && order.getTotalAmount() != null
-                && result.getRefundAmount().signum() > 0 && result.getRefundAmount().compareTo(order.getTotalAmount()) < 0;
+                && result.getRefundAmount().signum() > 0 && result.cumulativeAmount().compareTo(result.getRefundAmount()) >= 0
+                && result.cumulativeAmount().compareTo(order.getTotalAmount()) < 0;
     }
 
     private boolean matchesFullRefund(OrderRefundedMessage result, Long userId, BigDecimal total, boolean allowZero) {
         return "FULL".equals(result.getRefundType()) && Objects.equals(result.getUserId(), userId)
                 && total != null && (total.signum() > 0 || (allowZero && total.signum() == 0))
                 && result.getRefundAmount() != null
-                && total.compareTo(result.getRefundAmount()) == 0
+                && result.getRefundAmount().signum() >= 0 && result.getRefundAmount().compareTo(total) <= 0
+                && total.compareTo(result.cumulativeAmount()) == 0
                 && result.getRefundNo() != null && !result.getRefundNo().isBlank();
     }
 
@@ -300,9 +347,28 @@ public class AfterSaleService {
                 .eq(AfterSale::getOrderId, orderId).last(lock, "FOR UPDATE"));
     }
 
+    private boolean blocksShipping(AfterSale application) {
+        return application != null && (application.getStatus() == AfterSale.Status.PENDING
+                || application.getStatus() == AfterSale.Status.REFUNDING);
+    }
+
+    private BigDecimal remainingAmount(Order order) {
+        if (order.getTotalAmount() == null) return BigDecimal.ZERO;
+        return order.getTotalAmount().subtract(Objects.requireNonNullElse(order.getRefundedAmount(), BigDecimal.ZERO))
+                .max(BigDecimal.ZERO);
+    }
+
+    private void rememberRefundAmount(Order order, BigDecimal amount) {
+        BigDecimal previous = Objects.requireNonNullElse(order.getRefundedAmount(), BigDecimal.ZERO);
+        if (amount.compareTo(previous) > 0) {
+            orders.recordRefundedAmount(order.getId(), amount);
+        }
+    }
+
     private boolean eligible(Order order) {
         return Objects.equals(order.getStatus(), OrderStatus.PAID) && order.getTotalAmount() != null
-                && (order.getTotalAmount().signum() > 0 || paidWithOnlyPoints(order))
+                && order.getManualRefundKey() == null
+                && (remainingAmount(order).signum() > 0 || paidWithOnlyPoints(order))
                 && !claimReaper.hasShipping(order.getId());
     }
 

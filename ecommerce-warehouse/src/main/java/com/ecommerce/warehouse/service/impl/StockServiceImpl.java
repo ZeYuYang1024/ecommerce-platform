@@ -11,6 +11,8 @@ import com.ecommerce.warehouse.dto.response.PhysicalStockVO;
 import com.ecommerce.warehouse.entity.PhysicalStock;
 import com.ecommerce.warehouse.entity.Warehouse;
 import com.ecommerce.warehouse.mapper.PhysicalStockMapper;
+import com.ecommerce.warehouse.mapper.OutboundStockAllocationMapper;
+import com.ecommerce.warehouse.mapper.OutboundStockAllocationMapper.Allocation;
 import com.ecommerce.warehouse.mapper.WarehouseMapper;
 import com.ecommerce.warehouse.service.StockService;
 import org.springframework.stereotype.Service;
@@ -24,13 +26,15 @@ import java.util.List;
 public class StockServiceImpl implements StockService {
 
     private final PhysicalStockMapper physicalStockMapper;
+    private final OutboundStockAllocationMapper allocations;
     private final WarehouseMapper warehouseMapper;
     private final OutboxService outboxService;
 
-    public StockServiceImpl(PhysicalStockMapper physicalStockMapper,
+    public StockServiceImpl(OutboundStockAllocationMapper allocations, PhysicalStockMapper physicalStockMapper,
                             WarehouseMapper warehouseMapper,
                             OutboxService outboxService) {
         this.physicalStockMapper = physicalStockMapper;
+        this.allocations = allocations;
         this.warehouseMapper = warehouseMapper;
         this.outboxService = outboxService;
     }
@@ -126,146 +130,54 @@ public class StockServiceImpl implements StockService {
 
     @Override
     @Transactional
-    public void lockStock(Long warehouseId, Long skuId, int quantity) {
-        validateManagedWarehouse(warehouseId);
-
-        List<PhysicalStock> stocks = physicalStockMapper.selectList(
-                new LambdaQueryWrapper<PhysicalStock>()
-                        .eq(PhysicalStock::getWarehouseId, warehouseId)
-                        .eq(PhysicalStock::getSkuId, skuId)
-                        .gt(PhysicalStock::getAvailableQty, 0));
-
-        // Fast-fail pre-check: sum available across all bins
-        int totalAvailable = stocks.stream()
-                .mapToInt(s -> s.getAvailableQty() != null ? s.getAvailableQty() : 0)
-                .sum();
-
-        if (totalAvailable < quantity) {
-            throw new BusinessException(WarehouseErrorCode.INSUFFICIENT_STOCK);
-        }
+    public void allocateOutboundStock(Long warehouseId, Long itemId, Long skuId, Long binId, int quantity) {
+        if (quantity <= 0) throw new BusinessException(WarehouseErrorCode.STOCK_LOCK_FAILED);
+        List<PhysicalStock> stocks = physicalStockMapper.selectList(new LambdaQueryWrapper<PhysicalStock>()
+                .eq(PhysicalStock::getWarehouseId, warehouseId)
+                .eq(PhysicalStock::getSkuId, skuId)
+                .eq(binId != null, PhysicalStock::getBinId, binId)
+                .gt(PhysicalStock::getAvailableQty, 0)
+                .orderByAsc(PhysicalStock::getId)
+                .last("FOR UPDATE"));
 
         int remaining = quantity;
         for (PhysicalStock stock : stocks) {
-            if (remaining <= 0) break;
-            int available = stock.getAvailableQty() != null ? stock.getAvailableQty() : 0;
-            int take = Math.min(available, remaining);
-            if (take <= 0) continue;
-
-            // Atomic UPDATE: check available_qty >= take at DB level, then lock
-            UpdateWrapper<PhysicalStock> updateWrapper = new UpdateWrapper<>();
-            updateWrapper.eq("id", stock.getId())
-                    .ge("available_qty", take)
+            if (remaining == 0) break;
+            int take = Math.min(stock.getAvailableQty(), remaining);
+            int changed = physicalStockMapper.update(null, new UpdateWrapper<PhysicalStock>()
+                    .eq("id", stock.getId()).ge("available_qty", take)
                     .setSql("locked_qty = locked_qty + " + take)
-                    .setSql("available_qty = available_qty - " + take);
-
-            int rows = physicalStockMapper.update(null, updateWrapper);
-            if (rows == 0) {
-                // Either concurrent modification or stock was taken by another tx.
-                // @Transactional ensures previous bin updates in this tx roll back.
-                throw new BusinessException(WarehouseErrorCode.STOCK_CONCURRENT_UPDATE);
-            }
-
-            // Re-select for accurate outbox message
-            PhysicalStock updated = physicalStockMapper.selectById(stock.getId());
-            publishStockChanged(updated, "LOCK", take);
+                    .setSql("available_qty = available_qty - " + take));
+            if (changed != 1) throw new BusinessException(WarehouseErrorCode.STOCK_CONCURRENT_UPDATE);
+            allocations.insert(itemId, stock.getId(), take);
+            publishStockChanged(physicalStockMapper.selectById(stock.getId()), "LOCK", take);
             remaining -= take;
         }
-
-        if (remaining > 0) {
-            throw new BusinessException(WarehouseErrorCode.STOCK_LOCK_FAILED);
-        }
+        if (remaining > 0) throw new BusinessException(WarehouseErrorCode.INSUFFICIENT_STOCK);
     }
 
     @Override
     @Transactional
-    public void deductStock(Long warehouseId, Long skuId, int quantity) {
-        List<PhysicalStock> stocks = physicalStockMapper.selectList(
-                new LambdaQueryWrapper<PhysicalStock>()
-                        .eq(PhysicalStock::getWarehouseId, warehouseId)
-                        .eq(PhysicalStock::getSkuId, skuId)
-                        .gt(PhysicalStock::getLockedQty, 0));
-
-        int totalLocked = stocks.stream()
-                .mapToInt(s -> s.getLockedQty() != null ? s.getLockedQty() : 0)
-                .sum();
-
-        if (totalLocked < quantity) {
-            throw new BusinessException(WarehouseErrorCode.INSUFFICIENT_STOCK);
+    public void settleOutboundStock(Long itemId, int quantity, boolean shipped) {
+        List<Allocation> rows = outboundAllocations(itemId);
+        if (rows.stream().mapToInt(Allocation::quantity).sum() != quantity) {
+            throw new BusinessException(WarehouseErrorCode.OUTBOUND_ALLOCATION_INCOMPLETE);
         }
-
-        int remaining = quantity;
-        for (PhysicalStock stock : stocks) {
-            if (remaining <= 0) break;
-            int locked = stock.getLockedQty() != null ? stock.getLockedQty() : 0;
-            int take = Math.min(locked, remaining);
-            if (take <= 0) continue;
-
-            // Atomic UPDATE: check locked_qty >= take at DB level, then deduct
-            UpdateWrapper<PhysicalStock> updateWrapper = new UpdateWrapper<>();
-            updateWrapper.eq("id", stock.getId())
-                    .ge("locked_qty", take)
-                    .setSql("quantity = quantity - " + take)
-                    .setSql("locked_qty = locked_qty - " + take);
-
-            int rows = physicalStockMapper.update(null, updateWrapper);
-            if (rows == 0) {
-                throw new BusinessException(WarehouseErrorCode.STOCK_CONCURRENT_UPDATE);
-            }
-
-            PhysicalStock updated = physicalStockMapper.selectById(stock.getId());
-            publishStockChanged(updated, "DEDUCT", take);
-            remaining -= take;
-        }
-
-        if (remaining > 0) {
-            throw new BusinessException(WarehouseErrorCode.STOCK_LOCK_FAILED);
-        }
-    }
-
-    @Override
-    @Transactional
-    public void releaseStock(Long warehouseId, Long skuId, int quantity) {
-        List<PhysicalStock> stocks = physicalStockMapper.selectList(
-                new LambdaQueryWrapper<PhysicalStock>()
-                        .eq(PhysicalStock::getWarehouseId, warehouseId)
-                        .eq(PhysicalStock::getSkuId, skuId)
-                        .gt(PhysicalStock::getLockedQty, 0));
-
-        int totalLocked = stocks.stream()
-                .mapToInt(s -> s.getLockedQty() != null ? s.getLockedQty() : 0)
-                .sum();
-
-        if (totalLocked < quantity) {
-            throw new BusinessException(WarehouseErrorCode.INSUFFICIENT_STOCK);
-        }
-
-        int remaining = quantity;
-        for (PhysicalStock stock : stocks) {
-            if (remaining <= 0) break;
-            int locked = stock.getLockedQty() != null ? stock.getLockedQty() : 0;
-            int take = Math.min(locked, remaining);
-            if (take <= 0) continue;
-
-            // Atomic UPDATE: check locked_qty >= take at DB level, then release
-            UpdateWrapper<PhysicalStock> updateWrapper = new UpdateWrapper<>();
-            updateWrapper.eq("id", stock.getId())
-                    .ge("locked_qty", take)
+        for (Allocation allocation : rows) {
+            int take = allocation.quantity();
+            int changed = physicalStockMapper.update(null, new UpdateWrapper<PhysicalStock>()
+                    .eq("id", allocation.stockId()).ge("locked_qty", take)
+                    .ge("quantity", take)
                     .setSql("locked_qty = locked_qty - " + take)
-                    .setSql("available_qty = available_qty + " + take);
-
-            int rows = physicalStockMapper.update(null, updateWrapper);
-            if (rows == 0) {
-                throw new BusinessException(WarehouseErrorCode.STOCK_CONCURRENT_UPDATE);
-            }
-
-            PhysicalStock updated = physicalStockMapper.selectById(stock.getId());
-            publishStockChanged(updated, "RELEASE", take);
-            remaining -= take;
+                    .setSql(shipped ? "quantity = quantity - " + take : "available_qty = available_qty + " + take));
+            if (changed != 1) throw new BusinessException(WarehouseErrorCode.STOCK_CONCURRENT_UPDATE);
+            publishStockChanged(physicalStockMapper.selectById(allocation.stockId()), shipped ? "DEDUCT" : "RELEASE", take);
         }
+    }
 
-        if (remaining > 0) {
-            throw new BusinessException(WarehouseErrorCode.STOCK_LOCK_FAILED);
-        }
+    @Override
+    public List<Allocation> outboundAllocations(Long itemId) {
+        return allocations.findByItem(itemId);
     }
 
     // ======================== Private helpers ========================

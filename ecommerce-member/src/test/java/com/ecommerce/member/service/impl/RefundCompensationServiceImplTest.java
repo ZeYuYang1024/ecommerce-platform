@@ -77,8 +77,8 @@ class RefundCompensationServiceImplTest {
                 "RF1", "ORD-1", 10001L, new BigDecimal("199.00"), "FULL", "refund:ORD-1:RF1"));
 
         assertThat(result.getRestoredPoints()).isEqualTo(120);
-        verify(pointsService).reverseSpend(10001L, 120, "REFUND", "RF1",
-                "REFUND:RF1:POINTS", "退款退回积分", "PR1", null);
+        verify(pointsService).reverseSpend(10001L, 120, "REFUND", "ORD-1",
+                "ORDER:ORD-1:RESTORE_POINTS:120", "退款退回积分", "PR1", null);
         verify(finance).markFullyRefunded("ORD-1");
     }
 
@@ -106,13 +106,13 @@ class RefundCompensationServiceImplTest {
                 "RF2", "ORD-1", 10001L, new BigDecimal("100.00"), "FULL", "refund:ORD-1:RF2"));
 
         assertThat(result.getReversedGrowth()).isEqualTo(100);
-        verify(pointsService).reverseEarn(reward, "ORD-1");
-        verify(growthService).add(10001L, -100, "REFUND", "ORD-1",
-                "ORDER:ORD-1:GROWTH_REVERSED", "全额退款扣回成长值");
+        verify(pointsService).reverseEarn(reward, "ORD-1", 150, "ORDER:ORD-1:EARN_REVERSED:150");
+        verify(growthService).add(10001L, -100, "ORDER_REFUND", "ORD-1",
+                "ORDER:ORD-1:GROWTH_REVERSED:100", "退款扣回成长值");
     }
 
     @Test
-    void compensateShouldRestorePartialRefundByPointsDeductionSnapshot() {
+    void partialRefundUsesCumulativeCashAndReturnsOnlyTheDifference() {
         PointsReservation reservation = new PointsReservation();
         reservation.setId(10L);
         reservation.setReservationNo("PR1");
@@ -133,11 +133,17 @@ class RefundCompensationServiceImplTest {
         order.setPointsDeductionRatio(100);
         when(orderClient.getOrderForMember("ORD-1")).thenReturn(Result.ok(order));
 
-        RefundCompensationResult result = service.compensate(new RefundCompensationRequest(
-                "RF2", "ORD-1", 10001L, new BigDecimal("50.00"), "PARTIAL", "refund:ORD-1:RF2"));
+        PointsTransaction previous = new PointsTransaction();
+        previous.setAmount(671);
+        previous.setSourceId("ORD-1");
+        when(pointsTransactionMapper.selectList(any())).thenReturn(java.util.List.of(previous));
+        when(finance.partialRefundAmount("ORD-1")).thenReturn(new BigDecimal("20.00"));
 
-        assertThat(result.getRestoredPoints()).isEqualTo(5000);
-        verify(pointsService).reverseSpend(10001L, 5000, "REFUND", "RF2",
-                "REFUND:RF2:POINTS", "退款退回积分", "PR1", null);
+        RefundCompensationResult result = service.compensate(new RefundCompensationRequest(
+                "RF2", "ORD-1", 10001L, new BigDecimal("30.00"), "PARTIAL", "refund:ORD-1:RF2", new BigDecimal("50.00")));
+
+        assertThat(result.getRestoredPoints()).isEqualTo(1006);
+        verify(pointsService).reverseSpend(10001L, 1006, "REFUND", "ORD-1",
+                "ORDER:ORD-1:RESTORE_POINTS:1677", "退款退回积分", "PR1", null);
     }
 }

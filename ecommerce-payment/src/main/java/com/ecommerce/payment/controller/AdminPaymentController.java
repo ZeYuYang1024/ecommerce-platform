@@ -67,6 +67,12 @@ public class AdminPaymentController {
                 request.getLimit()));
     }
 
+    @PostMapping("/payment/{orderNo}/refund-after-shipment")
+    public Result<PaymentVO> refundAfterShipment(@PathVariable String orderNo,
+                                                  @Valid @RequestBody RefundRequest request) {
+        return Result.ok(paymentService.refundAfterShipment(orderNo, request));
+    }
+
     @PostMapping("/payment/{orderNo}/refund")
     public Result<PaymentVO> refund(@PathVariable String orderNo,
                                      @Valid @RequestBody RefundRequest request) {

@@ -3,7 +3,7 @@
     <h2 class="mb-4 font-medium text-gray-900">售后</h2>
     <div v-if="data?.application" class="space-y-2 text-sm text-gray-600">
       <p class="font-medium text-gray-900">{{ statuses[data.application.status] }}</p>
-      <p>退款金额 ¥{{ amount }}</p>
+      <p>退款金额 ¥{{ shownAmount }}</p>
       <p>申请原因 {{ data.application.reason }}</p>
       <p v-if="data.application.reviewNote">审核说明 {{ data.application.reviewNote }}</p>
       <p v-if="data.application.failureReason">{{ data.application.failureReason }}</p>
@@ -12,7 +12,7 @@
         type="button" class="text-amber-700" @click="load">刷新进度</button>
     </div>
     <form v-else-if="data?.canApply && applying" class="space-y-3" @submit.prevent="submit">
-      <p class="text-sm text-gray-600">申请全额退款 ¥{{ amount }}</p>
+      <p class="text-sm text-gray-600">{{ refundLabel }} ¥{{ shownAmount }}</p>
       <label for="refund-reason" class="block text-sm text-gray-600">退款原因</label>
       <textarea id="refund-reason" v-model.trim="reason" maxlength="256" required rows="3"
         class="w-full rounded-xl border border-gray-200 p-3" />
@@ -21,7 +21,7 @@
         <button type="button" :disabled="submitting" class="text-gray-600" @click="applying = false">返回</button>
       </div>
     </form>
-    <button v-else-if="data?.canApply" type="button" class="text-amber-700" @click="applying = true">申请全额退款</button>
+    <button v-else-if="data?.canApply" type="button" class="text-amber-700" @click="applying = true">{{ refundLabel }}</button>
     <p v-if="actionError" class="mt-3 text-sm text-red-600" role="alert">{{ actionError }}</p>
     <div v-if="loadError" class="text-sm text-gray-600">
       <p>{{ loadError }}</p>
@@ -34,11 +34,12 @@
 type Application = {
   status: 'PENDING' | 'REJECTED' | 'REFUNDING' | 'REFUNDED' | 'FAILED'
   reason: string
+  amount?: number | string
   reviewNote?: string
   refundNo?: string
   failureReason?: string
 }
-type BuyerStatus = { canApply: boolean, application?: Application }
+type BuyerStatus = { canApply: boolean, application?: Application, refundableAmount?: number | string }
 type ApiResult<T> = { code: number, message?: string, data: T }
 
 const props = defineProps<{ orderNo: string, amount: number | string }>()
@@ -53,6 +54,9 @@ const loadError = ref('')
 const statuses: Record<Application['status'], string> = {
   PENDING: '待审核', REJECTED: '已拒绝', REFUNDING: '退款处理中', REFUNDED: '已退款', FAILED: '退款失败'
 }
+
+const shownAmount = computed(() => data.value?.application?.amount ?? data.value?.refundableAmount ?? props.amount)
+const refundLabel = computed(() => Number(shownAmount.value) < Number(props.amount) ? '申请退回剩余金额' : '申请全额退款')
 
 const endpoint = computed(() => `/orders/no/${encodeURIComponent(props.orderNo)}/after-sale`)
 onMounted(load)

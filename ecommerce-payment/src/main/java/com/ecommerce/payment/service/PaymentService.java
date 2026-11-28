@@ -17,6 +17,8 @@ public interface PaymentService {
     PaymentVO queryByOrderNoForUser(Long userId, String orderNo);
     PaymentVO refund(String orderNo, RefundRequest request);
 
+    PaymentVO refundAfterShipment(String orderNo, RefundRequest request);
+
     void refundAfterSale(AfterSaleRefundRequest request);
 
     void refundCompensation(CompensationRefundRequest request);

@@ -146,6 +146,7 @@ Use these steps with **fresh data volumes**. For an existing installation, back 
   db < "$migrations/2026-11-28-buyer-after-sale.sql"
   db < "$migrations/2026-11-28-commerce-consistency.sql"
   db < "$migrations/2026-11-28-checkout-operations.sql"
+  db < "$migrations/2026-11-28-fulfillment-refund-integrity.sql"
   db -Nse "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'ecommerce%';"
 )
 ```
@@ -183,6 +184,7 @@ foreach ($schema in 'ecommerce_inventory', 'ecommerce_order', 'ecommerce_payment
 Import-ProjectSql "$migrations/2026-11-28-buyer-after-sale.sql"
 Import-ProjectSql "$migrations/2026-11-28-commerce-consistency.sql"
 Import-ProjectSql "$migrations/2026-11-28-checkout-operations.sql"
+Import-ProjectSql "$migrations/2026-11-28-fulfillment-refund-integrity.sql"
 docker compose exec -T mysql mysql -uroot -proot -Nse "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'ecommerce%';"
 ```
 
@@ -463,7 +465,7 @@ On a physical device, check that recommendation card images load. Then sign in, 
 
 Buyers can pay after submitting an order or return to a pending order later. Payment and inventory events are processed asynchronously. For a paid order whose fulfillment has yet to start, the Mini Program and Web order details let buyers submit one full-refund request and check its progress. Merchants review orders belonging to their own store through the after-sales dialog on the Orders page. Platform administrators can review platform and mixed-merchant orders. Approval records a refund and the payment outcome drives the order state. Inventory releases stock only when a successful deduction exists. Platform administrators can retry a failed request against the same application. Rejections are final. Shipping reservations have a 30-minute lease. Automated cleanup and the platform release action reconcile expired claims against logistics and managed warehouse records. When a refund succeeds but the order cannot transition, the application records the refund and leaves inventory for manual review.
 
-For an existing database, apply `docs/sql/migrations/2026-11-28-buyer-after-sale.sql` followed by `docs/sql/migrations/2026-11-28-commerce-consistency.sql` and `docs/sql/migrations/2026-11-28-checkout-operations.sql`. Create the topics in step 3, then rebuild and restart product, order, payment, inventory, logistics, membership, warehouse, coupons, recommendations, and flash sale. On shared MySQL, the migrations preserve existing shipment claims and confirm inventory for open orders from committed reservations. For separate database servers, import existing shipment IDs and backfill `inventory_reserved` for open orders with successful, unreleased stock reservations before enabling fulfillment.
+For an existing database, apply `docs/sql/migrations/2026-11-28-buyer-after-sale.sql` followed by `docs/sql/migrations/2026-11-28-commerce-consistency.sql`, `docs/sql/migrations/2026-11-28-checkout-operations.sql`, and `docs/sql/migrations/2026-11-28-fulfillment-refund-integrity.sql`. Create the topics in step 3, then rebuild and restart product, cart, order, payment, inventory, logistics, membership, warehouse, coupons, recommendations, and flash sale. On shared MySQL, the migrations preserve existing shipment claims and confirm inventory for open orders from committed reservations. For separate database servers, import existing shipment IDs and backfill `inventory_reserved` for open orders with successful, unreleased stock reservations before enabling fulfillment.
 
 Shipments cover the entire order and require confirmed inventory. Dispatch consumes the reservation. Payment captured before cancellation or a confirmed shortage triggers a compensation refund that platform admins can retry from the order list. Full refunds restore redeemed points and reverse the original purchase rewards and growth credit. The flash-sale pages currently display activities.
 
@@ -493,6 +495,12 @@ If you have exported proxy URLs reachable from the build container as `HTTP_PROX
 ```bash
 docker compose --progress plain build --build-arg HTTP_PROXY="$HTTP_PROXY" --build-arg HTTPS_PROXY="$HTTPS_PROXY" minio
 ```
+
+Stop the previous product, order, payment, logistics, warehouse, and membership services before running the refund and fulfillment migration. It backfills recorded refunds, physical stock allocations, membership levels, and product ratings. With separate databases, backfill `order.refunded_amount` from successful refunds by order number before starting the services. Resolve duplicate warehouse outbounds for the same shipment by checking the shipment and physical stock before applying the unique key.
+
+In Payment Management, leave the amount empty to refund the remaining payment before shipment. Buyers with an earlier partial refund can request the remaining balance in their single after-sales application. Platform administrators can request a separate manual refund after shipment. That path preserves fulfillment status and physical inventory. Refund requests are processed asynchronously.
+
+For shipping, choose self-fulfillment or a managed warehouse. A managed shipment stays pending outbound confirmation and retries creation automatically. The shipment list shows synchronization errors and lets operators cancel an unshipped outbound. When warehouse records show an outbound already shipped without a matching shipment, the claim remains in place for manual reconciliation. Daily settlement defaults to yesterday. Recalculating a closed date appends a settlement adjustment when the totals change.
 
 ## Service ports
 

@@ -43,7 +43,7 @@ test.describe('PC Checkout', () => {
     await page.route('**/api/v1/orders', async (route) => {
       await route.fulfill({
         status: 200, contentType: 'application/json',
-        body: JSON.stringify({ code: 200, data: { id: 1, orderNo: '202605101200000001' } })
+        body: JSON.stringify({ code: 200, data: { id: 1, orderNo: '202605101200000001', status: 0 } })
       })
     })
     await page.goto('/checkout')

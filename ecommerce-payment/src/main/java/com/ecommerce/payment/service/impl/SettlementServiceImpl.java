@@ -3,14 +3,18 @@ package com.ecommerce.payment.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.util.SnowflakeUtils;
+import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.payment.client.OrderClient;
+import com.ecommerce.payment.common.PaymentErrorCode;
 import com.ecommerce.payment.dto.response.SettlementVO;
 import com.ecommerce.payment.entity.DailySettlement;
 import com.ecommerce.payment.entity.Payment;
 import com.ecommerce.payment.entity.Refund;
+import com.ecommerce.payment.entity.SettlementAdjustment;
 import com.ecommerce.payment.mapper.DailySettlementMapper;
 import com.ecommerce.payment.mapper.PaymentMapper;
 import com.ecommerce.payment.mapper.RefundMapper;
+import com.ecommerce.payment.mapper.SettlementAdjustmentMapper;
 import com.ecommerce.payment.service.SettlementService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,12 +22,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,27 +39,34 @@ public class SettlementServiceImpl implements SettlementService {
     private final PaymentMapper paymentMapper;
     private final RefundMapper refundMapper;
     private final OrderClient orderClient;
+    private final SettlementAdjustmentMapper adjustmentMapper;
 
     public SettlementServiceImpl(DailySettlementMapper settlementMapper,
                                  PaymentMapper paymentMapper,
                                  RefundMapper refundMapper,
-                                 OrderClient orderClient) {
+                                 OrderClient orderClient, SettlementAdjustmentMapper adjustmentMapper) {
         this.settlementMapper = settlementMapper;
         this.paymentMapper = paymentMapper;
         this.refundMapper = refundMapper;
         this.orderClient = orderClient;
+        this.adjustmentMapper = adjustmentMapper;
     }
 
     @Override
     @Transactional
     public SettlementVO generateSettlement(String dateStr) {
-        LocalDate date = dateStr != null ? LocalDate.parse(dateStr) : LocalDate.now().minusDays(1);
-
-        DailySettlement existing = settlementMapper.selectOne(
-                new LambdaQueryWrapper<DailySettlement>().eq(DailySettlement::getSettlementDate, date));
-        if (existing != null) {
-            return toVO(existing);
+        LocalDate today = LocalDate.now();
+        LocalDate date;
+        try {
+            date = dateStr == null ? today.minusDays(1) : LocalDate.parse(dateStr);
+        } catch (DateTimeParseException e) {
+            throw new BusinessException(PaymentErrorCode.SETTLEMENT_DATE_INVALID);
         }
+        if (!date.isBefore(today)) throw new BusinessException(PaymentErrorCode.SETTLEMENT_DATE_INVALID);
+
+        settlementMapper.ensureDay(SnowflakeUtils.nextId(), date);
+        DailySettlement settlement = settlementMapper.selectOne(new LambdaQueryWrapper<DailySettlement>()
+                .eq(DailySettlement::getSettlementDate, date).last("FOR UPDATE"));
 
         LocalDateTime dayStart = date.atStartOfDay();
         LocalDateTime dayEnd = date.plusDays(1).atStartOfDay();
@@ -79,20 +92,42 @@ public class SettlementServiceImpl implements SettlementService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         int totalRefundCount = refunds.size();
 
-        DailySettlement settlement = new DailySettlement();
-        settlement.setId(SnowflakeUtils.nextId());
-        settlement.setSettlementDate(date);
-        settlement.setTotalOrderCount(0);
-        settlement.setTotalOrderAmount(BigDecimal.ZERO);
-        settlement.setTotalPaymentCount(totalPaymentCount);
-        settlement.setTotalPaymentAmount(totalPaymentAmount);
-        settlement.setTotalRefundCount(totalRefundCount);
-        settlement.setTotalRefundAmount(totalRefundAmount);
-        settlement.setNetAmount(totalPaymentAmount.subtract(totalRefundAmount));
-        settlement.setStatus(1);
-        settlementMapper.insert(settlement);
+        if (!Integer.valueOf(1).equals(settlement.getStatus())) {
+            settlement.setTotalPaymentCount(totalPaymentCount);
+            settlement.setTotalPaymentAmount(totalPaymentAmount);
+            settlement.setTotalRefundCount(totalRefundCount);
+            settlement.setTotalRefundAmount(totalRefundAmount);
+            settlement.setNetAmount(totalPaymentAmount.subtract(totalRefundAmount));
+            settlement.setStatus(1);
+            settlementMapper.updateById(settlement);
+            return toVO(settlement, List.of());
+        }
 
-        return toVO(settlement);
+        List<SettlementAdjustment> adjustments = new ArrayList<>(adjustmentsFor(List.of(settlement.getId())));
+        SettlementVO previous = toVO(settlement, adjustments);
+        if (!Objects.equals(previous.getTotalPaymentCount(), totalPaymentCount)
+                || !Objects.equals(previous.getTotalRefundCount(), totalRefundCount)
+                || amountOrZero(previous.getTotalPaymentAmount()).compareTo(totalPaymentAmount) != 0
+                || amountOrZero(previous.getTotalRefundAmount()).compareTo(totalRefundAmount) != 0) {
+            SettlementAdjustment adjustment = new SettlementAdjustment();
+            adjustment.setId(SnowflakeUtils.nextId());
+            adjustment.setSettlementId(settlement.getId());
+            adjustment.setTotalPaymentCount(totalPaymentCount);
+            adjustment.setTotalPaymentAmount(totalPaymentAmount);
+            adjustment.setTotalRefundCount(totalRefundCount);
+            adjustment.setTotalRefundAmount(totalRefundAmount);
+            adjustment.setCreatedAt(LocalDateTime.now());
+            adjustmentMapper.insert(adjustment);
+            adjustments.add(adjustment);
+        }
+        return toVO(settlement, adjustments);
+    }
+
+    private List<SettlementAdjustment> adjustmentsFor(List<Long> ids) {
+        if (ids.isEmpty()) return List.of();
+        return adjustmentMapper.selectList(new LambdaQueryWrapper<SettlementAdjustment>()
+                .in(SettlementAdjustment::getSettlementId, ids)
+                .orderByAsc(SettlementAdjustment::getId));
     }
 
     @Override
@@ -100,11 +135,15 @@ public class SettlementServiceImpl implements SettlementService {
         Page<DailySettlement> pageReq = new Page<>(page, size);
         settlementMapper.selectPage(pageReq,
                 new LambdaQueryWrapper<DailySettlement>()
+                        .lt(DailySettlement::getSettlementDate, LocalDate.now())
                         .orderByDesc(DailySettlement::getSettlementDate));
+        List<Long> ids = pageReq.getRecords().stream().map(DailySettlement::getId).toList();
+        Map<Long, List<SettlementAdjustment>> adjustments = adjustmentsFor(ids).stream()
+                .collect(Collectors.groupingBy(SettlementAdjustment::getSettlementId));
         return new Page<SettlementVO>(pageReq.getCurrent(), pageReq.getSize(), pageReq.getTotal())
                 .setRecords(pageReq.getRecords().stream()
-                        .map(this::toVO)
-                        .collect(Collectors.toList()));
+                        .map(row -> toVO(row, adjustments.getOrDefault(row.getId(), List.of())))
+                        .toList());
     }
 
     @Override
@@ -121,15 +160,18 @@ public class SettlementServiceImpl implements SettlementService {
                 .in(Refund::getOrderNo, orderNos)
                 .eq(Refund::getStatus, 1));
 
+        LocalDate today = LocalDate.now();
         Map<LocalDate, SettlementAccumulator> grouped = new HashMap<>();
         for (Payment payment : payments) {
             LocalDate settlementDate = resolveDate(payment.getPaidAt(), payment.getCreatedAt());
+            if (!settlementDate.isBefore(today)) continue;
             SettlementAccumulator accumulator = grouped.computeIfAbsent(settlementDate, key -> new SettlementAccumulator());
             accumulator.totalPaymentCount++;
             accumulator.totalPaymentAmount = accumulator.totalPaymentAmount.add(amountOrZero(payment.getAmount()));
         }
         for (Refund refund : refunds) {
             LocalDate settlementDate = refund.getCreatedAt() != null ? refund.getCreatedAt().toLocalDate() : LocalDate.now();
+            if (!settlementDate.isBefore(today)) continue;
             SettlementAccumulator accumulator = grouped.computeIfAbsent(settlementDate, key -> new SettlementAccumulator());
             accumulator.totalRefundCount++;
             accumulator.totalRefundAmount = accumulator.totalRefundAmount.add(amountOrZero(refund.getAmount()));
@@ -150,7 +192,7 @@ public class SettlementServiceImpl implements SettlementService {
         return result;
     }
 
-    private SettlementVO toVO(DailySettlement s) {
+    private SettlementVO toVO(DailySettlement s, List<SettlementAdjustment> adjustments) {
         SettlementVO vo = new SettlementVO();
         vo.setId(s.getId());
         vo.setSettlementDate(s.getSettlementDate());
@@ -161,6 +203,16 @@ public class SettlementServiceImpl implements SettlementService {
         vo.setTotalRefundCount(s.getTotalRefundCount());
         vo.setTotalRefundAmount(s.getTotalRefundAmount());
         vo.setNetAmount(s.getNetAmount());
+        vo.setBaseNetAmount(s.getNetAmount());
+        vo.setAdjustmentCount(adjustments.size());
+        if (!adjustments.isEmpty()) {
+            SettlementAdjustment last = adjustments.getLast();
+            vo.setTotalPaymentCount(last.getTotalPaymentCount());
+            vo.setTotalPaymentAmount(last.getTotalPaymentAmount());
+            vo.setTotalRefundCount(last.getTotalRefundCount());
+            vo.setTotalRefundAmount(last.getTotalRefundAmount());
+            vo.setNetAmount(last.getTotalPaymentAmount().subtract(last.getTotalRefundAmount()));
+        }
         vo.setStatus(s.getStatus());
         vo.setStatusText(s.getStatus() == 1 ? "已确认" : "草稿");
         return vo;

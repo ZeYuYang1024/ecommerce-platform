@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
@@ -77,6 +78,17 @@ public class OutboundServiceImpl implements OutboundService {
     @Override
     @Transactional
     public OutboundOrderVO createOutbound(CreateOutboundRequest req) {
+        if (req.getShippingId() != null) {
+            OutboundOrder existing = outboundOrderMapper.lockByShippingId(req.getShippingId());
+            if (existing != null) {
+                if (!Objects.equals(existing.getWarehouseId(), req.getWarehouseId())
+                        || !Objects.equals(existing.getOutboundType(), req.getOutboundType())
+                        || existing.getStatus() == OutboundStatus.CANCELLED) {
+                    throw new BusinessException(WarehouseErrorCode.INVALID_STATUS_TRANSITION);
+                }
+                return toVO(existing);
+            }
+        }
         Warehouse warehouse = warehouseMapper.selectById(req.getWarehouseId());
         if (warehouse == null) {
             throw new BusinessException(WarehouseErrorCode.WAREHOUSE_NOT_FOUND);
@@ -86,12 +98,6 @@ public class OutboundServiceImpl implements OutboundService {
         }
         if (!Objects.equals(warehouse.getStockMode(), WarehouseStockMode.MANAGED)) {
             throw new BusinessException(WarehouseErrorCode.NOT_MANAGED_WAREHOUSE);
-        }
-
-        if (req.getItems() != null) {
-            for (CreateOutboundRequest.OutboundItem item : req.getItems()) {
-                stockService.lockStock(req.getWarehouseId(), item.getSkuId(), item.getQuantity());
-            }
         }
 
         OutboundOrder order = new OutboundOrder();
@@ -105,7 +111,11 @@ public class OutboundServiceImpl implements OutboundService {
         outboundOrderMapper.insert(order);
 
         if (req.getItems() != null) {
-            for (CreateOutboundRequest.OutboundItem item : req.getItems()) {
+            var sortedItems = req.getItems().stream()
+                    .sorted(Comparator.comparing(CreateOutboundRequest.OutboundItem::getSkuId)
+                            .thenComparing(CreateOutboundRequest.OutboundItem::getBinId, Comparator.nullsFirst(Comparator.naturalOrder())))
+                    .toList();
+            for (CreateOutboundRequest.OutboundItem item : sortedItems) {
                 OutboundOrderItem orderItem = new OutboundOrderItem();
                 orderItem.setOutboundId(order.getId());
                 orderItem.setSkuId(item.getSkuId());
@@ -114,6 +124,8 @@ public class OutboundServiceImpl implements OutboundService {
                 orderItem.setShippedQty(0);
                 orderItem.setBinId(item.getBinId());
                 outboundOrderItemMapper.insert(orderItem);
+                stockService.allocateOutboundStock(order.getWarehouseId(), orderItem.getId(), item.getSkuId(),
+                        item.getBinId(), item.getQuantity());
             }
         }
 
@@ -123,10 +135,8 @@ public class OutboundServiceImpl implements OutboundService {
     @Override
     @Transactional
     public void startPicking(Long id) {
-        OutboundOrder order = outboundOrderMapper.selectById(id);
-        if (order == null) {
-            throw new BusinessException(WarehouseErrorCode.OUTBOUND_NOT_FOUND);
-        }
+        OutboundOrder order = lockOutbound(id);
+        if (order.getStatus() == OutboundStatus.PICKING) return;
         if (order.getStatus() != OutboundStatus.PENDING) {
             throw new BusinessException(WarehouseErrorCode.INVALID_STATUS_TRANSITION);
         }
@@ -137,19 +147,15 @@ public class OutboundServiceImpl implements OutboundService {
     @Override
     @Transactional
     public void confirmShipped(Long id) {
-        OutboundOrder order = outboundOrderMapper.selectById(id);
-        if (order == null) {
-            throw new BusinessException(WarehouseErrorCode.OUTBOUND_NOT_FOUND);
-        }
+        OutboundOrder order = lockOutbound(id);
+        if (order.getStatus() == OutboundStatus.SHIPPED || order.getStatus() == OutboundStatus.DELIVERED) return;
         if (order.getStatus() != OutboundStatus.PICKING) {
             throw new BusinessException(WarehouseErrorCode.INVALID_STATUS_TRANSITION);
         }
 
-        List<OutboundOrderItem> items = outboundOrderItemMapper.selectList(
-                new LambdaQueryWrapper<OutboundOrderItem>()
-                        .eq(OutboundOrderItem::getOutboundId, id));
-        for (OutboundOrderItem item : items) {
-            stockService.deductStock(order.getWarehouseId(), item.getSkuId(), item.getQuantity());
+        for (OutboundOrderItem item : loadItems(id)) {
+            stockService.settleOutboundStock(item.getId(), item.getQuantity(), true);
+            item.setPickedQty(item.getQuantity());
             item.setShippedQty(item.getQuantity());
             outboundOrderItemMapper.updateById(item);
         }
@@ -168,15 +174,40 @@ public class OutboundServiceImpl implements OutboundService {
     @Override
     @Transactional
     public void confirmDelivered(Long id) {
-        OutboundOrder order = outboundOrderMapper.selectById(id);
-        if (order == null) {
-            throw new BusinessException(WarehouseErrorCode.OUTBOUND_NOT_FOUND);
-        }
+        OutboundOrder order = lockOutbound(id);
+        if (order.getStatus() == OutboundStatus.DELIVERED) return;
         if (order.getStatus() != OutboundStatus.SHIPPED) {
             throw new BusinessException(WarehouseErrorCode.INVALID_STATUS_TRANSITION);
         }
         order.setStatus(OutboundStatus.DELIVERED);
         outboundOrderMapper.updateById(order);
+    }
+
+    @Override
+    @Transactional
+    public boolean cancelUnshipped(Long shippingId) {
+        OutboundOrder order = outboundOrderMapper.lockByShippingId(shippingId);
+        if (order == null || order.getStatus() == OutboundStatus.CANCELLED) return true;
+        if (order.getStatus() != OutboundStatus.PENDING && order.getStatus() != OutboundStatus.PICKING) return false;
+
+        for (OutboundOrderItem item : loadItems(order.getId())) {
+            stockService.settleOutboundStock(item.getId(), item.getQuantity(), false);
+        }
+        order.setStatus(OutboundStatus.CANCELLED);
+        outboundOrderMapper.updateById(order);
+        return true;
+    }
+
+    private OutboundOrder lockOutbound(Long id) {
+        OutboundOrder order = outboundOrderMapper.lockById(id);
+        if (order == null) throw new BusinessException(WarehouseErrorCode.OUTBOUND_NOT_FOUND);
+        return order;
+    }
+
+    private List<OutboundOrderItem> loadItems(Long id) {
+        return outboundOrderItemMapper.selectList(new LambdaQueryWrapper<OutboundOrderItem>()
+                .eq(OutboundOrderItem::getOutboundId, id)
+                .orderByAsc(OutboundOrderItem::getSkuId, OutboundOrderItem::getId));
     }
 
     private String generateOutboundNo() {
@@ -198,9 +229,7 @@ public class OutboundServiceImpl implements OutboundService {
         vo.setRemark(entity.getRemark());
         vo.setCreatedAt(entity.getCreatedAt());
 
-        List<OutboundOrderItem> items = outboundOrderItemMapper.selectList(
-                new LambdaQueryWrapper<OutboundOrderItem>()
-                        .eq(OutboundOrderItem::getOutboundId, entity.getId()));
+        List<OutboundOrderItem> items = loadItems(entity.getId());
         List<OutboundOrderVO.Item> voItems = new ArrayList<>();
         if (items != null) {
             for (OutboundOrderItem item : items) {
@@ -209,6 +238,7 @@ public class OutboundServiceImpl implements OutboundService {
                 voItem.setSkuId(item.getSkuId());
                 voItem.setQuantity(item.getQuantity());
                 voItem.setBinId(item.getBinId());
+                voItem.setAllocations(stockService.outboundAllocations(item.getId()));
                 voItems.add(voItem);
             }
         }

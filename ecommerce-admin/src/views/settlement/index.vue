@@ -5,9 +5,11 @@
         <span class="section-label">日终结算</span>
         <p class="page-desc">{{ pageDesc }}</p>
       </div>
-      <el-button v-if="!isMerchantView" type="primary" size="large" @click="generateSettlement" :loading="generating">
-        <el-icon style="margin-right: 6px"><Plus /></el-icon> 生成今日结算
-      </el-button>
+      <div v-if="!isMerchantView" class="toolbar-right">
+        <el-date-picker v-model="settlementDate" type="date" value-format="YYYY-MM-DD"
+          :disabled-date="date => date >= today" placeholder="默认结算昨日" />
+        <el-button type="primary" @click="generateSettlement" :loading="generating">核算已结束日期</el-button>
+      </div>
     </div>
 
     <el-card shadow="never" class="table-card">
@@ -40,6 +42,7 @@
         <el-table-column label="净收入" width="140" align="right">
           <template #default="{ row }">
             <span class="net-amount" :class="netClass(row.netAmount)">¥{{ row.netAmount || '0.00' }}</span>
+            <div v-if="row.adjustmentCount">封账 ¥{{ row.baseNetAmount }}，已调整 {{ row.adjustmentCount }} 次</div>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="100" align="center">
@@ -77,6 +80,9 @@ import { formatDateTime } from '@/utils/dateTime'
 const route = useRoute()
 const loading = ref(false)
 const generating = ref(false)
+const settlementDate = ref(null)
+const today = new Date()
+today.setHours(0, 0, 0, 0)
 const tableData = ref([])
 const page = ref(1)
 const size = ref(10)
@@ -115,11 +121,14 @@ async function fetchData() {
 async function generateSettlement() {
   generating.value = true
   try {
-    await axios.post('/api/v1/admin/settlements')
-    ElMessage.success('结算报表生成成功')
+    const { data } = await axios.post('/api/v1/admin/settlements', null, {
+      params: { date: settlementDate.value || undefined }
+    })
+    if (data.code !== 200) throw new Error(data.message)
+    ElMessage.success('结算已核算')
     fetchData()
-  } catch {
-    ElMessage.error('生成失败')
+  } catch (error) {
+    ElMessage.error(error.message || '结算失败')
   } finally {
     generating.value = false
   }

@@ -28,7 +28,10 @@
               <button class="qty-btn" :disabled="busy" aria-label="增加数量" @click="update(() => cartStore.updateQuantity(item.skuId, item.quantity + 1))">+</button>
             </view>
           </template>
-          <button v-else class="entry-button remove-button" :disabled="busy" @click="update(() => cartStore.removeItem(item.skuId))">移除</button>
+          <template v-else>
+            <text class="text-muted">当前不可购买</text>
+            <button class="entry-button remove-button" :disabled="busy" @click="update(() => cartStore.removeItem(item.skuId))">移除</button>
+          </template>
         </view>
       </view>
     </view>

@@ -109,13 +109,17 @@ class OutboundServiceImplTest {
     void shouldCreateOutboundAndLockStock() {
         when(warehouseMapper.selectById(1L)).thenReturn(warehouse);
         when(outboundOrderMapper.insert(any(OutboundOrder.class))).thenReturn(1);
-        when(outboundOrderItemMapper.insert(any(OutboundOrderItem.class))).thenReturn(1);
+        when(outboundOrderItemMapper.insert(any(OutboundOrderItem.class))).thenAnswer(invocation -> {
+            OutboundOrderItem item = invocation.getArgument(0);
+            item.setId(200L);
+            return 1;
+        });
         when(outboundOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of());
 
         OutboundOrderVO result = service.createOutbound(buildCreateRequest());
 
         assertThat(result.getStatus()).isEqualTo(OutboundStatus.PENDING);
-        verify(stockService).lockStock(eq(1L), eq(300L), eq(10));
+        verify(stockService).allocateOutboundStock(1L, 200L, 300L, 10L, 10);
     }
 
     @Test
@@ -128,7 +132,7 @@ class OutboundServiceImplTest {
                 .extracting(e -> ((BusinessException) e).getErrorCode().getCode())
                 .isEqualTo(WarehouseErrorCode.NOT_MANAGED_WAREHOUSE.getCode());
 
-        verify(stockService, never()).lockStock(anyLong(), anyLong(), anyInt());
+        verify(stockService, never()).allocateOutboundStock(anyLong(), anyLong(), anyLong(), anyLong(), anyInt());
     }
 
     @Test
@@ -149,15 +153,16 @@ class OutboundServiceImplTest {
     @Test
     void shouldConfirmShipped() {
         outboundOrder.setStatus(OutboundStatus.PICKING);
-        when(outboundOrderMapper.selectById(20L)).thenReturn(outboundOrder);
+        when(outboundOrderMapper.lockById(20L)).thenReturn(outboundOrder);
         when(outboundOrderMapper.updateById(any(OutboundOrder.class))).thenReturn(1);
         when(outboundOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(outboundItem));
         when(outboundOrderItemMapper.updateById(any(OutboundOrderItem.class))).thenReturn(1);
 
         service.confirmShipped(20L);
+        service.confirmShipped(20L);
 
         assertThat(outboundOrder.getStatus()).isEqualTo(OutboundStatus.SHIPPED);
-        verify(stockService, times(1)).deductStock(eq(1L), eq(300L), eq(10));
+        verify(stockService, times(1)).settleOutboundStock(200L, 10, true);
         verify(outboxService).enqueue(eq("outbound_order"), anyString(), eq("outbound-shipped"), any());
     }
 

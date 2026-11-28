@@ -22,6 +22,9 @@ public interface OrderClient {
     @PutMapping("/api/v1/internal/orders/{id}/shipping-claim/confirm")
     Result<Void> confirmShipping(@PathVariable("id") Long orderId, @RequestParam("shippingNo") String shippingNo);
 
+    @DeleteMapping("/api/v1/internal/orders/{id}/shipping-claim/cancelled")
+    Result<Void> releaseCancelledShipping(@PathVariable("id") Long orderId, @RequestParam("shippingNo") String shippingNo);
+
     @DeleteMapping("/api/v1/internal/orders/{id}/shipping-claim")
     Result<Void> releaseShipping(@PathVariable("id") Long orderId, @RequestParam("shippingNo") String shippingNo);
 }

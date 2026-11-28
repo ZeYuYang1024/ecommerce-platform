@@ -19,6 +19,7 @@ public class MemberOrderPaymentService {
     private final PointsReservationService reservationService;
     private final PointsService points;
     private final GrowthService growth;
+    private final RefundCompensationService refunds;
 
     @Transactional
     public void confirmPayment(OrderMemberVO order) {
@@ -33,9 +34,11 @@ public class MemberOrderPaymentService {
         }
 
         int paidYuan = order.getTotalAmount().intValue();
-        if (paidYuan <= 0) return;
-        points.earn(order.getUserId(), paidYuan, "ORDER", orderNo, "ORDER:" + orderNo + ":EARN", "订单支付获得积分");
-        growth.add(order.getUserId(), paidYuan, "ORDER", orderNo, "ORDER:" + orderNo + ":GROWTH", "订单支付获得成长值");
+        if (paidYuan > 0) {
+            points.earn(order.getUserId(), paidYuan, "ORDER", orderNo, "ORDER:" + orderNo + ":EARN", "订单支付获得积分");
+            growth.add(order.getUserId(), paidYuan, "ORDER", orderNo, "ORDER:" + orderNo + ":GROWTH", "订单支付获得成长值");
+        }
+        refunds.settlePendingPartialRefund(order);
     }
 
     @Transactional

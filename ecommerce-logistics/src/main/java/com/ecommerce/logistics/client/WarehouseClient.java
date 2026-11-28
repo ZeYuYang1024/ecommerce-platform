@@ -10,6 +10,7 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.List;
@@ -22,6 +23,9 @@ public interface WarehouseClient {
 
     @PostMapping("/outbounds")
     Result<OutboundOrderVO> createOutbound(@RequestBody CreateOutboundRequest request);
+
+    @PutMapping("/outbounds/shipping/{shippingId}/cancel-unshipped")
+    Result<Boolean> cancelUnshipped(@PathVariable("shippingId") Long shippingId);
 
     @PostMapping("/stock/query")
     Result<List<PhysicalStockVO>> queryStock(@RequestBody StockQueryRequest request);

@@ -16,6 +16,8 @@ public class SettlementVO {
     private Integer totalRefundCount;
     private BigDecimal totalRefundAmount;
     private BigDecimal netAmount;
+    private BigDecimal baseNetAmount;
+    private int adjustmentCount;
     private Integer status;
     private String statusText;
 }

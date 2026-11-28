@@ -33,7 +33,7 @@ public interface PointsService {
 
     int releaseEarnLots(Long reservationId, int legacyAmount);
 
-    void reverseEarn(PointsTransaction original, String orderNo);
+    void reverseEarn(PointsTransaction original, String orderNo, int target, String bizKey);
 
     /**
      * 积分流水列表。

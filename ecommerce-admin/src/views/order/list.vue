@@ -84,6 +84,13 @@
     <el-dialog v-model="shipDialogVisible" title="订单发货" width="500px">
       <el-form :model="shipForm" label-width="100px">
         <el-form-item label="订单号"><span>{{ shipForm.orderNo }}</span></el-form-item>
+        <el-form-item label="发货方式" required>
+          <el-select v-model="shipForm.route" placeholder="选择托管仓或自行发货">
+            <el-option label="自行发货" value="self" />
+            <el-option v-for="warehouse in warehouses" :key="warehouse.id"
+              :label="warehouse.warehouseName + '（托管仓）'" :value="String(warehouse.id)" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="物流公司" required>
           <el-select v-model="shipForm.providerId" placeholder="选择物流公司">
             <el-option v-for="p in providers" :key="p.id" :label="p.providerName" :value="p.id" />
@@ -121,9 +128,11 @@ const total = ref(0)
 const shipDialogVisible = ref(false)
 const shipSubmitting = ref(false)
 const providers = ref([])
+const warehouses = ref([])
 const shipForm = reactive({
   orderId: null,
   orderNo: '',
+  route: null,
   providerId: null,
   trackingNo: '',
   packageWeight: 0,
@@ -154,14 +163,14 @@ async function retryCompensationRefund(row) {
 
 async function releaseExpiredShipping(row) {
   try {
-    await ElMessageBox.confirm(`检查并释放订单 ${row.orderNo} 没有实际发货记录的过期占用？`, '释放发货占用')
+    await ElMessageBox.confirm(`检查并释放订单 ${row.orderNo} 没有实际发货记录的占用？`, '释放发货占用')
   } catch { return }
 
   try {
     const { data } = await axios.post(`/api/v1/admin/orders/${encodeURIComponent(row.id)}/shipping-claims/release-expired`)
     if (data.code !== 200) throw new Error(data.message)
-    if (data.data > 0) ElMessage.success(`已释放 ${data.data} 条过期占用`)
-    else ElMessage.info('当前没有可释放的过期占用')
+    if (data.data > 0) ElMessage.success(`已释放 ${data.data} 条占用`)
+    else ElMessage.info('当前没有可释放的发货占用')
   } catch (error) {
     ElMessage.error(error.message || '暂时无法核对发货记录，请稍后再试')
   }
@@ -186,6 +195,15 @@ const openShipDialog = async (row) => {
     const { data } = await axios.get('/api/v1/admin/logistics/providers/all')
     if (data.code === 200) providers.value = data.data || []
   }
+  try {
+    const { data } = await axios.get('/api/v1/admin/warehouses', { params: { size: 999 } })
+    warehouses.value = (data.data?.records || []).filter(warehouse => warehouse.stockMode === 1 && warehouse.status === 1)
+    if (data.code !== 200) throw new Error(data.message)
+  } catch {
+    warehouses.value = []
+    ElMessage.warning('暂时无法加载托管仓，请稍后重试')
+  }
+  shipForm.route = null
   shipForm.orderId = row.id
   shipForm.orderNo = row.orderNo
   shipForm.providerId = null
@@ -199,8 +217,8 @@ const openShipDialog = async (row) => {
 }
 
 const submitShip = async () => {
-  if (!shipForm.providerId || !shipForm.trackingNo) {
-    ElMessage.warning('请选择物流公司并填写运单号')
+  if (!shipForm.route || !shipForm.providerId || !shipForm.trackingNo) {
+    ElMessage.warning('请选择发货方式和物流公司，并填写运单号')
     return
   }
   shipSubmitting.value = true
@@ -208,13 +226,14 @@ const submitShip = async () => {
     const { data } = await axios.post('/api/v1/admin/logistics/shipping', {
       clientRequestId: shipForm.clientRequestId,
       orderId: shipForm.orderId,
+      warehouseId: shipForm.route === 'self' ? null : shipForm.route,
       providerId: shipForm.providerId,
       trackingNo: shipForm.trackingNo,
       packageWeight: shipForm.packageWeight,
       items: shipForm.items
     })
     if (data.code === 200) {
-      ElMessage.success('发货成功')
+      ElMessage.success(data.data?.shippingStatus === 0 ? '已提交，等待仓库出库' : '已发货')
       shipDialogVisible.value = false
       fetchData()
     } else {

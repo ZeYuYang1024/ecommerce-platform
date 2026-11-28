@@ -38,7 +38,7 @@ class GrowthServiceImplTest {
     private GrowthServiceImpl service;
 
     @Test
-    void addShouldRecordNegativeGrowthAdjustmentForRefundWithoutUpgrade() {
+    void addShouldRecalculateMemberLevelAfterRefund() {
         MemberProfile profile = new MemberProfile();
         profile.setId(1L);
         profile.setUserId(10001L);
@@ -59,7 +59,7 @@ class GrowthServiceImplTest {
                 "\u9000\u6b3e\u6263\u56de\u6210\u957f\u503c");
 
         verify(memberProfileMapper).update(any(), any());
-        verify(levelService, never()).checkUpgrade(any(), any());
+        verify(levelService).checkUpgrade(10001L, updated.getGrowthValue());
         ArgumentCaptor<GrowthTransaction> txCaptor = ArgumentCaptor.forClass(GrowthTransaction.class);
         verify(growthTransactionMapper).insert(txCaptor.capture());
         GrowthTransaction tx = txCaptor.getValue();

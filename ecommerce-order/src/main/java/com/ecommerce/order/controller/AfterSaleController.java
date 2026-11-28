@@ -1,6 +1,7 @@
 package com.ecommerce.order.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ecommerce.common.dto.ManualRefundCommand;
 import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.common.tenant.MerchantTenantSupport;
@@ -90,6 +91,12 @@ public class AfterSaleController {
         return Result.ok(claimReaper.releaseExpired(id));
     }
 
+    @PostMapping("/internal/orders/{orderNo}/manual-refunds")
+    public Result<Void> manualRefund(@PathVariable String orderNo, @RequestBody ManualRefundCommand command) {
+        service.requestManualRefund(orderNo, command);
+        return Result.ok();
+    }
+
     @PutMapping("/internal/orders/{id}/shipping-claim")
     public Result<Void> claimShipping(@PathVariable Long id, @RequestParam String shippingNo,
                                       @RequestParam(required = false) Long shippingId,
@@ -101,6 +108,12 @@ public class AfterSaleController {
     @PutMapping("/internal/orders/{id}/shipping-claim/confirm")
     public Result<Void> confirmShipping(@PathVariable Long id, @RequestParam String shippingNo) {
         service.confirmShipping(id, shippingNo);
+        return Result.ok();
+    }
+
+    @DeleteMapping("/internal/orders/{id}/shipping-claim/cancelled")
+    public Result<Void> releaseCancelledShipping(@PathVariable Long id, @RequestParam String shippingNo) {
+        service.releaseCancelledShipping(id, shippingNo);
         return Result.ok();
     }
 

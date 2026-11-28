@@ -32,6 +32,15 @@ public interface ShippingClaimMapper {
 
     @Select("""
             SELECT order_id AS orderId, shipping_no AS shippingNo, shipping_id AS shippingId, managed
+            FROM order_shipping_claim WHERE order_id = #{orderId} AND managed = TRUE AND expires_at IS NULL
+            """)
+    List<Claim> findConfirmedManagedForOrder(@Param("orderId") Long orderId);
+
+    @Delete("DELETE FROM order_shipping_claim WHERE order_id = #{orderId} AND shipping_no = #{shippingNo} AND managed = TRUE")
+    int releaseManaged(@Param("orderId") Long orderId, @Param("shippingNo") String shippingNo);
+
+    @Select("""
+            SELECT order_id AS orderId, shipping_no AS shippingNo, shipping_id AS shippingId, managed
             FROM order_shipping_claim WHERE expires_at <= NOW()
             ORDER BY expires_at, order_id, shipping_no LIMIT 100
             """)

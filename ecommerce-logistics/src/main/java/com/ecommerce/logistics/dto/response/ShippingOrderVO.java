@@ -18,6 +18,8 @@ public class ShippingOrderVO {
     private String trackingNo;
     private Integer shippingStatus;
     private String shippingStatusText;
+    private String outboundError;
+    private String outboundState;
     private Integer dispatchType;
     private Integer sourceType;
     private BigDecimal shippingFee;

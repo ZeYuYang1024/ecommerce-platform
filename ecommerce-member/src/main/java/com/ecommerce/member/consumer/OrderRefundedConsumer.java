@@ -32,6 +32,6 @@ public class OrderRefundedConsumer implements RocketMQListener<OrderRefundedMess
                 message.getUserId(),
                 message.getRefundAmount(),
                 message.getRefundType(),
-                message.getIdempotencyKey()));
+                message.getIdempotencyKey(), message.getCumulativeRefundAmount()));
     }
 }

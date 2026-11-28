@@ -399,7 +399,7 @@ CREATE TABLE IF NOT EXISTS coupon_template (
     type            VARCHAR(32)   NOT NULL COMMENT 'FULL_REDUCTION/DISCOUNT/FLAT',
     min_amount      DECIMAL(10,2) COMMENT '最低消费金额',
     discount_amount DECIMAL(10,2) COMMENT '减免金额',
-    discount_rate   DECIMAL(5,2)  COMMENT '折扣率(type=DISCOUNT时使用, 如0.85=85折)',
+    discount_rate   DECIMAL(5,2)  COMMENT '折扣率(type=DISCOUNT时使用, 如0.85=8.5折)',
     total_count     INT           DEFAULT 0 COMMENT '总发行量',
     remaining_count INT           DEFAULT 0 COMMENT '剩余数量',
     per_user_limit  INT           DEFAULT 1 COMMENT '每人限领',

@@ -1,5 +1,7 @@
 package com.ecommerce.warehouse.dto.request;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -20,7 +22,7 @@ public class CreateOutboundRequest {
     private String remark;
 
     @NotEmpty(message = "出库明细不能为空")
-    private List<OutboundItem> items;
+    private List<@Valid OutboundItem> items;
 
     @Data
     public static class OutboundItem {
@@ -28,6 +30,7 @@ public class CreateOutboundRequest {
         private Long skuId;
 
         @NotNull(message = "数量不能为空")
+        @Positive(message = "数量必须大于零")
         private Integer quantity;
 
         private Long binId;

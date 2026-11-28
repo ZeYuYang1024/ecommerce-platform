@@ -53,10 +53,10 @@ const myTotal = ref(0)
 function typeLabel(t: string) { return {FULL_REDUCTION:'满减',DISCOUNT:'折扣',FLAT:'立减'}[t]||t }
 function discountText(c: any) {
   if (c.type==='FLAT') return `立减 ¥${c.discountAmount}`
-  if (c.type==='DISCOUNT') return `${(c.discountRate*100).toFixed(0)}折`
+  if (c.type==='DISCOUNT') return `${Number((c.discountRate * 10).toFixed(2))}折`
   return `满${c.minAmount}减${c.discountAmount}`
 }
-function statusLabel(s: number) { return ['可使用','已使用','已过期'][s]||'' }
+function statusLabel(s: number) { return ['可使用','已使用','已过期','不可使用'][s]||'' }
 
 onMounted(async () => {
   await fetchAvailable()

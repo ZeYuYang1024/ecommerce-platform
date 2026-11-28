@@ -25,25 +25,24 @@ function parseBody(text: string): any {
 export const useApi = () => {
   const config = useRuntimeConfig()
   const base = config.public.apiBase as string
-  const token = useCookie('token')
-  const username = useCookie('username')
+  const auth = useAuthStore()
 
   async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> || {}),
     }
-    if (token.value) {
-      headers['Authorization'] = `Bearer ${token.value}`
+    const requestToken = auth.token
+    if (requestToken) {
+      headers['Authorization'] = `Bearer ${requestToken}`
     }
     const res = await fetch(`${base}${path}`, { ...options, headers })
     const text = await res.text()
     const body = parseBody(text)
 
     if (!res.ok) {
-      if (res.status === 401) {
-        token.value = null
-        username.value = null
+      if (res.status === 401 && requestToken && auth.token === requestToken) {
+        auth.clearSession()
       }
       const error = new Error(typeof body === 'object' && body?.message ? body.message : `HTTP ${res.status}`) as Error & {
         status: number

@@ -112,6 +112,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Commerce consistency migration failed' }
 Get-Content -LiteralPath "$ProjectDir\docs\sql\migrations\2026-11-28-checkout-operations.sql" -Raw |
     docker exec -i ecommerce-mysql mysql -uroot -proot
 if ($LASTEXITCODE -ne 0) { throw 'Checkout and operations migration failed' }
+Get-Content -LiteralPath "$ProjectDir\docs\sql\migrations\2026-11-28-fulfillment-refund-integrity.sql" -Raw |
+    docker exec -i ecommerce-mysql mysql -uroot -proot
+if ($LASTEXITCODE -ne 0) { throw 'Fulfillment and refund migration failed' }
 Write-Host "数据库初始化完成。" -ForegroundColor Green
 
 # --------------- Done ---------------

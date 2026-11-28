@@ -44,10 +44,10 @@ public class CartServiceImpl implements CartService {
         if (item.getSkuId() == null || item.getSkuId() <= 0) {
             throw new BusinessException(CartErrorCode.PRODUCT_UNAVAILABLE);
         }
-        if (missingProduct(item)) {
-            applySnapshot(item, loadSnapshots(List.of(item.getSkuId())).get(item.getSkuId()));
-            if (missingProduct(item)) throw new BusinessException(CartErrorCode.PRODUCT_UNAVAILABLE);
-        }
+        SkuBatchVO snapshot = loadSnapshots(List.of(item.getSkuId())).get(item.getSkuId());
+        if (!isAvailable(snapshot)) throw new BusinessException(CartErrorCode.PRODUCT_UNAVAILABLE);
+        applySnapshot(item, snapshot);
+        if (missingProduct(item)) throw new BusinessException(CartErrorCode.PRODUCT_UNAVAILABLE);
         String key = cartKey(userId);
         String field = String.valueOf(item.getSkuId());
 
@@ -118,12 +118,12 @@ public class CartServiceImpl implements CartService {
     @Override
     public List<CartItem> getCart(Long userId) {
         List<CartItem> items = readCart(userId);
-        List<Long> missing = items.stream().filter(item -> missingProduct(item) && item.getSkuId() != null)
-                .map(CartItem::getSkuId).toList();
-        if (!missing.isEmpty()) {
-            Map<Long, SkuBatchVO> snapshots = loadSnapshots(missing);
-            items.stream().filter(item -> missingProduct(item) && item.getSkuId() != null)
-                    .forEach(item -> applySnapshot(item, snapshots.get(item.getSkuId())));
+        List<Long> skuIds = items.stream().map(CartItem::getSkuId).filter(java.util.Objects::nonNull).toList();
+        Map<Long, SkuBatchVO> snapshots = skuIds.isEmpty() ? Map.of() : loadSnapshots(skuIds);
+        for (CartItem item : items) {
+            SkuBatchVO snapshot = item.getSkuId() == null ? null : snapshots.get(item.getSkuId());
+            applySnapshot(item, snapshot);
+            item.setAvailable(isAvailable(snapshot) && !missingProduct(item));
         }
         return items;
     }
@@ -144,6 +144,11 @@ public class CartServiceImpl implements CartService {
         return readCart(userId).stream().mapToInt(CartItem::getQuantity).sum();
     }
 
+    private boolean isAvailable(SkuBatchVO sku) {
+        return sku != null && Integer.valueOf(1).equals(sku.getSpuStatus())
+                && sku.getPrice() != null && sku.getPrice().signum() >= 0;
+    }
+
     private boolean missingProduct(CartItem item) {
         return item.getSpuId() == null || item.getPrice() == null || item.getName() == null || item.getName().isBlank();
     }
@@ -153,7 +158,9 @@ public class CartServiceImpl implements CartService {
             var result = productClient.getSkus(skuIds);
             if (result != null && result.getCode() == 200 && result.getData() != null) {
                 Map<Long, SkuBatchVO> snapshots = new HashMap<>();
-                for (SkuBatchVO sku : result.getData()) snapshots.put(sku.getSkuId(), sku);
+                for (SkuBatchVO sku : result.getData()) {
+                    if (sku != null && sku.getSkuId() != null) snapshots.put(sku.getSkuId(), sku);
+                }
                 return snapshots;
             }
         } catch (RuntimeException ignored) {
@@ -165,7 +172,7 @@ public class CartServiceImpl implements CartService {
     private void applySnapshot(CartItem item, SkuBatchVO sku) {
         if (sku == null) return;
         item.setSpuId(sku.getSpuId());
-        item.setName(sku.getSkuName());
+        if (item.getName() == null || item.getName().isBlank()) item.setName(sku.getSkuName());
         if (item.getImage() == null || item.getImage().isBlank()) item.setImage(sku.getImage());
         item.setPrice(sku.getPrice());
     }

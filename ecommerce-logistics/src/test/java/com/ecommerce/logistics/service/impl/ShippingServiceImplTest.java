@@ -136,7 +136,7 @@ class ShippingServiceImplTest {
         }
 
         @Test
-        void shouldCreateOutboundForManagedWarehouse() {
+        void shouldPersistOutboundRequestForManagedWarehouse() {
             CreateShippingRequest req = buildCreateRequest();
             req.setWarehouseId(9L);
             when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
@@ -148,16 +148,14 @@ class ShippingServiceImplTest {
             when(shippingOrderMapper.insert(any(ShippingOrder.class))).thenReturn(1);
             when(shippingOrderItemMapper.insert(any(ShippingOrderItem.class))).thenReturn(1);
             when(warehouseClient.getWarehouse(9L)).thenReturn(com.ecommerce.common.result.Result.ok(managedWarehouse(9L)));
-            when(warehouseClient.createOutbound(any()))
-                    .thenReturn(com.ecommerce.common.result.Result.ok(new com.ecommerce.logistics.client.dto.OutboundOrderVO()));
 
             ShippingOrderVO vo = service.createShipping(req, "admin", null);
 
             assertThat(vo.getShippingStatus()).isEqualTo(ShippingStatus.PENDING);
             verify(shippingOrderMapper).insert(argThat((ShippingOrder order) ->
                     Long.valueOf(700L).equals(order.getMerchantId())));
-            verify(warehouseClient).createOutbound(argThat(request ->
-                    Long.valueOf(700L).equals(request.getMerchantId())));
+            assertThat(vo.getOutboundState()).isEqualTo("REQUESTED");
+            verify(warehouseClient, never()).createOutbound(any());
             verify(outboxService, never()).enqueue(eq("shipping"), anyString(), eq("shipping-dispatched"), any());
         }
 

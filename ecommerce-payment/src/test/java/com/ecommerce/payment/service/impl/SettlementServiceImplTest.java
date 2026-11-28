@@ -6,10 +6,12 @@ import com.ecommerce.payment.dto.response.SettlementVO;
 import com.ecommerce.payment.entity.DailySettlement;
 import com.ecommerce.payment.entity.Payment;
 import com.ecommerce.payment.entity.Refund;
+import com.ecommerce.payment.entity.SettlementAdjustment;
+import com.ecommerce.payment.mapper.SettlementAdjustmentMapper;
+import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.payment.mapper.DailySettlementMapper;
 import com.ecommerce.payment.mapper.PaymentMapper;
 import com.ecommerce.payment.mapper.RefundMapper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +26,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -35,18 +38,23 @@ class SettlementServiceImplTest {
     @Mock private DailySettlementMapper settlementMapper;
     @Mock private PaymentMapper paymentMapper;
     @Mock private RefundMapper refundMapper;
+    @Mock private SettlementAdjustmentMapper adjustmentMapper;
     @Mock private com.ecommerce.payment.client.OrderClient orderClient;
     @InjectMocks private SettlementServiceImpl service;
 
-    @BeforeEach
-    void setUp() {
+    private void stubNewSettlement(LocalDate date) {
+        DailySettlement draft = new DailySettlement();
+        draft.setId(1L);
+        draft.setSettlementDate(date);
+        draft.setStatus(0);
+        when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(draft);
     }
 
     @Nested
     class GenerateSettlementTests {
         @Test
         void shouldGenerateSettlementForYesterday() {
-            when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            stubNewSettlement(LocalDate.now().minusDays(1));
 
             Payment payment = buildPayment(1L, new BigDecimal("500.00"), 1, LocalDateTime.now().minusDays(1));
             when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
@@ -56,7 +64,7 @@ class SettlementServiceImplTest {
             when(refundMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(Collections.singletonList(refund));
 
-            when(settlementMapper.insert(any(DailySettlement.class))).thenReturn(1);
+            when(settlementMapper.updateById(any(DailySettlement.class))).thenReturn(1);
 
             SettlementVO vo = service.generateSettlement(null);
             assertThat(vo.getTotalPaymentCount()).isEqualTo(1);
@@ -67,26 +75,45 @@ class SettlementServiceImplTest {
         }
 
         @Test
-        void shouldReturnExistingSettlement() {
+        void closedSettlementAppendsAdjustmentWithoutChangingTheOriginalSnapshot() {
             DailySettlement existing = new DailySettlement();
             existing.setId(1L);
             existing.setSettlementDate(LocalDate.now().minusDays(1));
+            existing.setTotalPaymentCount(1);
             existing.setTotalPaymentAmount(new BigDecimal("300.00"));
+            existing.setTotalRefundCount(0);
+            existing.setTotalRefundAmount(BigDecimal.ZERO);
+            existing.setNetAmount(new BigDecimal("300.00"));
             existing.setStatus(1);
             when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(existing);
+            when(paymentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
+                    buildPayment(1L, new BigDecimal("300.00"), 1, LocalDateTime.now().minusDays(1))));
+            when(refundMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(
+                    buildRefund(1L, new BigDecimal("40.00"), 1, LocalDateTime.now().minusDays(1))));
 
             SettlementVO vo = service.generateSettlement(null);
-            assertThat(vo.getTotalPaymentAmount()).isEqualByComparingTo("300.00");
-            verify(paymentMapper, never()).selectList(any());
+
+            assertThat(vo.getBaseNetAmount()).isEqualByComparingTo("300.00");
+            assertThat(vo.getNetAmount()).isEqualByComparingTo("260.00");
+            assertThat(vo.getAdjustmentCount()).isEqualTo(1);
+            verify(adjustmentMapper).insert(any(SettlementAdjustment.class));
+            verify(settlementMapper, never()).updateById(any(DailySettlement.class));
+        }
+
+        @Test
+        void rejectsAnOpenSettlementDate() {
+            assertThatThrownBy(() -> service.generateSettlement(LocalDate.now().toString()))
+                    .isInstanceOf(BusinessException.class);
+            verify(settlementMapper, never()).ensureDay(any(), any());
         }
 
         @Test
         void shouldHandleDateParam() {
             String dateStr = "2026-05-01";
-            when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            stubNewSettlement(LocalDate.parse(dateStr));
             when(paymentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
             when(refundMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
-            when(settlementMapper.insert(any(DailySettlement.class))).thenReturn(1);
+            when(settlementMapper.updateById(any(DailySettlement.class))).thenReturn(1);
 
             SettlementVO vo = service.generateSettlement(dateStr);
             assertThat(vo.getSettlementDate().toString()).isEqualTo(dateStr);
@@ -197,10 +224,10 @@ class SettlementServiceImplTest {
     class BoundaryTests {
         @Test
         void shouldHandleNoPaymentsNoRefunds() {
-            when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            stubNewSettlement(LocalDate.now().minusDays(1));
             when(paymentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
             when(refundMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
-            when(settlementMapper.insert(any(DailySettlement.class))).thenReturn(1);
+            when(settlementMapper.updateById(any(DailySettlement.class))).thenReturn(1);
 
             SettlementVO vo = service.generateSettlement("2026-05-09");
             assertThat(vo.getTotalPaymentCount()).isEqualTo(0);
@@ -209,13 +236,13 @@ class SettlementServiceImplTest {
 
         @Test
         void shouldOnlyCountPaidPayments() {
-            when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            stubNewSettlement(LocalDate.now().minusDays(1));
             Payment paid = buildPayment(1L, new BigDecimal("100.00"), 1, LocalDateTime.now().minusDays(1));
             when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(Collections.singletonList(paid));
             when(refundMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(Collections.emptyList());
-            when(settlementMapper.insert(any(DailySettlement.class))).thenReturn(1);
+            when(settlementMapper.updateById(any(DailySettlement.class))).thenReturn(1);
 
             SettlementVO vo = service.generateSettlement(null);
             assertThat(vo.getTotalPaymentCount()).isEqualTo(1);
@@ -224,12 +251,12 @@ class SettlementServiceImplTest {
 
         @Test
         void shouldOnlyCountRefundedRefunds() {
-            when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            stubNewSettlement(LocalDate.now().minusDays(1));
             when(paymentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
             Refund done = buildRefund(1L, new BigDecimal("50.00"), 1, LocalDateTime.now().minusDays(1));
             when(refundMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(Collections.singletonList(done));
-            when(settlementMapper.insert(any(DailySettlement.class))).thenReturn(1);
+            when(settlementMapper.updateById(any(DailySettlement.class))).thenReturn(1);
 
             SettlementVO vo = service.generateSettlement(null);
             assertThat(vo.getTotalRefundCount()).isEqualTo(1);
@@ -237,11 +264,11 @@ class SettlementServiceImplTest {
 
         @Test
         void shouldHandleLargeAmounts() {
-            when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            stubNewSettlement(LocalDate.now().minusDays(1));
             Payment payment = buildPayment(1L, new BigDecimal("99999999.99"), 1, LocalDateTime.now().minusDays(1));
             when(paymentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.singletonList(payment));
             when(refundMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
-            when(settlementMapper.insert(any(DailySettlement.class))).thenReturn(1);
+            when(settlementMapper.updateById(any(DailySettlement.class))).thenReturn(1);
 
             SettlementVO vo = service.generateSettlement(null);
             assertThat(vo.getTotalPaymentAmount()).isEqualByComparingTo("99999999.99");
@@ -249,12 +276,12 @@ class SettlementServiceImplTest {
 
         @Test
         void shouldHandleNegativeNetAmount() {
-            when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            stubNewSettlement(LocalDate.now().minusDays(1));
             Payment payment = buildPayment(1L, new BigDecimal("50.00"), 1, LocalDateTime.now().minusDays(1));
             when(paymentMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.singletonList(payment));
             Refund refund = buildRefund(1L, new BigDecimal("100.00"), 1, LocalDateTime.now().minusDays(1));
             when(refundMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.singletonList(refund));
-            when(settlementMapper.insert(any(DailySettlement.class))).thenReturn(1);
+            when(settlementMapper.updateById(any(DailySettlement.class))).thenReturn(1);
 
             SettlementVO vo = service.generateSettlement(null);
             assertThat(vo.getNetAmount()).isEqualByComparingTo("-50.00");
@@ -262,13 +289,13 @@ class SettlementServiceImplTest {
 
         @Test
         void shouldFilterByDateOnlyFromYesterday() {
-            when(settlementMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+            stubNewSettlement(LocalDate.now().minusDays(1));
             Payment yesterday = buildPayment(2L, new BigDecimal("200.00"), 1, LocalDateTime.now().minusDays(1));
             when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(Collections.singletonList(yesterday));
             when(refundMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(Collections.emptyList());
-            when(settlementMapper.insert(any(DailySettlement.class))).thenReturn(1);
+            when(settlementMapper.updateById(any(DailySettlement.class))).thenReturn(1);
 
             SettlementVO vo = service.generateSettlement(null);
             assertThat(vo.getTotalPaymentCount()).isEqualTo(1);

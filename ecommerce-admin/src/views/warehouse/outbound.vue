@@ -13,7 +13,8 @@
             <el-option label="待拣货" :value="0" />
             <el-option label="拣货中" :value="1" />
             <el-option label="已发货" :value="2" />
-            <el-option label="已取消" :value="3" />
+            <el-option label="已送达" :value="3" />
+            <el-option label="已取消" :value="4" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -22,13 +23,29 @@
       </el-form>
 
       <el-table :data="tableData" v-loading="loading" stripe>
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <el-table :data="row.items || []" size="small">
+              <el-table-column prop="skuId" label="SKU" width="180" />
+              <el-table-column prop="quantity" label="出库数量" width="100" />
+              <el-table-column label="库位分配">
+                <template #default="{ row: item }">
+                  <span v-if="item.allocations?.length">
+                    {{ item.allocations.map(a => `${a.binId ?? '未分库位'} × ${a.quantity}`).join('、') }}
+                  </span>
+                  <span v-else>—</span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </template>
+        </el-table-column>
         <el-table-column prop="outboundNo" label="出库单号" width="180" />
         <el-table-column prop="warehouseName" label="仓库" width="150" />
         <el-table-column prop="outboundTypeText" label="出库类型" width="100" />
         <el-table-column prop="shippingId" label="发货单ID" width="100" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="outboundStatusTag(row.status)">{{ outboundStatusText(row.status) }}</el-tag>
+            <el-tag :type="outboundStatusTag(row.status)">{{ row.statusText }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="160" />
@@ -58,10 +75,6 @@ const total = ref(0)
 const warehouseOptions = ref([])
 const query = reactive({ warehouseId: null, status: null })
 
-const outboundStatusText = (status) => {
-  return ['待拣货', '拣货中', '已发货', '已取消'][status] || '未知'
-}
-
 const outboundStatusTag = (status) => {
   return status === 0 ? 'warning' : status === 1 ? 'primary' : status === 2 ? 'success' : 'info'
 }
@@ -88,19 +101,22 @@ const fetchWarehouseOptions = async () => {
   } catch { /* ignore */ }
 }
 
-const startPick = async (row) => {
-  await ElMessageBox.confirm(`确认开始拣货出库单 ${row.outboundNo}？`, '开始拣货', { type: 'warning' })
-  await axios.put(`/api/v1/admin/warehouse/outbounds/${row.id}/pick`)
-  ElMessage.success('已开始拣货')
-  fetchData()
+const updateOutbound = async (row, action, title) => {
+  try {
+    await ElMessageBox.confirm(`确认出库单 ${row.outboundNo} 执行「${title}」？`, title, { type: 'warning' })
+  } catch { return }
+  try {
+    const { data } = await axios.put(`/api/v1/admin/warehouse/outbounds/${row.id}/${action}`)
+    if (data.code !== 200) throw new Error(data.message)
+    ElMessage.success('操作成功')
+    await fetchData()
+  } catch (error) {
+    ElMessage.error(error.message || '出库操作失败')
+  }
 }
 
-const confirmShip = async (row) => {
-  await ElMessageBox.confirm(`确认出库单 ${row.outboundNo} 已发货？`, '确认发货', { type: 'warning' })
-  await axios.put(`/api/v1/admin/warehouse/outbounds/${row.id}/ship`)
-  ElMessage.success('已确认发货')
-  fetchData()
-}
+const startPick = row => updateOutbound(row, 'pick', '开始拣货')
+const confirmShip = row => updateOutbound(row, 'ship', '确认发货')
 
 onMounted(() => {
   fetchData()

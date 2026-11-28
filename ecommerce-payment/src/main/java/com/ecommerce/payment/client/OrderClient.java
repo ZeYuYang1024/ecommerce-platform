@@ -1,6 +1,7 @@
 package com.ecommerce.payment.client;
 
 import com.ecommerce.common.dto.OrderInternalVO;
+import com.ecommerce.common.dto.ManualRefundCommand;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.common.dto.ReconOrderVO;
 import com.ecommerce.payment.dto.request.StatusRequest;
@@ -30,6 +31,9 @@ public interface OrderClient {
     @GetMapping("/api/v1/internal/orders/merchant/owns-entire-order")
     Result<Boolean> merchantOwnsEntireOrder(@RequestParam("merchantId") Long merchantId,
                                             @RequestParam("orderNo") String orderNo);
+
+    @PostMapping("/api/v1/internal/orders/{orderNo}/manual-refunds")
+    Result<Void> requestManualRefund(@PathVariable String orderNo, @RequestBody ManualRefundCommand command);
 
     @PostMapping("/api/v1/internal/orders/reconciliation")
     Result<List<ReconOrderVO>> getOrdersByNumberForRecon(@RequestBody List<String> orderNumbers);

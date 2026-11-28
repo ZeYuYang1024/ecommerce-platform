@@ -7,12 +7,15 @@ public final class OutboundStatus {
     public static final int SHIPPED = 2;       // 已出库
     public static final int DELIVERED = 3;     // 已送达
 
+    public static final int CANCELLED = 4;
+
     public static String text(int status) {
         return switch (status) {
             case PENDING -> "待拣货";
             case PICKING -> "拣货中";
             case SHIPPED -> "已出库";
             case DELIVERED -> "已送达";
+            case CANCELLED -> "已取消";
             default -> "未知";
         };
     }

@@ -27,7 +27,7 @@
         </view>
         <view class="card-right">
           <text class="name">{{ c.name }}</text>
-          <text :class="['status', c.status === 0 ? 'active' : '']">{{ ['可使用','已使用','已过期'][c.status] || '' }}</text>
+          <text :class="['status', c.status === 0 ? 'active' : '']">{{ ['可使用','已使用','已过期','不可使用'][c.status] || '' }}</text>
         </view>
       </view>
       <view v-if="!myCoupons.length" class="empty">暂无优惠券</view>
@@ -78,7 +78,7 @@ onReachBottom(() => load(tab.value))
 
 function discountText(c) {
   if (c.type === 'FLAT') return `¥${c.discountAmount}`
-  if (c.type === 'DISCOUNT') return `${(c.discountRate * 100).toFixed(0)}折`
+  if (c.type === 'DISCOUNT') return `${Number((c.discountRate * 10).toFixed(2))}折`
   return `¥${c.discountAmount}`
 }
 function conditionText(t) { return t.minAmount > 0 ? `满${t.minAmount}可用` : '无门槛' }

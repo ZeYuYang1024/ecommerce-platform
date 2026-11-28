@@ -31,12 +31,16 @@ export const useAuthStore = defineStore('auth', () => {
     return false
   }
 
-  function logout() {
+  function clearSession() {
     token.value = null
     username.value = null
     user.value = null
+  }
+
+  function logout() {
+    clearSession()
     navigateTo('/')
   }
 
-  return { user, token, username, isLoggedIn, login, register, logout }
+  return { user, token, username, isLoggedIn, login, register, clearSession, logout }
 })

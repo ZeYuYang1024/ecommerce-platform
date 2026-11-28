@@ -66,10 +66,11 @@
           </div>
         </div>
 
+        <p v-if="cartError" class="mt-4 text-sm text-red-600" role="alert">{{ cartError }}</p>
         <!-- Add to Cart -->
         <div class="mt-8 flex gap-4">
-          <button @click="addToCart" :disabled="!selectedSku" class="flex-1 h-14 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-200 disabled:text-gray-400 text-white font-medium rounded-xl transition-colors">
-            {{ selectedSku ? '加入购物车' : '请选择规格' }}
+          <button @click="addToCart" :disabled="!selectedSku || product.spu.status !== 1" class="flex-1 h-14 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-200 disabled:text-gray-400 text-white font-medium rounded-xl transition-colors">
+            {{ product.spu.status !== 1 ? '商品已下架' : selectedSku ? '加入购物车' : '请选择规格' }}
           </button>
         </div>
       </div>
@@ -83,6 +84,7 @@ const loading = ref(true)
 const product = ref<any>(null)
 const selectedSku = ref<any>(null)
 const cart = useCartStore()
+const cartError = ref('')
 const recommendation = useRecommendation()
 const { useResolvedImage, primeImageUrls, resolveImageUrl } = useImageUrl()
 const mainImage = useResolvedImage(() => product.value?.spu?.mainImage)
@@ -116,14 +118,19 @@ onMounted(async () => {
 })
 
 async function addToCart() {
-  if (!selectedSku.value) return
-  await cart.addItem({
-    skuId: selectedSku.value.id,
-    spuId: product.value.spu.id,
-    name: `${product.value.spu.name} - ${selectedSku.value.name}`,
-    image: selectedSku.value.image || product.value.spu.mainImage,
-    price: selectedSku.value.price,
-    quantity: 1,
-  })
+  if (!selectedSku.value || product.value.spu.status !== 1) return
+  cartError.value = ''
+  try {
+    await cart.addItem({
+      skuId: selectedSku.value.id,
+      spuId: product.value.spu.id,
+      name: `${product.value.spu.name} - ${selectedSku.value.name}`,
+      image: selectedSku.value.image || product.value.spu.mainImage,
+      price: selectedSku.value.price,
+      quantity: 1,
+    })
+  } catch (error) {
+    cartError.value = error instanceof Error ? error.message : '加入购物车失败'
+  }
 }
 </script>

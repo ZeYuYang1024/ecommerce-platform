@@ -1,6 +1,7 @@
 package com.ecommerce.payment.client;
 
 import com.ecommerce.common.dto.OrderInternalVO;
+import com.ecommerce.common.dto.ManualRefundCommand;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.payment.dto.request.StatusRequest;
 import com.ecommerce.common.dto.ReconOrderVO;
@@ -30,6 +31,10 @@ public class OrderClientFallback implements FallbackFactory<OrderClient> {
             @Override
             public Result<Boolean> merchantOwnsEntireOrder(Long merchantId, String orderNo) {
                 return Result.fail(503, "order service unavailable");
+            }
+            @Override
+            public Result<Void> requestManualRefund(String orderNo, ManualRefundCommand command) {
+                return Result.fail(503, "订单服务暂不可用，请重试");
             }
             @Override
             public Result<List<ReconOrderVO>> getOrdersByNumberForRecon(List<String> orderNumbers) {

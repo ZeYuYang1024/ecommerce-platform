@@ -88,16 +88,23 @@
         </div>
         <div class="refund-row">
           <span class="refund-label">退款方式</span>
-          <span>全额退款</span>
+          <el-select v-model="refundMode" aria-label="退款方式">
+            <el-option label="发货前退款" value="refund" />
+            <el-option v-if="!isMerchantView" label="发货后人工退款" value="refund-after-shipment" />
+          </el-select>
         </div>
       </div>
       <div style="margin-top: 16px">
+        <label for="refund-amount">退款金额</label>
+        <el-input id="refund-amount" v-model.trim="refundAmount" placeholder="留空退剩余金额，最多两位小数" />
+      </div>
+      <div style="margin-top: 16px">
         <label style="font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; display: block">退款原因</label>
-        <el-input v-model="refundReason" type="textarea" :rows="2" placeholder="选填" />
+        <el-input v-model="refundReason" type="textarea" :rows="2" maxlength="256" placeholder="必填" />
       </div>
       <template #footer>
         <el-button @click="refundVisible = false">取消</el-button>
-        <el-button type="danger" @click="doRefund">确认退款</el-button>
+        <el-button type="danger" :loading="refunding" @click="doRefund">确认退款</el-button>
       </template>
     </el-dialog>
   </div>
@@ -120,6 +127,10 @@ const statusFilter = ref(null)
 const refundVisible = ref(false)
 const refundForm = ref({})
 const refundReason = ref('')
+const refundAmount = ref('')
+const refundMode = ref('refund')
+const refunding = ref(false)
+let refundAttempt = null
 
 const isMerchantView = computed(() => route.path.startsWith('/merchant/payments'))
 const listUrl = computed(() => (isMerchantView.value ? '/api/v1/admin/merchant/payment' : '/api/v1/admin/payment'))
@@ -160,19 +171,40 @@ function statusFilterChange() {
 function openRefund(row) {
   refundForm.value = { ...row }
   refundReason.value = ''
+  refundAmount.value = ''
+  refundMode.value = 'refund'
+  refundAttempt = null
   refundVisible.value = true
 }
 
 async function doRefund() {
+  const reason = refundReason.value.trim()
+  const amount = refundAmount.value || null
+  if (!reason || (amount && (!/^\d{1,8}(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0))) {
+    ElMessage.warning('请填写退款原因，指定金额时保留最多两位小数')
+    return
+  }
+  const mode = refundMode.value
+  const signature = JSON.stringify([mode, reason, amount])
+  if (refundAttempt?.signature !== signature) {
+    refundAttempt = {
+      signature,
+      id: Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, '0')).join('')
+    }
+  }
+  refunding.value = true
   try {
-    await axios.post(`${refundBaseUrl.value}/${refundForm.value.orderNo}/refund`, {
-      reason: refundReason.value
+    const { data } = await axios.post(`${refundBaseUrl.value}/${refundForm.value.orderNo}/${mode}`, {
+      reason, amount, clientRequestId: refundAttempt.id
     })
-    ElMessage.success('退款成功')
+    if (data.code !== 200) throw new Error(data.message)
+    ElMessage.success('退款请求已提交，请刷新查看结果')
     refundVisible.value = false
     fetchData()
-  } catch {
-    ElMessage.error('退款失败')
+  } catch (error) {
+    ElMessage.error(error.message || '提交退款失败')
+  } finally {
+    refunding.value = false
   }
 }
 

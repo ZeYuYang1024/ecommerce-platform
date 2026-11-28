@@ -18,7 +18,7 @@
         <el-table-column label="优惠" width="180">
           <template #default="{ row }">
             <span v-if="row.type === 'FLAT'">立减 {{ row.discountAmount }}</span>
-            <span v-else-if="row.type === 'DISCOUNT'">{{ Number(row.discountRate || 0) * 100 }} 折</span>
+            <span v-else-if="row.type === 'DISCOUNT'">{{ Number((Number(row.discountRate || 0) * 10).toFixed(2)) }}折</span>
             <span v-else>满 {{ row.minAmount }} 减 {{ row.discountAmount }}</span>
           </template>
         </el-table-column>

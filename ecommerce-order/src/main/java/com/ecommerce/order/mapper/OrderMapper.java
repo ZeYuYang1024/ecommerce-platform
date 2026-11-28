@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
 import org.apache.ibatis.annotations.Select;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.List;
 
 public interface OrderMapper extends BaseMapper<Order> {
@@ -19,6 +20,12 @@ public interface OrderMapper extends BaseMapper<Order> {
 
     @Update("UPDATE `order` SET points_reservation_no = #{reservationNo} WHERE id = #{id}")
     void setPointsReservation(@Param("id") Long id, @Param("reservationNo") String reservationNo);
+
+    @Update("UPDATE `order` SET manual_refund_key = #{key} WHERE id = #{id} AND deleted = 0")
+    void setManualRefundKey(@Param("id") Long id, @Param("key") String key);
+
+    @Update("UPDATE `order` SET refunded_amount = GREATEST(refunded_amount, #{amount}) WHERE id = #{id} AND deleted = 0")
+    void recordRefundedAmount(@Param("id") Long id, @Param("amount") BigDecimal amount);
 
     @Select("""
             SELECT id FROM `order`
