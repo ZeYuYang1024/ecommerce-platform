@@ -36,7 +36,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
+import { onShow, onReachBottom } from '@dcloudio/uni-app'
 import { request } from '@/utils/api'
 import { useAuthStore } from '@/stores/auth'
 
@@ -45,14 +46,35 @@ const tab = ref(0)
 const templates = ref([])
 const myCoupons = ref([])
 
-onMounted(async () => {
-  const [tRes, mRes] = await Promise.all([
-    request({ url: '/api/v1/coupons' }),
-    auth.isLogin ? request({ url: '/api/v1/coupons' }) : Promise.resolve(null)
-  ])
-  if (tRes.code === 200) templates.value = (tRes.data || []).filter(t => t.status === 1)
-  if (mRes?.code === 200) myCoupons.value = mRes.data || []
-})
+const pages = [0, 0]
+const totals = [0, 0]
+const busy = [false, false]
+const size = 20
+
+async function load(kind, reset = false) {
+  const list = kind === 0 ? templates : myCoupons
+  if (kind === 1 && !auth.isLogin) {
+    list.value = []
+    return
+  }
+  if (busy[kind] || (!reset && list.value.length >= totals[kind])) return
+  busy[kind] = true
+  try {
+    const page = reset ? 1 : pages[kind] + 1
+    const route = kind === 0 ? 'available' : 'mine'
+    const res = await request({ url: `/api/v1/coupons/${route}?page=${page}&size=${size}`, auth: kind === 1 })
+    if (res.code !== 200) { uni.showToast({ title: res.message || '优惠券加载失败', icon: 'none' }); return }
+    const rows = res.data?.records || []
+    list.value = reset ? rows : [...list.value, ...rows]
+    pages[kind] = page
+    totals[kind] = Number(res.data?.total || 0)
+  } finally {
+    busy[kind] = false
+  }
+}
+
+onShow(() => Promise.all([load(0, true), load(1, true)]))
+onReachBottom(() => load(tab.value))
 
 function discountText(c) {
   if (c.type === 'FLAT') return `¥${c.discountAmount}`
@@ -64,7 +86,11 @@ function conditionText(t) { return t.minAmount > 0 ? `满${t.minAmount}可用` :
 async function claim(templateId) {
   if (!auth.isLogin) { uni.showToast({ title: '请先登录', icon: 'none' }); return }
   const res = await request({ url: `/api/v1/coupons/claim?templateId=${templateId}`, method: 'POST' })
-  if (res.code === 200) { uni.showToast({ title: '领取成功', icon: 'success' }); tab.value = 1 }
+  if (res.code === 200) {
+    uni.showToast({ title: '领取成功', icon: 'success' })
+    tab.value = 1
+    await Promise.all([load(0, true), load(1, true)])
+  }
   else uni.showToast({ title: res.message, icon: 'none' })
 }
 </script>

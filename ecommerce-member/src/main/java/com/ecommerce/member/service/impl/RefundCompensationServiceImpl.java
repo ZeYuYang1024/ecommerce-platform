@@ -6,7 +6,6 @@ import com.ecommerce.common.result.Result;
 import com.ecommerce.member.client.OrderClient;
 import com.ecommerce.member.dto.request.internal.RefundCompensationRequest;
 import com.ecommerce.member.dto.request.internal.PointsReservationConfirmRequest;
-import com.ecommerce.member.dto.request.internal.PointsReservationReleaseRequest;
 import com.ecommerce.member.dto.response.internal.RefundCompensationResult;
 import com.ecommerce.member.entity.GrowthTransaction;
 import com.ecommerce.member.entity.PointsReservation;
@@ -105,24 +104,21 @@ public class RefundCompensationServiceImpl implements RefundCompensationService 
         List<PointsTransaction> refunds = List.of();
         if (reservation != null && !"RELEASED".equals(reservation.getStatus())) {
             if ("RESERVED".equals(reservation.getStatus())) {
-                reservations.release(new PointsReservationReleaseRequest(
-                        reservation.getReservationNo(), "FULL_REFUND", "ORDER:" + orderNo + ":RELEASE"));
-                reservation.setReleasedPoints(reservation.getReservedPoints());
-                result.setRestoredPoints(reservation.getReservedPoints());
-            } else {
-                refunds = pointsTransactionMapper.selectList(new LambdaQueryWrapper<PointsTransaction>()
-                        .eq(PointsTransaction::getRelatedReservationNo, reservation.getReservationNo())
-                        .eq(PointsTransaction::getSourceType, "REFUND").eq(PointsTransaction::getDirection, "EARN"));
-                int previouslyRestored = refunds.stream().mapToInt(PointsTransaction::getAmount).sum();
-                int used = Objects.requireNonNullElse(reservation.getConsumedPoints(), 0);
-                // Legacy payments could mark a refund without confirming the reservation first.
-                if (used == 0) used = Objects.requireNonNullElse(reservation.getReservedPoints(), 0);
-                int restored = Math.max(0, used - previouslyRestored);
-                if (restored > 0) {
-                    pointsService.reverseSpend(request.getUserId(), restored, "REFUND", request.getRefundNo(),
-                            buildPointsBizKey(request), "退款退回积分", reservation.getReservationNo(), null);
-                    result.setRestoredPoints(restored);
-                }
+                reservations.confirm(new PointsReservationConfirmRequest(
+                        reservation.getReservationNo(), "ORDER:" + orderNo + ":SPEND"));
+                reservation.setConsumedPoints(reservation.getReservedPoints());
+            }
+            refunds = pointsTransactionMapper.selectList(new LambdaQueryWrapper<PointsTransaction>()
+                    .eq(PointsTransaction::getRelatedReservationNo, reservation.getReservationNo())
+                    .eq(PointsTransaction::getSourceType, "REFUND").eq(PointsTransaction::getDirection, "EARN"));
+            int previouslyRestored = refunds.stream().mapToInt(PointsTransaction::getAmount).sum();
+            int used = Objects.requireNonNullElse(reservation.getConsumedPoints(), 0);
+            if (used == 0) used = Objects.requireNonNullElse(reservation.getReservedPoints(), 0);
+            int restored = Math.max(0, used - previouslyRestored);
+            if (restored > 0) {
+                pointsService.reverseSpend(request.getUserId(), restored, "REFUND", request.getRefundNo(),
+                        buildPointsBizKey(request), "退款退回积分", reservation.getReservationNo(), null);
+                result.setRestoredPoints(restored);
             }
             updateReservationStatus(reservation, "FULL");
         }

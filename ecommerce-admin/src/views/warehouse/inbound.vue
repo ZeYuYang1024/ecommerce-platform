@@ -18,7 +18,7 @@
             <el-option label="待收货" :value="0" />
             <el-option label="已收货" :value="1" />
             <el-option label="已上架" :value="2" />
-            <el-option label="已取消" :value="3" />
+            <el-option label="已完成" :value="3" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -47,6 +47,25 @@
       <el-pagination v-if="total > pageSize" v-model:current-page="currentPage" :page-size="pageSize"
         :total="total" layout="total, prev, pager, next" @current-change="fetchData" />
     </el-card>
+
+    <el-dialog v-model="shelvingVisible" title="为收货明细选择库位" width="640px">
+      <el-table :data="placements">
+        <el-table-column prop="skuId" label="SKU" />
+        <el-table-column prop="receivedQty" label="收货数量" />
+        <el-table-column label="库位">
+          <template #default="{ row }">
+            <el-select v-model="row.binId" placeholder="选择库位" filterable>
+              <el-option v-for="bin in bins" :key="bin.id" :label="bin.binCode" :value="bin.id" />
+            </el-select>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="shelvingVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="!placements.length || placements.some(item => item.binId == null)"
+          :loading="shelving" @click="submitShelving">确认上架</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 创建入库单弹窗 -->
     <el-dialog v-model="dialogVisible" title="创建入库单" width="700px">
@@ -99,6 +118,11 @@ const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 const dialogVisible = ref(false)
+const shelvingVisible = ref(false)
+const shelving = ref(false)
+const shelvingId = ref(null)
+const placements = ref([])
+const bins = ref([])
 const warehouseOptions = ref([])
 const query = reactive({ warehouseId: null, status: null })
 const form = reactive({
@@ -107,7 +131,7 @@ const form = reactive({
 })
 
 const inboundStatusText = (status) => {
-  return ['待收货', '已收货', '已上架', '已取消'][status] || '未知'
+  return ['待收货', '已收货', '已上架', '已完成'][status] || '未知'
 }
 
 const inboundStatusTag = (status) => {
@@ -159,17 +183,43 @@ const submitForm = async () => {
 }
 
 const confirmReceive = async (row) => {
-  await ElMessageBox.confirm(`确认已收到入库单 ${row.inboundNo} 的货物？`, '确认收货', { type: 'warning' })
-  await axios.put(`/api/v1/admin/warehouse/inbounds/${row.id}/receive`)
-  ElMessage.success('已确认收货')
-  fetchData()
+  try { await ElMessageBox.confirm(`确认收到 ${row.inboundNo} 的货物？`, '确认收货') } catch { return }
+  try {
+    const { data } = await axios.put(`/api/v1/admin/warehouse/inbounds/${row.id}/receive`)
+    if (data.code !== 200) throw new Error(data.message)
+    ElMessage.success('已确认收货')
+    await fetchData()
+  } catch (error) { ElMessage.error(error.message || '收货失败') }
 }
 
 const confirmShelve = async (row) => {
-  await ElMessageBox.confirm(`确认入库单 ${row.inboundNo} 已全部上架？`, '确认上架', { type: 'warning' })
-  await axios.put(`/api/v1/admin/warehouse/inbounds/${row.id}/shelve`)
-  ElMessage.success('已确认上架')
-  fetchData()
+  try {
+    const [inbound, warehouseBins] = await Promise.all([
+      axios.get(`/api/v1/admin/warehouse/inbounds/${row.id}`),
+      axios.get(`/api/v1/admin/warehouses/${row.warehouseId}/bins`)
+    ])
+    if (inbound.data.code !== 200 || warehouseBins.data.code !== 200) {
+      throw new Error(inbound.data.message || warehouseBins.data.message)
+    }
+    shelvingId.value = row.id
+    placements.value = inbound.data.data.items.map(item => ({ ...item, itemId: item.id, binId: item.binId ?? null }))
+    bins.value = warehouseBins.data.data
+    shelvingVisible.value = true
+  } catch (error) { ElMessage.error(error.message || '无法读取上架明细') }
+}
+
+const submitShelving = async () => {
+  shelving.value = true
+  try {
+    const { data } = await axios.put(`/api/v1/admin/warehouse/inbounds/${shelvingId.value}/shelve`, {
+      placements: placements.value.map(({ itemId, binId }) => ({ itemId, binId }))
+    })
+    if (data.code !== 200) throw new Error(data.message)
+    ElMessage.success('已确认上架')
+    shelvingVisible.value = false
+    await fetchData()
+  } catch (error) { ElMessage.error(error.message || '上架失败') }
+  finally { shelving.value = false }
 }
 
 onMounted(() => {

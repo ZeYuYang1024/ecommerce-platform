@@ -122,6 +122,7 @@ db < "$migrations/2026-06-02-member-phase2a-init.sql"
 db < "$migrations/2026-06-02-order-points-reservation.sql"
 db < "$migrations/2026-11-28-buyer-after-sale.sql"
 db < "$migrations/2026-11-28-commerce-consistency.sql"
+db < "$migrations/2026-11-28-checkout-operations.sql"
 for schema in ecommerce_inventory ecommerce_order ecommerce_payment; do
   db "$schema" < "$migrations/2026-05-28-transactional-outbox.sql"
 done

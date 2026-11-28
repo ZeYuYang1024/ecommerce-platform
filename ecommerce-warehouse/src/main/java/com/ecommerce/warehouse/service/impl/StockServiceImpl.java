@@ -110,6 +110,22 @@ public class StockServiceImpl implements StockService {
 
     @Override
     @Transactional
+    public void reconcileCount(Long warehouseId, Long skuId, Long binId, int expected, int actual) {
+        validateManagedWarehouse(warehouseId);
+        PhysicalStock stock = physicalStockMapper.selectOne(new LambdaQueryWrapper<PhysicalStock>()
+                .eq(PhysicalStock::getWarehouseId, warehouseId).eq(PhysicalStock::getSkuId, skuId)
+                .eq(PhysicalStock::getBinId, binId).last("FOR UPDATE"));
+        if (stock == null || stock.getQuantity() != expected || actual < stock.getLockedQty()) {
+            throw new BusinessException(WarehouseErrorCode.CHECK_STOCK_CHANGED);
+        }
+        stock.setQuantity(actual);
+        stock.setAvailableQty(actual - stock.getLockedQty());
+        physicalStockMapper.updateById(stock);
+        publishStockChanged(stock, "ADJUST", actual - expected);
+    }
+
+    @Override
+    @Transactional
     public void lockStock(Long warehouseId, Long skuId, int quantity) {
         validateManagedWarehouse(warehouseId);
 

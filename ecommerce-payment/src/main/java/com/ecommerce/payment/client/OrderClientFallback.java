@@ -32,8 +32,12 @@ public class OrderClientFallback implements FallbackFactory<OrderClient> {
                 return Result.fail(503, "order service unavailable");
             }
             @Override
+            public Result<List<ReconOrderVO>> getOrdersByNumberForRecon(List<String> orderNumbers) {
+                return Result.fail(503, "order service unavailable");
+            }
+            @Override
             public Result<List<ReconOrderVO>> getOrdersForRecon(String start, String end) {
-                return Result.ok(Collections.emptyList());
+                return Result.fail(503, "order service unavailable");
             }
         };
     }

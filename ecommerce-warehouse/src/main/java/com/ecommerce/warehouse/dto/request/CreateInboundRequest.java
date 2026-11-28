@@ -2,6 +2,8 @@ package com.ecommerce.warehouse.dto.request;
 
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import lombok.Data;
 import java.util.List;
 
@@ -20,7 +22,7 @@ public class CreateInboundRequest {
     private String remark;
 
     @NotEmpty(message = "入库明细不能为空")
-    private List<InboundItem> items;
+    private List<@Valid @NotNull InboundItem> items;
 
     @Data
     public static class InboundItem {
@@ -28,6 +30,7 @@ public class CreateInboundRequest {
         private Long skuId;
 
         @NotNull(message = "数量不能为空")
+        @Positive
         private Integer quantity;
     }
 }

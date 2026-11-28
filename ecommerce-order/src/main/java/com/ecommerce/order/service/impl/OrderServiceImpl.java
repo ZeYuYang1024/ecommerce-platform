@@ -39,12 +39,18 @@ import com.ecommerce.order.service.OrderService;
 import com.ecommerce.order.transaction.OrderTransactionCoordinator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.Duration;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -73,6 +79,9 @@ public class OrderServiceImpl implements OrderService {
     @Value("${member.points.deduction.points-per-yuan:100}")
     private int pointsPerYuan;
 
+    @Value("${order.payment-window:30m}")
+    private Duration paymentWindow = Duration.ofMinutes(30);
+
     public OrderServiceImpl(OrderMapper orderMapper, OrderItemMapper itemMapper, ProductSpuClient productSpuClient,
                             CartClient cartClient, MemberClient memberClient, LogisticsClient logisticsClient,
                             OutboxService outboxService) {
@@ -98,6 +107,12 @@ public class OrderServiceImpl implements OrderService {
                 throw new BusinessException(OrderErrorCode.ORDER_ITEM_INVALID_QUANTITY);
             }
         }
+        String requestId = request.getClientRequestId();
+        String fingerprint = requestId == null ? null : checkoutFingerprint(request);
+        if (requestId != null) {
+            Order existing = orderMapper.selectOne(checkoutScope(userId, requestId));
+            if (existing != null) return existingCheckout(existing, fingerprint);
+        }
         Map<Long, SkuBatchVO> skuMap = loadSkuSnapshots(request);
 
         BigDecimal originalTotal = BigDecimal.ZERO;
@@ -111,7 +126,11 @@ public class OrderServiceImpl implements OrderService {
 
         Order order = new Order();
         order.setId(SnowflakeUtils.nextId());
-        order.setOrderNo(generateOrderNo());
+        order.setOrderNo(requestId == null ? generateOrderNo()
+                : "C" + digest(userId + ":" + requestId).substring(0, 31).toUpperCase(java.util.Locale.ROOT));
+        order.setClientRequestId(requestId);
+        order.setCheckoutFingerprint(fingerprint);
+        order.setCreatedAt(LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
         order.setUserId(userId);
         order.setOriginalAmount(originalTotal);
         order.setTotalAmount(originalTotal.subtract(deduction.deductionAmount()));
@@ -123,12 +142,16 @@ public class OrderServiceImpl implements OrderService {
         order.setReceiverPhone(request.getReceiverPhone());
         order.setReceiverAddress(request.getReceiverAddress());
 
-        String reservationNo = reservePointsIfNeeded(userId, request, order.getOrderNo(), deduction);
-        order.setPointsReservationNo(reservationNo);
-
         try {
             orderMapper.insert(order);
+        } catch (DuplicateKeyException duplicate) {
+            if (requestId == null) throw duplicate;
+            Order existing = orderMapper.selectOne(checkoutScope(userId, requestId).last("FOR UPDATE"));
+            if (existing == null) throw duplicate;
+            return existingCheckout(existing, fingerprint);
+        }
 
+        try {
             List<OrderItemMessage> lockItems = new ArrayList<>();
             for (CreateOrderRequest.OrderItemRequest i : request.getItems()) {
                 SkuBatchVO sku = skuMap.get(i.getSkuId());
@@ -138,6 +161,8 @@ public class OrderServiceImpl implements OrderService {
                 item.setOrderNo(order.getOrderNo());
                 item.setSkuId(i.getSkuId());
                 item.setSpuId(sku.getSpuId());
+                item.setMerchantId(sku.getMerchantId());
+                item.setMerchantScopeRecorded(true);
                 item.setName(sku.getSkuName());
                 item.setImage(sku.getImage());
                 BigDecimal price = sku.getPrice();
@@ -153,6 +178,12 @@ public class OrderServiceImpl implements OrderService {
             outboxService.enqueue("order", order.getOrderNo(), "order-created",
                     OrderTransactionCoordinator.buildInventoryMessage(transaction, lockItems));
 
+            String reservationNo = reservePointsIfNeeded(userId, request, order.getOrderNo(), deduction);
+            if (reservationNo != null) {
+                order.setPointsReservationNo(reservationNo);
+                orderMapper.setPointsReservation(order.getId(), reservationNo);
+            }
+
             try {
                 cartClient.getCart(userId);
             } catch (Exception e) {
@@ -161,8 +192,39 @@ public class OrderServiceImpl implements OrderService {
 
             return toVO(order, Collections.emptyMap(), Collections.emptyMap());
         } catch (RuntimeException ex) {
-            releaseReservedPointsQuietly(order.getPointsReservationNo(), order.getOrderNo(), "ORDER_CREATE_FAILED");
+            if (requestId == null) {
+                releaseReservedPointsQuietly(order.getPointsReservationNo(), order.getOrderNo(), "ORDER_CREATE_FAILED");
+            }
             throw ex;
+        }
+    }
+
+    private LambdaQueryWrapper<Order> checkoutScope(Long userId, String requestId) {
+        return new LambdaQueryWrapper<Order>().eq(Order::getUserId, userId).eq(Order::getClientRequestId, requestId);
+    }
+
+    private OrderVO existingCheckout(Order order, String fingerprint) {
+        if (!Objects.equals(fingerprint, order.getCheckoutFingerprint())) {
+            throw new BusinessException(OrderErrorCode.CHECKOUT_CONFLICT);
+        }
+        return toVO(order, loadItemsForOrders(List.of(order)), Collections.emptyMap());
+    }
+
+    private String checkoutFingerprint(CreateOrderRequest request) {
+        Map<Long, Long> quantities = new java.util.TreeMap<>();
+        request.getItems().forEach(item -> quantities.merge(item.getSkuId(), item.getQuantity().longValue(), Long::sum));
+        return digest(List.of(request.getReceiverName(), request.getReceiverPhone(), request.getReceiverAddress()).stream()
+                .map(value -> value.length() + ":" + value).collect(Collectors.joining())
+                + "|" + (Boolean.TRUE.equals(request.getUsePoints()) ? request.getPointsToUse() : 0)
+                + "|" + quantities);
+    }
+
+    private String digest(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException unavailable) {
+            throw new IllegalStateException(unavailable);
         }
     }
 
@@ -240,6 +302,32 @@ public class OrderServiceImpl implements OrderService {
         publishCancellation(order);
     }
 
+    @Override
+    public LocalDateTime paymentExpiresAt(Order order) {
+        return order.getCreatedAt() == null ? null : order.getCreatedAt().plus(paymentWindow);
+    }
+
+    @Override
+    public List<Long> expiredPendingOrders(int limit) {
+        return orderMapper.findExpiredPending(LocalDateTime.now().minus(paymentWindow), limit);
+    }
+
+    @Override
+    @Transactional
+    public void expirePendingOrder(Long id) {
+        Order order = orderMapper.selectById(id);
+        if (order == null || !Integer.valueOf(OrderStatus.PENDING).equals(order.getStatus())
+                || !paymentHasExpired(order, LocalDateTime.now())) return;
+        if (orderMapper.transitionStatus(id, OrderStatus.PENDING, OrderStatus.CANCELLED)) {
+            publishCancellation(order);
+        }
+    }
+
+    private boolean paymentHasExpired(Order order, LocalDateTime time) {
+        LocalDateTime expiresAt = paymentExpiresAt(order);
+        return expiresAt != null && !time.isBefore(expiresAt);
+    }
+
     private void publishCancellation(Order order) {
         List<OrderItemMessage> releaseItems = itemMapper.selectList(new LambdaQueryWrapper<OrderItem>()
                         .eq(OrderItem::getOrderId, order.getId())).stream()
@@ -266,10 +354,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public Page<OrderVO> listByMerchant(Long merchantId, int page, int size, Integer status) {
         List<Long> merchantSpuIds = loadMerchantSpuIds(merchantId);
-        if (merchantSpuIds.isEmpty()) {
-            return new Page<>(page, size, 0);
-        }
-        List<Long> orderIds = loadMerchantOrderIds(merchantSpuIds);
+        List<Long> orderIds = loadMerchantOrderIds(merchantId, merchantSpuIds);
         if (orderIds.isEmpty()) {
             return new Page<>(page, size, 0);
         }
@@ -281,24 +366,39 @@ public class OrderServiceImpl implements OrderService {
         Page<Order> result = orderMapper.selectPage(pageReq, wrapper);
         Map<Long, List<OrderItem>> itemsMap = loadItemsForOrders(result.getRecords());
         Map<Long, FulfillmentSummaryVO> fulfillmentMap = loadFulfillmentSummaryMap(result.getRecords());
-        List<OrderVO> vos = result.getRecords().stream().map(o -> {
-            ensureMerchantOwnsOrder(o, "merchant", merchantId);
-            return toVO(o, itemsMap, fulfillmentMap);
-        }).collect(Collectors.toList());
+        List<OrderVO> vos = result.getRecords().stream().map(order -> {
+            List<OrderItem> all = itemsMap.getOrDefault(order.getId(), List.of());
+            List<OrderItem> visible = all.stream().filter(item -> belongsTo(item, merchantId, merchantSpuIds)).toList();
+            OrderVO view = toVO(order, Map.of(order.getId(), visible), fulfillmentMap);
+            if (visible.size() != all.size()) {
+                view.setMerchantManaged(false);
+                view.setTotalAmount(null);
+                view.setOriginalAmount(visible.stream().map(OrderItem::getTotalPrice)
+                        .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add));
+                view.setPointsUsed(null);
+                view.setPointsDeductionAmount(null);
+                view.setPointsDeductionRatio(null);
+                view.setReceiverName(null);
+                view.setReceiverPhone(null);
+                view.setReceiverAddress(null);
+            }
+            return view;
+        }).toList();
         return new Page<OrderVO>(result.getCurrent(), result.getSize(), result.getTotal()).setRecords(vos);
     }
 
     @Override
     public List<String> listOrderNosByMerchant(Long merchantId) {
+        // Merchant finance endpoints operate on whole payment records.
         List<Long> merchantSpuIds = loadMerchantSpuIds(merchantId);
-        if (merchantSpuIds.isEmpty()) {
-            return Collections.emptyList();
-        }
-        List<Long> orderIds = loadMerchantOrderIds(merchantSpuIds);
+        List<Long> orderIds = loadMerchantOrderIds(merchantId, merchantSpuIds);
         if (orderIds.isEmpty()) {
             return Collections.emptyList();
         }
-        return orderMapper.selectList(new LambdaQueryWrapper<Order>().in(Order::getId, orderIds)).stream()
+        List<Order> orders = orderMapper.selectList(new LambdaQueryWrapper<Order>().in(Order::getId, orderIds));
+        Map<Long, List<OrderItem>> items = loadItemsForOrders(orders);
+        return orders.stream()
+                .filter(order -> entirelyOwned(items.getOrDefault(order.getId(), List.of()), merchantId, merchantSpuIds))
                 .map(Order::getOrderNo)
                 .filter(Objects::nonNull)
                 .distinct()
@@ -354,8 +454,16 @@ public class OrderServiceImpl implements OrderService {
             requestCompensationRefund(locked, "订单在支付确认前已取消");
             return false;
         }
-        if (!Integer.valueOf(OrderStatus.PENDING).equals(locked.getStatus())
-                || !orderMapper.transitionStatus(locked.getId(), OrderStatus.PENDING, OrderStatus.PAID)) return false;
+        if (!Integer.valueOf(OrderStatus.PENDING).equals(locked.getStatus())) return false;
+        LocalDateTime paidAt = Objects.requireNonNullElseGet(message.getPaidAt(), LocalDateTime::now);
+        if (paymentHasExpired(locked, paidAt)) {
+            if (orderMapper.transitionStatus(locked.getId(), OrderStatus.PENDING, OrderStatus.CANCELLED)) {
+                publishCancellation(locked);
+                requestCompensationRefund(locked, "订单超过支付时限后收款");
+            }
+            return false;
+        }
+        if (!orderMapper.transitionStatus(locked.getId(), OrderStatus.PENDING, OrderStatus.PAID)) return false;
         List<Long> spuIds = itemMapper.selectList(new LambdaQueryWrapper<OrderItem>()
                         .select(OrderItem::getSpuId).eq(OrderItem::getOrderId, order.getId())).stream()
                 .map(OrderItem::getSpuId).filter(Objects::nonNull).distinct().toList();
@@ -448,14 +556,9 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
         }
         List<Long> merchantSpuIds = loadMerchantSpuIds(merchantId);
-        if (merchantSpuIds.isEmpty()) {
-            throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
-        }
         List<OrderItem> items = itemMapper.selectList(
                 new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, order.getId()));
-        final List<Long> ownedSpuIds = merchantSpuIds;
-        boolean owned = !items.isEmpty() && items.stream().allMatch(item -> ownedSpuIds.contains(item.getSpuId()));
-        if (!owned) {
+        if (!entirelyOwned(items, merchantId, merchantSpuIds)) {
             throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
         }
     }
@@ -484,6 +587,7 @@ public class OrderServiceImpl implements OrderService {
         vo.setReceiverPhone(order.getReceiverPhone());
         vo.setReceiverAddress(order.getReceiverAddress());
         vo.setCreatedAt(order.getCreatedAt());
+        vo.setPaymentExpiresAt(paymentExpiresAt(order));
 
         List<OrderItem> items = itemsMap.getOrDefault(order.getId(), Collections.emptyList());
         List<OrderVO.OrderItemVO> itemVOs = new ArrayList<>();
@@ -534,9 +638,22 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private List<Long> loadMerchantOrderIds(List<Long> spuIds) {
-        List<OrderItem> items = itemMapper.selectList(
-                new LambdaQueryWrapper<OrderItem>().in(OrderItem::getSpuId, spuIds));
+    private boolean entirelyOwned(List<OrderItem> items, Long merchantId, List<Long> legacySpuIds) {
+        return !items.isEmpty() && items.stream().allMatch(item -> belongsTo(item, merchantId, legacySpuIds));
+    }
+
+    private boolean belongsTo(OrderItem item, Long merchantId, List<Long> legacySpuIds) {
+        return Boolean.TRUE.equals(item.getMerchantScopeRecorded())
+                ? Objects.equals(merchantId, item.getMerchantId()) : legacySpuIds.contains(item.getSpuId());
+    }
+
+    private List<Long> loadMerchantOrderIds(Long merchantId, List<Long> spuIds) {
+        LambdaQueryWrapper<OrderItem> scope = new LambdaQueryWrapper<OrderItem>()
+                .eq(OrderItem::getMerchantId, merchantId);
+        if (!spuIds.isEmpty()) {
+            scope.or(legacy -> legacy.eq(OrderItem::getMerchantScopeRecorded, false).in(OrderItem::getSpuId, spuIds));
+        }
+        List<OrderItem> items = itemMapper.selectList(scope);
         return items.stream()
                 .map(OrderItem::getOrderId)
                 .filter(Objects::nonNull)
@@ -647,8 +764,9 @@ public class OrderServiceImpl implements OrderService {
                 orderNo,
                 "ORDER_DEDUCTION",
                 deduction.pointsUsed(),
-                buildReservationIdempotencyKey(orderNo, request.getClientRequestId())));
+                "reserve:" + orderNo));
         if (response == null || response.getCode() != 200 || response.getData() == null
+                || !Objects.equals(response.getData().getReservedPoints(), deduction.pointsUsed())
                 || response.getData().getReservationNo() == null || response.getData().getReservationNo().isBlank()) {
             throw remoteBusinessException(response, OrderErrorCode.ORDER_FORBIDDEN.getCode(), "points reservation failed");
         }
@@ -671,13 +789,6 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(OrderErrorCode.ORDER_FORBIDDEN);
         }
         return new PointsDeductionSnapshot(request.getPointsToUse(), deductionAmount, pointsPerYuan);
-    }
-
-    private String buildReservationIdempotencyKey(String orderNo, String clientRequestId) {
-        if (clientRequestId != null && !clientRequestId.isBlank()) {
-            return "reserve:" + orderNo + ":" + clientRequestId;
-        }
-        return "reserve:" + orderNo;
     }
 
     private void releaseReservedPointsQuietly(String reservationNo, String orderNo, String reason) {

@@ -13,4 +13,6 @@ public class StockCheck extends BaseEntity {
     private Long warehouseId;
     private Integer status;
     private Long merchantId;
+    private Long approvedBy;
+    private java.time.LocalDateTime approvedAt;
 }

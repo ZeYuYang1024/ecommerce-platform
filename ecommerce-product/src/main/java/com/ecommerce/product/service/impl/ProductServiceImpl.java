@@ -223,10 +223,10 @@ public class ProductServiceImpl implements ProductService {
         getSpusByIds(query.ids()).stream().filter(spu -> Integer.valueOf(1).equals(spu.getStatus()))
                 .forEach(spu -> products.put(spu.getId(), spu));
         for (Long categoryId : query.categoryIds()) {
-            recommendationPage(categoryId, 24).forEach(spu -> products.putIfAbsent(spu.getId(), spu));
+            recommendationPage(categoryId, 1, 24).forEach(spu -> products.putIfAbsent(spu.getId(), spu));
         }
         if (query.includeLatest()) {
-            recommendationPage(null, 48).forEach(spu -> products.putIfAbsent(spu.getId(), spu));
+            recommendationPage(null, Math.max(1, query.latestPage()), RecommendationProduct.LATEST_BATCH_SIZE).forEach(spu -> products.putIfAbsent(spu.getId(), spu));
         }
         if (products.isEmpty()) return List.of();
 
@@ -242,8 +242,8 @@ public class ProductServiceImpl implements ProductService {
         }).toList();
     }
 
-    private List<Spu> recommendationPage(Long categoryId, int size) {
-        return spuMapper.selectPage(new Page<Spu>(1, size, false), new LambdaQueryWrapper<Spu>()
+    private List<Spu> recommendationPage(Long categoryId, int page, int size) {
+        return spuMapper.selectPage(new Page<Spu>(page, size, false), new LambdaQueryWrapper<Spu>()
                 .eq(Spu::getStatus, 1).eq(categoryId != null, Spu::getCategoryId, categoryId)
                 .orderByDesc(Spu::getCreatedAt, Spu::getId)).getRecords();
     }

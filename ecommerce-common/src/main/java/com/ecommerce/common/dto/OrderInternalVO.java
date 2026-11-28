@@ -17,6 +17,7 @@ public class OrderInternalVO {
     private BigDecimal pointsDeductionAmount;
     private Integer pointsDeductionRatio;
     private Integer status;
+    private java.time.LocalDateTime paymentExpiresAt;
     private List<OrderItemSnapshot> items;
 
     @Data

@@ -12,6 +12,8 @@ public class StockCheckVO {
     private Integer status;
     private String statusText;
     private Long merchantId;
+    private Long approvedBy;
+    private LocalDateTime approvedAt;
     private List<Item> items;
     private LocalDateTime createdAt;
 

@@ -87,6 +87,7 @@ public class ShippingServiceImpl implements ShippingService {
                         .eq(ShippingOrder::getOrderId, request.getOrderId())
                         .eq(ShippingOrder::getClientRequestId, request.getClientRequestId()));
         if (existing != null) {
+            MerchantTenantSupport.requireOwnerAccess(merchantId, existing.getMerchantId(), LogisticsErrorCode.SHIPPING_FORBIDDEN);
             return toVO(existing);
         }
 
@@ -123,9 +124,13 @@ public class ShippingServiceImpl implements ShippingService {
                     merchantId, warehouse.getMerchantId(), LogisticsErrorCode.WAREHOUSE_FORBIDDEN);
         }
         boolean managedWarehouse = isManagedWarehouse(warehouse);
-        Long resolvedMerchantId = resolveShippingMerchantId(orderSnapshot, warehouse, merchantId);
-        MerchantTenantSupport.requireOwnerAccess(
-                merchantId, resolvedMerchantId, LogisticsErrorCode.SHIPPING_FORBIDDEN);
+        List<Long> owners = orderSnapshot.getItems().stream()
+                .map(OrderInternalVO.OrderItemSnapshot::getMerchantId).distinct().toList();
+        Long resolvedMerchantId = owners.size() == 1 ? owners.getFirst() : null;
+        MerchantTenantSupport.requireOwnerAccess(merchantId, resolvedMerchantId, LogisticsErrorCode.SHIPPING_FORBIDDEN);
+        if (owners.size() > 1 && warehouse != null && warehouse.getMerchantId() != null) {
+            throw new BusinessException(LogisticsErrorCode.WAREHOUSE_FORBIDDEN);
+        }
         long shippingId = SnowflakeUtils.nextId();
         claimShipping(request.getOrderId(), shippingNo, shippingId, managedWarehouse);
 
@@ -676,26 +681,6 @@ public class ShippingServiceImpl implements ShippingService {
         if (orderSnapshot.getStatus() != OrderStatus.PAID) {
             throw new BusinessException(LogisticsErrorCode.ORDER_NOT_PAID);
         }
-    }
-
-    private Long resolveShippingMerchantId(OrderInternalVO orderSnapshot, WarehouseInfoVO warehouse, Long requestMerchantId) {
-        if (orderSnapshot != null && orderSnapshot.getMerchantId() != null) {
-            return orderSnapshot.getMerchantId();
-        }
-        if (orderSnapshot != null && orderSnapshot.getItems() != null) {
-            List<Long> merchantIds = orderSnapshot.getItems().stream()
-                    .map(OrderInternalVO.OrderItemSnapshot::getMerchantId)
-                    .filter(Objects::nonNull)
-                    .distinct()
-                    .toList();
-            if (merchantIds.size() == 1) {
-                return merchantIds.getFirst();
-            }
-        }
-        if (warehouse != null && warehouse.getMerchantId() != null) {
-            return warehouse.getMerchantId();
-        }
-        return requestMerchantId;
     }
 
     private CallbackPayload parseCallbackPayload(String rawBody) {

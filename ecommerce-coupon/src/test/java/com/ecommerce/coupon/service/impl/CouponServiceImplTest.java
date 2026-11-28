@@ -42,7 +42,7 @@ class CouponServiceImplTest {
         existing.setId(1001L);
         existing.setMerchantId(3002L);
         existing.setName("foreign-template");
-        when(templateMapper.selectById(1001L)).thenReturn(existing);
+        when(templateMapper.selectOne(any())).thenReturn(existing);
 
         CouponTemplate incoming = new CouponTemplate();
         incoming.setId(1001L);
@@ -52,6 +52,23 @@ class CouponServiceImplTest {
                 .isInstanceOf(BusinessException.class);
 
         verify(templateMapper, never()).updateById(any(CouponTemplate.class));
+    }
+
+    @Test
+    void issuanceIgnoresClientRemainingCountAndPreservesIssuedQuantityOnUpdate() {
+        CouponTemplate template = new CouponTemplate();
+        template.setId(1001L);
+        template.setTotalCount(10);
+        template.setRemainingCount(100);
+        assertThat(couponService.createTemplate(template).getRemainingCount()).isEqualTo(10);
+
+        when(templateMapper.selectOne(any())).thenReturn(template);
+        when(userCouponMapper.selectCount(any())).thenReturn(3L);
+        CouponTemplate edit = new CouponTemplate();
+        edit.setId(1001L);
+        edit.setTotalCount(5);
+        edit.setRemainingCount(100);
+        assertThat(couponService.updateTemplate(edit).getRemainingCount()).isEqualTo(2);
     }
 
     @Test

@@ -2,6 +2,8 @@ package com.ecommerce.coupon.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ecommerce.common.result.Result;
+import com.ecommerce.common.tenant.MerchantTenantSupport;
+import com.ecommerce.coupon.common.CouponErrorCode;
 import com.ecommerce.coupon.entity.CouponTemplate;
 import com.ecommerce.coupon.service.CouponService;
 import jakarta.validation.Valid;
@@ -46,6 +48,20 @@ public class AdminCouponController {
     public Result<CouponTemplate> merchantCreate(@Valid @RequestBody CouponTemplate template,
                                                  @RequestHeader("X-Merchant-Id") Long merchantId) {
         return Result.ok(couponService.createTemplate(template, merchantId));
+    }
+
+    @PutMapping("/coupons/{id}/status")
+    public Result<Void> changeStatus(@PathVariable Long id, @RequestParam int status) {
+        couponService.changeStatus(id, status, null);
+        return Result.ok();
+    }
+
+    @PutMapping("/merchant/coupons/{id}/status")
+    public Result<Void> merchantChangeStatus(@PathVariable Long id, @RequestParam int status,
+                                             @RequestHeader("X-Merchant-Id") Long merchantId) {
+        couponService.changeStatus(id, status,
+                MerchantTenantSupport.requireMerchantId(merchantId, CouponErrorCode.COUPON_FORBIDDEN));
+        return Result.ok();
     }
 
     @PutMapping("/coupons/{id}")

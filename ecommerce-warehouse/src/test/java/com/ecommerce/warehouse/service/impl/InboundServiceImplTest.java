@@ -47,6 +47,9 @@ class InboundServiceImplTest {
     @Mock
     private StockService stockService;
 
+    @Mock
+    private com.ecommerce.warehouse.mapper.WarehouseBinMapper bins;
+
     @InjectMocks
     private InboundServiceImpl service;
 
@@ -109,11 +112,16 @@ class InboundServiceImplTest {
     @Test
     void shouldConfirmShelved() {
         inboundOrder.setStatus(InboundStatus.RECEIVED);
-        when(inboundOrderMapper.selectById(10L)).thenReturn(inboundOrder);
+        when(inboundOrderMapper.selectOne(any())).thenReturn(inboundOrder);
         when(inboundOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(inboundItem));
         when(inboundOrderMapper.updateById(any(InboundOrder.class))).thenReturn(1);
+        inboundItem.setReceivedQty(30);
+        var bin = new com.ecommerce.warehouse.entity.WarehouseBin();
+        bin.setWarehouseId(1L);
+        when(bins.selectById(5L)).thenReturn(bin);
 
-        service.confirmShelved(10L);
+        service.confirmShelved(10L, new com.ecommerce.warehouse.dto.request.ShelveInboundRequest(List.of(
+                new com.ecommerce.warehouse.dto.request.ShelveInboundRequest.Placement(inboundItem.getId(), 5L))));
 
         assertThat(inboundOrder.getStatus()).isEqualTo(InboundStatus.SHELVED);
         verify(stockService, times(1)).addStock(eq(1L), eq(200L), eq(5L), eq(30));

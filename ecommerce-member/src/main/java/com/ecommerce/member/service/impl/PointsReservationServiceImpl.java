@@ -12,7 +12,6 @@ import com.ecommerce.member.dto.response.internal.PointsReserveResponse;
 import com.ecommerce.member.entity.MemberProfile;
 import com.ecommerce.member.entity.PointsReservation;
 import com.ecommerce.member.mapper.MemberProfileMapper;
-import com.ecommerce.member.mapper.PointsConsumeDetailMapper;
 import com.ecommerce.member.mapper.PointsReservationMapper;
 import com.ecommerce.member.service.PointsReservationService;
 import com.ecommerce.member.service.PointsService;
@@ -20,12 +19,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Service
 @RequiredArgsConstructor
 public class PointsReservationServiceImpl implements PointsReservationService {
 
     private final PointsReservationMapper pointsReservationMapper;
-    private final PointsConsumeDetailMapper pointsConsumeDetailMapper;
     private final MemberProfileMapper memberProfileMapper;
     private final PointsService pointsService;
 
@@ -36,6 +36,13 @@ public class PointsReservationServiceImpl implements PointsReservationService {
                 new LambdaQueryWrapper<PointsReservation>()
                         .eq(PointsReservation::getIdempotencyKey, request.getIdempotencyKey()));
         if (existing != null) {
+            if (!java.util.Objects.equals(existing.getUserId(), request.getUserId())
+                    || !java.util.Objects.equals(existing.getOrderNo(), request.getOrderNo())
+                    || !java.util.Objects.equals(existing.getReservedPoints(), request.getPoints())
+                    || !"RESERVED".equals(existing.getStatus())
+                    || (existing.getExpiredAt() != null && !existing.getExpiredAt().isAfter(LocalDateTime.now()))) {
+                throw new BusinessException(MemberErrorCode.POINTS_RESERVATION_STATUS_INVALID);
+            }
             return toReserveResponse(existing);
         }
 
@@ -67,11 +74,13 @@ public class PointsReservationServiceImpl implements PointsReservationService {
         reservation.setOrderNo(request.getOrderNo());
         reservation.setSceneType(request.getSceneType());
         reservation.setReservedPoints(request.getPoints());
+        reservation.setExpiredAt(LocalDateTime.now().plusHours(1));
         reservation.setConsumedPoints(0);
         reservation.setReleasedPoints(0);
         reservation.setStatus("RESERVED");
         reservation.setIdempotencyKey(request.getIdempotencyKey());
         pointsReservationMapper.insert(reservation);
+        pointsService.holdEarnLots(request.getUserId(), request.getPoints(), reservation.getReservationNo());
         return toReserveResponse(reservation);
     }
 
@@ -116,7 +125,6 @@ public class PointsReservationServiceImpl implements PointsReservationService {
                 new LambdaUpdateWrapper<PointsReservation>()
                         .eq(PointsReservation::getId, reservation.getId())
                         .eq(PointsReservation::getStatus, "RESERVED")
-                        .setSql("released_points = " + reservation.getReservedPoints())
                         .setSql("status = 'RELEASED'"));
         if (claimRows == 0) {
             throw new BusinessException(MemberErrorCode.POINTS_RESERVATION_CONFLICT);
@@ -124,20 +132,23 @@ public class PointsReservationServiceImpl implements PointsReservationService {
 
         MemberProfile profile = memberProfileMapper.selectOne(
                 new LambdaQueryWrapper<MemberProfile>()
-                        .eq(MemberProfile::getUserId, reservation.getUserId()));
+                        .eq(MemberProfile::getUserId, reservation.getUserId()).last("FOR UPDATE"));
         if (profile == null) {
             throw new BusinessException(MemberErrorCode.MEMBER_PROFILE_NOT_FOUND);
         }
 
+        int releasable = pointsService.releaseEarnLots(reservation.getId(), reservation.getReservedPoints());
         int rows = memberProfileMapper.update(null,
                 new LambdaUpdateWrapper<MemberProfile>()
                         .eq(MemberProfile::getId, profile.getId())
                         .eq(MemberProfile::getVersion, profile.getVersion())
-                        .setSql("available_points = available_points + " + reservation.getReservedPoints())
+                        .setSql("available_points = available_points + " + releasable)
                         .setSql("version = version + 1"));
         if (rows == 0) {
             throw new BusinessException(MemberErrorCode.POINTS_RESERVATION_CONFLICT);
         }
+        pointsReservationMapper.update(null, new LambdaUpdateWrapper<PointsReservation>()
+                .eq(PointsReservation::getId, reservation.getId()).setSql("released_points = " + releasable));
     }
 
     private PointsReservation getReservation(String reservationNo) {

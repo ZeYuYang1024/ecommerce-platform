@@ -110,10 +110,13 @@ class PointsReservationServiceImplTest {
         when(memberProfileMapper.selectOne(any())).thenReturn(profile);
         when(memberProfileMapper.update(any(), any())).thenReturn(1);
 
+        when(pointsService.releaseEarnLots(reservation.getId(), 120)).thenReturn(40);
+
         service.release(new PointsReservationReleaseRequest("PR1", "USER_CANCELLED", "release:ORD-1"));
 
         verify(memberProfileMapper).update(any(), any());
-        verify(pointsReservationMapper).update(any(), any());
+        verify(pointsService).releaseEarnLots(reservation.getId(), 120);
+        verify(pointsReservationMapper, org.mockito.Mockito.times(2)).update(any(), any());
     }
 
     private MemberProfile buildProfile(Long id, Long userId, Long availablePoints, Long version) {

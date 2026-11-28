@@ -104,6 +104,30 @@ public class OrderController {
         return Result.ok(orderService.merchantOwnsEntireOrder(merchantId, orderNo));
     }
 
+    @PostMapping("/internal/orders/reconciliation")
+    public Result<List<com.ecommerce.common.dto.ReconOrderVO>> reconciliationOrders(@RequestBody List<String> numbers) {
+        if (numbers.isEmpty() || numbers.size() > 100) return Result.fail(400, "invalid order number batch");
+        var orders = orderMapper.selectList(new LambdaQueryWrapper<Order>().in(Order::getOrderNo, numbers));
+        return Result.ok(orders.stream().map(order -> {
+            var row = new com.ecommerce.common.dto.ReconOrderVO();
+            row.setOrderNo(order.getOrderNo());
+            row.setAmount(order.getTotalAmount());
+            row.setStatus(order.getStatus());
+            row.setUpdatedAt(order.getUpdatedAt());
+            return row;
+        }).toList());
+    }
+
+    @GetMapping("/internal/orders/{id}/review-eligible")
+    public Result<Boolean> reviewEligible(@PathVariable Long id, @RequestParam Long userId, @RequestParam Long spuId) {
+        Order order = orderMapper.selectById(id);
+        boolean eligible = order != null && java.util.Objects.equals(order.getUserId(), userId)
+                && Integer.valueOf(com.ecommerce.common.constant.OrderStatus.COMPLETED).equals(order.getStatus())
+                && orderItemMapper.exists(new LambdaQueryWrapper<OrderItem>()
+                        .eq(OrderItem::getOrderId, id).eq(OrderItem::getSpuId, spuId));
+        return Result.ok(eligible);
+    }
+
     @GetMapping("/orders/no/{orderNo}")
     public Result<OrderVO> detailByOrderNo(@RequestHeader("X-User-Id") Long userId, @PathVariable String orderNo) {
         return Result.ok(orderService.getOrderByOrderNo(userId, orderNo));
@@ -131,19 +155,25 @@ public class OrderController {
         vo.setPointsDeductionAmount(order.getPointsDeductionAmount());
         vo.setPointsDeductionRatio(order.getPointsDeductionRatio());
         vo.setStatus(order.getStatus());
+        vo.setPaymentExpiresAt(orderService.paymentExpiresAt(order));
         if (includeItems) {
             List<OrderItem> items = orderItemMapper.selectList(
                     new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, order.getId()));
-            Map<Long, Long> merchantMap = loadMerchantMap(items);
-            vo.setMerchantId(resolveOrderMerchantId(merchantMap));
+            List<OrderItem> legacy = items.stream()
+                    .filter(item -> !Boolean.TRUE.equals(item.getMerchantScopeRecorded())).toList();
+            Map<Long, Long> merchantMap = loadMerchantMap(legacy);
             vo.setItems(items.stream().map(item -> {
                 OrderInternalVO.OrderItemSnapshot snapshot = new OrderInternalVO.OrderItemSnapshot();
                 snapshot.setOrderItemId(item.getId());
                 snapshot.setSkuId(item.getSkuId());
-                snapshot.setMerchantId(merchantMap.get(item.getSkuId()));
+                snapshot.setMerchantId(Boolean.TRUE.equals(item.getMerchantScopeRecorded())
+                        ? item.getMerchantId() : merchantMap.get(item.getSkuId()));
                 snapshot.setQuantity(item.getQuantity());
                 return snapshot;
             }).toList());
+            List<Long> owners = vo.getItems().stream().map(OrderInternalVO.OrderItemSnapshot::getMerchantId)
+                    .distinct().toList();
+            vo.setMerchantId(owners.size() == 1 ? owners.getFirst() : null);
         }
         return vo;
     }
@@ -169,11 +199,4 @@ public class OrderController {
                         (left, right) -> left));
     }
 
-    private Long resolveOrderMerchantId(Map<Long, Long> merchantMap) {
-        List<Long> merchantIds = merchantMap.values().stream()
-                .filter(java.util.Objects::nonNull)
-                .distinct()
-                .toList();
-        return merchantIds.size() == 1 ? merchantIds.getFirst() : null;
-    }
 }

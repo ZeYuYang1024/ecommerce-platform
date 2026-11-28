@@ -69,8 +69,13 @@ test('seeded SKU goes from cart to paid order and consumes one unit of available
   const submitted = page.waitForResponse(res =>
     new URL(res.url()).pathname === '/api/v1/orders' && res.request().method() === 'POST')
   await page.getByRole('button', { name: '提交订单' }).click()
-  const { orderNo } = await result(await submitted)
+  const submission = await submitted
+  const { orderNo } = await result(submission)
   expect(orderNo).toMatch(/^[A-Z0-9]+$/)
+  const checkout = submission.request().postDataJSON()
+  expect(checkout.clientRequestId).toBeTruthy()
+  const retried = await result(await request.post('/api/v1/orders', { headers, data: checkout }))
+  expect(retried.orderNo).toBe(orderNo)
   await expect(page).toHaveURL(new RegExp(`/payment/${orderNo}$`))
   await expect.poll(async () => {
     const cart = await result(await request.get('/api/v1/cart', { headers }))

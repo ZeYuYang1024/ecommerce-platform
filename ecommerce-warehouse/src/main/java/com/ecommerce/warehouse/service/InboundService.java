@@ -2,6 +2,7 @@ package com.ecommerce.warehouse.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.ecommerce.warehouse.dto.request.CreateInboundRequest;
+import com.ecommerce.warehouse.dto.request.ShelveInboundRequest;
 import com.ecommerce.warehouse.dto.response.InboundOrderVO;
 
 public interface InboundService {
@@ -14,7 +15,7 @@ public interface InboundService {
 
     void confirmReceived(Long id);
 
-    void confirmShelved(Long id);
+    void confirmShelved(Long id, ShelveInboundRequest request);
 
     void completeInbound(Long id);
 }

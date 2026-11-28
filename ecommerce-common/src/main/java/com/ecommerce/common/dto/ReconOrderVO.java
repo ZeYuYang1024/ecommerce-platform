@@ -8,4 +8,5 @@ public class ReconOrderVO {
     private String orderNo;
     private BigDecimal amount;
     private Integer status;
+    private java.time.LocalDateTime updatedAt;
 }

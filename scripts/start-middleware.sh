@@ -92,6 +92,7 @@ docker exec -i ecommerce-mysql mysql -uroot -proot < "$PROJECT_DIR/docs/init.sql
 docker exec -i ecommerce-mysql mysql -uroot -proot < "$PROJECT_DIR/ecommerce-recommendation/sql/init.sql"
 docker exec -i ecommerce-mysql mysql -uroot -proot < "$PROJECT_DIR/docs/sql/migrations/2026-11-28-buyer-after-sale.sql"
 docker exec -i ecommerce-mysql mysql -uroot -proot < "$PROJECT_DIR/docs/sql/migrations/2026-11-28-commerce-consistency.sql"
+docker exec -i ecommerce-mysql mysql -uroot -proot < "$PROJECT_DIR/docs/sql/migrations/2026-11-28-checkout-operations.sql"
 echo "数据库初始化完成。"
 
 echo ""

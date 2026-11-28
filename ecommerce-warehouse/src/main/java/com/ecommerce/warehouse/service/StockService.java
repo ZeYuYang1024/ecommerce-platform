@@ -17,6 +17,8 @@ public interface StockService {
      */
     void addStock(Long warehouseId, Long skuId, Long binId, int quantity);
 
+    void reconcileCount(Long warehouseId, Long skuId, Long binId, int expected, int actual);
+
     /**
      * Lock available stock for outbound order.
      * locked_qty += quantity, available_qty -= quantity across bins.

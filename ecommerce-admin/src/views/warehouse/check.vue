@@ -17,7 +17,7 @@
           <el-select v-model="query.status" placeholder="全部" clearable>
             <el-option label="盘点中" :value="0" />
             <el-option label="已完成" :value="1" />
-            <el-option label="已取消" :value="2" />
+            <el-option label="待处理差异" :value="2" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -37,7 +37,8 @@
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="showDetail(row)">查看明细</el-button>
-            <el-button v-if="row.status === 0" size="small" type="success" @click="completeCheck(row)">完成盘点</el-button>
+            <el-button v-if="row.status === 0" size="small" type="success" @click="completeCheck(row)">提交盘点</el-button>
+            <el-button v-if="row.status === 2" size="small" type="warning" @click="approveDifference(row)">确认差异</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -141,7 +142,7 @@ const recordVisible = ref(false)
 const recordForm = reactive({ checkId: null, itemId: null, skuId: '', skuName: '', systemQty: 0, actualQty: 0 })
 
 const checkStatusText = (status) => {
-  return ['盘点中', '已完成', '已取消'][status] || '未知'
+  return ['盘点中', '已完成', '待处理差异'][status] || '未知'
 }
 
 const checkStatusTag = (status) => {
@@ -213,10 +214,10 @@ const showRecordDialog = (row) => {
 
 const submitRecord = async () => {
   try {
-    await axios.put(`/api/v1/admin/warehouse/checks/${recordForm.checkId}/record`, {
-      itemId: recordForm.itemId,
-      actualQty: recordForm.actualQty
+    const response = await axios.put(`/api/v1/admin/warehouse/checks/${recordForm.checkId}/items/${recordForm.itemId}`, null, {
+      params: { actualQty: recordForm.actualQty }
     })
+    if (response.data.code !== 200) throw new Error(response.data.message)
     ElMessage.success('盘点录入成功')
     recordVisible.value = false
     // 重新加载明细
@@ -227,11 +228,17 @@ const submitRecord = async () => {
   } catch (e) { ElMessage.error('操作失败') }
 }
 
-const completeCheck = async (row) => {
-  await ElMessageBox.confirm(`确认完成盘点单 ${row.checkNo}？完成后将无法修改。`, '确认完成', { type: 'warning' })
-  await axios.put(`/api/v1/admin/warehouse/checks/${row.id}/complete`)
-  ElMessage.success('盘点已完成')
-  fetchData()
+const completeCheck = (row) => submitCheckAction(row, 'complete', '提交盘点', '确认提交已录入的实盘数量？')
+const approveDifference = (row) => submitCheckAction(row, 'approve-difference', '确认差异', '确认按这张盘点单调整库存？')
+
+async function submitCheckAction(row, action, label, message) {
+  try { await ElMessageBox.confirm(message, label, { type: 'warning' }) } catch { return }
+  try {
+    const { data } = await axios.put(`/api/v1/admin/warehouse/checks/${row.id}/${action}`)
+    if (data.code !== 200) throw new Error(data.message)
+    ElMessage.success(`${label}成功`)
+    await fetchData()
+  } catch (error) { ElMessage.error(error.message || '操作失败') }
 }
 
 onMounted(() => {

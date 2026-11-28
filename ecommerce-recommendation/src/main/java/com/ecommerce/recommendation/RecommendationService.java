@@ -21,6 +21,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -71,8 +72,17 @@ class RecommendationService {
                 .sorted(Map.Entry.<Long, Double>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
                 .limit(3).map(Map.Entry::getKey).toList();
         var query = new RecommendationProduct.Query(relatedProducts.stream().map(RecommendationRepository.Related::id)
-                .toList(), categories, true);
-        List<RecommendationProduct> candidates = available(candidates(query)).stream()
+                .toList(), categories, false);
+        Map<Long, RecommendationProduct> sellable = new LinkedHashMap<>();
+        available(candidates(query)).forEach(product -> sellable.put(product.id(), product));
+        for (int page = 1; page == 1 || sellable.size() < limit; page++) {
+            List<RecommendationProduct> latest = candidates(
+                    new RecommendationProduct.Query(List.of(), List.of(), true, page));
+            available(latest.stream().filter(product -> !sellable.containsKey(product.id())).toList())
+                    .forEach(product -> sellable.putIfAbsent(product.id(), product));
+            if (latest.size() < RecommendationProduct.LATEST_BATCH_SIZE) break;
+        }
+        List<RecommendationProduct> candidates = sellable.values().stream()
                 .sorted(Comparator.comparingDouble((RecommendationProduct product) ->
                         score(product, taste, related)).reversed())
                 .toList();

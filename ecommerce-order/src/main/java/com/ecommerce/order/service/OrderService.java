@@ -20,6 +20,9 @@ public interface OrderService {
     Page<OrderVO> listByUser(Long userId, int page, int size);
     List<OrderSummaryVO> listSummariesByUser(Long userId, int limit);
     void cancelOrder(Long userId, Long id);
+    LocalDateTime paymentExpiresAt(Order order);
+    List<Long> expiredPendingOrders(int limit);
+    void expirePendingOrder(Long id);
     Page<OrderVO> listAll(int page, int size, Integer status);
     Page<OrderVO> listByMerchant(Long merchantId, int page, int size, Integer status);
     List<String> listOrderNosByMerchant(Long merchantId);

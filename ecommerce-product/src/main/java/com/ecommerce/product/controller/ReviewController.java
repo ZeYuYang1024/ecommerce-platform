@@ -6,6 +6,13 @@ import com.ecommerce.common.result.BusinessException;
 import com.ecommerce.common.result.Result;
 import com.ecommerce.common.util.SnowflakeUtils;
 import com.ecommerce.product.common.ProductErrorCode;
+import com.ecommerce.product.client.ReviewOrderClient;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import org.springframework.dao.DuplicateKeyException;
 import com.ecommerce.product.entity.Review;
 import com.ecommerce.product.entity.Spu;
 import com.ecommerce.product.mapper.ReviewMapper;
@@ -21,9 +28,12 @@ public class ReviewController {
     private final ReviewMapper reviewMapper;
     private final ProductService productService;
 
-    public ReviewController(ReviewMapper reviewMapper, ProductService productService) {
+    private final ReviewOrderClient orders;
+
+    public ReviewController(ReviewMapper reviewMapper, ProductService productService, ReviewOrderClient orders) {
         this.reviewMapper = reviewMapper;
         this.productService = productService;
+        this.orders = orders;
     }
 
     @GetMapping("/products/{spuId}/reviews")
@@ -34,14 +44,32 @@ public class ReviewController {
                         .orderByDesc(Review::getCreatedAt)));
     }
 
+    record ReviewRequest(@NotNull Long orderId, @NotNull @Min(1) @Max(5) Integer rating,
+                         @Size(max = 1024) String content, @Size(max = 8192) String images) {}
+
     @PostMapping("/products/{spuId}/reviews")
     public Result<Review> create(@PathVariable Long spuId,
                                   @RequestHeader("X-User-Id") Long userId,
-                                  @RequestBody Review review) {
+                                  @Valid @RequestBody ReviewRequest request) {
+        var eligibility = orders.reviewEligible(request.orderId(), userId, spuId);
+        if (eligibility == null || eligibility.getCode() != 200 || eligibility.getData() == null) {
+            return Result.fail(503, "暂时无法核实订单，请稍后重试");
+        }
+        if (!eligibility.getData()) throw new BusinessException(ProductErrorCode.REVIEW_ORDER_REQUIRED);
+        Review review = new Review();
         review.setId(SnowflakeUtils.nextId());
+        review.setOrderId(request.orderId());
+        review.setVerifiedOrderId(request.orderId());
+        review.setRating(request.rating());
+        review.setContent(request.content());
+        review.setImages(request.images());
         review.setSpuId(spuId);
         review.setUserId(userId);
-        reviewMapper.insert(review);
+        try {
+            reviewMapper.insert(review);
+        } catch (DuplicateKeyException duplicate) {
+            throw new BusinessException(ProductErrorCode.REVIEW_ALREADY_SUBMITTED);
+        }
         return Result.ok(review);
     }
 

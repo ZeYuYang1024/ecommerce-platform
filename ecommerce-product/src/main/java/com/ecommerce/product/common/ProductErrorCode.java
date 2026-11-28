@@ -12,7 +12,9 @@ public enum ProductErrorCode implements ErrorCode {
     BRAND_FORBIDDEN(20010007, "无权操作该品牌"),
     BRAND_AUDIT_STATUS_INVALID(20010008, "品牌审核状态不合法"),
     REVIEW_NOT_FOUND(20010009, "评论不存在"),
-    REVIEW_FORBIDDEN(20010010, "无权操作该评论");
+    REVIEW_FORBIDDEN(20010010, "无权操作该评论"),
+    REVIEW_ORDER_REQUIRED(20010020, "只有已完成订单中的商品可评价"),
+    REVIEW_ALREADY_SUBMITTED(20010021, "该订单商品已评价");
 
     private final int code;
     private final String message;

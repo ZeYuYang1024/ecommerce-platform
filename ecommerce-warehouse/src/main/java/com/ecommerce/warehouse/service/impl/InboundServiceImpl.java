@@ -8,6 +8,7 @@ import com.ecommerce.warehouse.common.InboundStatus;
 import com.ecommerce.warehouse.common.InboundType;
 import com.ecommerce.warehouse.common.WarehouseErrorCode;
 import com.ecommerce.warehouse.dto.request.CreateInboundRequest;
+import com.ecommerce.warehouse.dto.request.ShelveInboundRequest;
 import com.ecommerce.warehouse.dto.response.InboundOrderVO;
 import com.ecommerce.warehouse.entity.InboundOrder;
 import com.ecommerce.warehouse.entity.InboundOrderItem;
@@ -15,6 +16,7 @@ import com.ecommerce.warehouse.entity.Warehouse;
 import com.ecommerce.warehouse.mapper.InboundOrderItemMapper;
 import com.ecommerce.warehouse.mapper.InboundOrderMapper;
 import com.ecommerce.warehouse.mapper.WarehouseMapper;
+import com.ecommerce.warehouse.mapper.WarehouseBinMapper;
 import com.ecommerce.warehouse.service.InboundService;
 import com.ecommerce.warehouse.service.StockService;
 import org.springframework.stereotype.Service;
@@ -31,15 +33,17 @@ public class InboundServiceImpl implements InboundService {
     private final InboundOrderItemMapper inboundOrderItemMapper;
     private final WarehouseMapper warehouseMapper;
     private final StockService stockService;
+    private final WarehouseBinMapper bins;
 
     public InboundServiceImpl(InboundOrderMapper inboundOrderMapper,
                               InboundOrderItemMapper inboundOrderItemMapper,
                               WarehouseMapper warehouseMapper,
-                              StockService stockService) {
+                              StockService stockService, WarehouseBinMapper bins) {
         this.inboundOrderMapper = inboundOrderMapper;
         this.inboundOrderItemMapper = inboundOrderItemMapper;
         this.warehouseMapper = warehouseMapper;
         this.stockService = stockService;
+        this.bins = bins;
     }
 
     @Override
@@ -104,10 +108,7 @@ public class InboundServiceImpl implements InboundService {
     @Override
     @Transactional
     public void confirmReceived(Long id) {
-        InboundOrder order = inboundOrderMapper.selectById(id);
-        if (order == null) {
-            throw new BusinessException(WarehouseErrorCode.INBOUND_NOT_FOUND);
-        }
+        InboundOrder order = lockInbound(id);
         if (order.getStatus() != InboundStatus.PENDING) {
             throw new BusinessException(WarehouseErrorCode.INVALID_STATUS_TRANSITION);
         }
@@ -125,11 +126,8 @@ public class InboundServiceImpl implements InboundService {
 
     @Override
     @Transactional
-    public void confirmShelved(Long id) {
-        InboundOrder order = inboundOrderMapper.selectById(id);
-        if (order == null) {
-            throw new BusinessException(WarehouseErrorCode.INBOUND_NOT_FOUND);
-        }
+    public void confirmShelved(Long id, ShelveInboundRequest request) {
+        InboundOrder order = lockInbound(id);
         if (order.getStatus() != InboundStatus.RECEIVED) {
             throw new BusinessException(WarehouseErrorCode.INVALID_STATUS_TRANSITION);
         }
@@ -137,11 +135,24 @@ public class InboundServiceImpl implements InboundService {
         List<InboundOrderItem> items = inboundOrderItemMapper.selectList(
                 new LambdaQueryWrapper<InboundOrderItem>()
                         .eq(InboundOrderItem::getInboundId, id));
+        var placements = new java.util.HashMap<Long, Long>();
+        for (ShelveInboundRequest.Placement placement : request.placements()) {
+            if (placements.putIfAbsent(placement.itemId(), placement.binId()) != null) {
+                throw new BusinessException(WarehouseErrorCode.INBOUND_PLACEMENT_REQUIRED);
+            }
+        }
+        if (items.isEmpty() || placements.size() != items.size()) {
+            throw new BusinessException(WarehouseErrorCode.INBOUND_PLACEMENT_REQUIRED);
+        }
         for (InboundOrderItem item : items) {
-            if (item.getBinId() == null) {
+            Long binId = placements.get(item.getId());
+            var bin = binId == null ? null : bins.selectById(binId);
+            if (bin == null || !order.getWarehouseId().equals(bin.getWarehouseId())) {
                 throw new BusinessException(WarehouseErrorCode.BIN_NOT_FOUND);
             }
-            stockService.addStock(order.getWarehouseId(), item.getSkuId(), item.getBinId(), item.getQuantity());
+            item.setBinId(binId);
+            inboundOrderItemMapper.updateById(item);
+            stockService.addStock(order.getWarehouseId(), item.getSkuId(), binId, item.getReceivedQty());
         }
 
         order.setStatus(InboundStatus.SHELVED);
@@ -151,15 +162,19 @@ public class InboundServiceImpl implements InboundService {
     @Override
     @Transactional
     public void completeInbound(Long id) {
-        InboundOrder order = inboundOrderMapper.selectById(id);
-        if (order == null) {
-            throw new BusinessException(WarehouseErrorCode.INBOUND_NOT_FOUND);
-        }
+        InboundOrder order = lockInbound(id);
         if (order.getStatus() != InboundStatus.SHELVED) {
             throw new BusinessException(WarehouseErrorCode.INVALID_STATUS_TRANSITION);
         }
         order.setStatus(InboundStatus.COMPLETED);
         inboundOrderMapper.updateById(order);
+    }
+
+    private InboundOrder lockInbound(Long id) {
+        InboundOrder order = inboundOrderMapper.selectOne(new LambdaQueryWrapper<InboundOrder>()
+                .eq(InboundOrder::getId, id).last("FOR UPDATE"));
+        if (order == null) throw new BusinessException(WarehouseErrorCode.INBOUND_NOT_FOUND);
+        return order;
     }
 
     private String generateInboundNo() {

@@ -32,6 +32,7 @@ class ReconciliationServiceImplTest {
     @Mock private ReconciliationMapper reconciliationMapper;
     @Mock private ReconciliationDetailMapper detailMapper;
     @Mock private PaymentMapper paymentMapper;
+    @Mock private com.ecommerce.payment.mapper.RefundMapper refundMapper;
     @Mock private OrderClient orderClient;
     @InjectMocks private ReconciliationServiceImpl service;
 
@@ -100,6 +101,7 @@ class ReconciliationServiceImplTest {
             when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
                     .thenReturn(Collections.singletonList(payment1));
             when(orderClient.getOrdersForRecon(any(), any())).thenReturn(Result.ok(Collections.emptyList()));
+            when(orderClient.getOrdersByNumberForRecon(List.of("ORD001"))).thenReturn(Result.ok(List.of()));
             when(reconciliationMapper.insert(any(Reconciliation.class))).thenReturn(1);
             when(detailMapper.insert(any(ReconciliationDetail.class))).thenReturn(1);
 
@@ -108,16 +110,30 @@ class ReconciliationServiceImplTest {
         }
 
         @Test
-        void shouldHandleFeignFailure() {
-            when(paymentMapper.selectList(any(LambdaQueryWrapper.class)))
-                    .thenReturn(Collections.singletonList(payment1));
+        void shouldRecordSourceFailureWithoutCreatingDiscrepancies() {
             when(orderClient.getOrdersForRecon(any(), any())).thenThrow(new RuntimeException("timeout"));
             when(reconciliationMapper.insert(any(Reconciliation.class))).thenReturn(1);
-            when(detailMapper.insert(any(ReconciliationDetail.class))).thenReturn(1);
 
             ReconciliationVO vo = service.runReconciliation();
-            assertThat(vo.getTotalPaymentCount()).isEqualTo(1);
-            assertThat(vo.getTotalOrderCount()).isEqualTo(0);
+            assertThat(vo.getStatus()).isEqualTo(2);
+            assertThat(vo.getUnmatchedCount()).isZero();
+            assertThat(vo.getFailureReason()).isNotBlank();
+            verifyNoInteractions(detailMapper);
+        }
+
+        @Test
+        void countsStateMismatchOnceAndLeavesUnpaidOrdersOutOfDiscrepancies() {
+            when(paymentMapper.selectList(any())).thenReturn(List.of(payment1));
+            when(orderClient.getOrdersForRecon(any(), any())).thenReturn(Result.ok(List.of(
+                    buildOrder("ORD001", new BigDecimal("100.00"), 4),
+                    buildOrder("ORD_UNPAID", new BigDecimal("100.00"), 0))));
+
+            ReconciliationVO result = service.runReconciliation();
+
+            assertThat(result.getMatchedCount()).isZero();
+            assertThat(result.getUnmatchedCount()).isEqualTo(1);
+            verify(detailMapper).insert(argThat((ReconciliationDetail row) ->
+                    "NOT_REQUIRED".equals(row.getMatchStatus())));
         }
 
         @Test

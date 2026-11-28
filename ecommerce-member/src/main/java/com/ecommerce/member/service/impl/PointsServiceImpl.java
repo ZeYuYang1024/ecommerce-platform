@@ -149,7 +149,7 @@ public class PointsServiceImpl implements PointsService {
         tx.setRelatedReservationNo(relatedReservationNo);
         pointsTransactionMapper.insert(tx);
 
-        allocateConsumeDetails(userId, amount, relatedReservationNo);
+        holdEarnLots(userId, amount, relatedReservationNo);
     }
 
     @Override
@@ -294,7 +294,9 @@ public class PointsServiceImpl implements PointsService {
         return level;
     }
 
-    private void allocateConsumeDetails(Long userId, Integer amount, String relatedReservationNo) {
+    @Override
+    @Transactional
+    public void holdEarnLots(Long userId, int amount, String relatedReservationNo) {
         if (relatedReservationNo == null || relatedReservationNo.isBlank()) {
             return;
         }
@@ -305,13 +307,18 @@ public class PointsServiceImpl implements PointsService {
             return;
         }
 
+        if (pointsConsumeDetailMapper.exists(new LambdaQueryWrapper<PointsConsumeDetail>()
+                .eq(PointsConsumeDetail::getReservationId, reservation.getId()))) return;
+
         List<PointsTransaction> earnTransactions = pointsTransactionMapper.selectList(
                 new LambdaQueryWrapper<PointsTransaction>()
                         .eq(PointsTransaction::getUserId, userId)
                         .eq(PointsTransaction::getDirection, "EARN")
                         .apply("amount > consumed_amount")
-                        .orderByAsc(PointsTransaction::getExpireAt)
-                        .orderByAsc(PointsTransaction::getCreatedAt));
+                        .and(valid -> valid.isNull(PointsTransaction::getExpireAt)
+                                .or().gt(PointsTransaction::getExpireAt, LocalDateTime.now()))
+                        .orderByAsc(PointsTransaction::getExpireAt, PointsTransaction::getCreatedAt, PointsTransaction::getId)
+                        .last("FOR UPDATE"));
 
         int remaining = amount;
         for (PointsTransaction earnTx : earnTransactions) {
@@ -342,5 +349,34 @@ public class PointsServiceImpl implements PointsService {
         if (remaining > 0) {
             throw new BusinessException(MemberErrorCode.POINTS_INSUFFICIENT);
         }
+    }
+
+    @Override
+    @Transactional
+    public int releaseEarnLots(Long reservationId, int legacyAmount) {
+        List<PointsConsumeDetail> holds = pointsConsumeDetailMapper.selectList(new LambdaQueryWrapper<PointsConsumeDetail>()
+                .eq(PointsConsumeDetail::getReservationId, reservationId));
+        if (holds.isEmpty()) return legacyAmount;
+        LocalDateTime now = LocalDateTime.now();
+        int released = 0;
+        for (PointsConsumeDetail hold : holds) {
+            if (hold.getExpireAt() != null && !hold.getExpireAt().isAfter(now)) continue;
+            int amount = hold.getConsumePoints() - hold.getRestoredPoints();
+            PointsTransaction lot = pointsTransactionMapper.selectOne(new LambdaQueryWrapper<PointsTransaction>()
+                    .eq(PointsTransaction::getId, hold.getEarnTxId()).last("FOR UPDATE"));
+            if (lot == null || amount < 0 || lot.getConsumedAmount() < amount) {
+                throw new IllegalStateException("Invalid points lot for reservation " + reservationId);
+            }
+            boolean reversed = pointsTransactionMapper.exists(new LambdaQueryWrapper<PointsTransaction>()
+                    .eq(PointsTransaction::getReversalOfTxId, lot.getId()).eq(PointsTransaction::getDirection, "SPEND"));
+            if (!reversed) {
+                lot.setConsumedAmount(lot.getConsumedAmount() - amount);
+                pointsTransactionMapper.updateById(lot);
+            }
+            hold.setRestoredPoints(hold.getConsumePoints());
+            pointsConsumeDetailMapper.updateById(hold);
+            released += amount;
+        }
+        return released;
     }
 }

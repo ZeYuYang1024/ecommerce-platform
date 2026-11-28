@@ -21,7 +21,9 @@ public enum OrderErrorCode implements ErrorCode {
     ORDER_ITEM_UNAVAILABLE(40010016, "商品已下架或不可购买"),
     ORDER_ITEM_INVALID_QUANTITY(40010017, "商品数量须大于零"),
     ORDER_INVENTORY_UNCONFIRMED(40010018, "库存尚未确认，请稍后发货"),
-    ORDER_NO_COMPENSATION_REFUND(40010019, "当前订单没有待处理的补偿退款");
+    ORDER_NO_COMPENSATION_REFUND(40010019, "当前订单没有待处理的补偿退款"),
+    CHECKOUT_CONFLICT(40010020, "这次结算已绑定其他商品或地址"),
+    CHECKOUT_EXPIRED(40010021, "订单已超过支付时限");
 
     private final int code;
     private final String message;

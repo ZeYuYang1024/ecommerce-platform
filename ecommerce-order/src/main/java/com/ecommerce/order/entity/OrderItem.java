@@ -14,6 +14,8 @@ public class OrderItem extends BaseEntity {
     private String orderNo;
     private Long skuId;
     private Long spuId;
+    private Long merchantId;
+    private Boolean merchantScopeRecorded;
     private String name;
     private String image;
     private BigDecimal price;

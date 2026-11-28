@@ -279,7 +279,7 @@ class ShippingServiceImplTest {
         void shouldCreateShippingWithMerchantId() {
             CreateShippingRequest req = buildCreateRequest();
             when(shippingOrderMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-            when(orderClient.getShippingSnapshot(1001L)).thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot("ORD202606200001", 1, 9001L, itemSnapshot(100L, 200L, 1))));
+            when(orderClient.getShippingSnapshot(1001L)).thenReturn(com.ecommerce.common.result.Result.ok(orderSnapshot("ORD202606200001", 1, 9001L, itemSnapshot(100L, 200L, 1, 500L))));
             when(providerMapper.selectById(1L)).thenReturn(provider);
             when(shippingOrderMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
             when(shippingOrderItemMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());

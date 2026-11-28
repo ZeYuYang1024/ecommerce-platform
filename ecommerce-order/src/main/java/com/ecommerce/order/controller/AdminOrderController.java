@@ -112,6 +112,7 @@ public class AdminOrderController {
             vo.setOrderNo(o.getOrderNo());
             vo.setAmount(o.getTotalAmount());
             vo.setStatus(o.getStatus());
+            vo.setUpdatedAt(o.getUpdatedAt());
             return vo;
         }).collect(Collectors.toList());
         return Result.ok(result);

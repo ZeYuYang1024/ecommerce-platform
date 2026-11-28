@@ -32,6 +32,7 @@
             <span class="stat-num" style="color: var(--green)">{{ row.matchedCount }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="处理中" prop="processingCount" width="90" align="center" />
         <el-table-column label="差异数" width="100" align="center">
           <template #default="{ row }">
             <span :class="row.unmatchedCount > 0 ? 'stat-num bad' : 'stat-num'">{{ row.unmatchedCount }}</span>
@@ -117,8 +118,10 @@ async function runRecon() {
   running.value = true
   try {
     const { data } = await axios.post('/api/v1/admin/reconciliation/run')
-    if (data.code === 200) {
-      ElMessage.success(`对账完成：匹配 ${data.data.matchedCount} 笔，差异 ${data.data.unmatchedCount} 笔`)
+    if (data.code !== 200 || data.data.status === 2) {
+      ElMessage.error(data.data?.failureReason || data.message || '对账执行失败')
+    } else {
+      ElMessage.success(`匹配 ${data.data.matchedCount} 笔，处理中 ${data.data.processingCount} 笔，差异 ${data.data.unmatchedCount} 笔`)
     }
     fetchData()
   } catch {

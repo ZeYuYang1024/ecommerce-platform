@@ -10,7 +10,8 @@ public enum CouponErrorCode implements ErrorCode {
     COUPON_NOT_AVAILABLE(70010005, "优惠券不可用"),
     COUPON_ALREADY_USED(70010006, "优惠券已使用"),
     MIN_AMOUNT_NOT_MET(70010007, "未满足最低订单金额"),
-    COUPON_FORBIDDEN(70010008, "无权访问该优惠券");
+    COUPON_FORBIDDEN(70010008, "无权访问该优惠券"),
+    COUPON_TOTAL_BELOW_ISSUED(70010009, "发行总量不能低于已发数量");
 
     private final int code;
     private final String message;

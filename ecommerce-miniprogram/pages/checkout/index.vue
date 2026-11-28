@@ -144,6 +144,17 @@ function selectAddress(id) {
   submitError.value = ''
 }
 
+const checkoutStorageKey = 'pending-checkout'
+
+function checkoutRequestId(recipient, items) {
+  const signature = JSON.stringify([recipient.id, ...items.map(item => [String(item.skuId), item.quantity]).sort()])
+  const saved = uni.getStorageSync(checkoutStorageKey)
+  if (saved?.signature === signature) return saved.id
+  const id = [Date.now(), Math.random(), Math.random()].map(value => value.toString(36).replace('.', '')).join('-')
+  uni.setStorageSync(checkoutStorageKey, { signature, id })
+  return id
+}
+
 async function submitOrder() {
   if (submitting.value || !auth.isLogin || !items.value.length) return
   const recipient = address.value
@@ -162,20 +173,29 @@ async function submitOrder() {
         receiverName: recipient.receiverName,
         receiverPhone: recipient.receiverPhone,
         receiverAddress: fullAddress(recipient),
-        items: purchased.map(({ skuId, quantity }) => ({ skuId, quantity }))
+        items: purchased.map(({ skuId, quantity }) => ({ skuId, quantity })),
+        clientRequestId: checkoutRequestId(recipient, purchased)
       }
     })
     if (res.code !== 200 || !res.data?.orderNo) {
+      if (res.code === 40010020) uni.removeStorageSync(checkoutStorageKey)
       submitError.value = res.code === -1 ? '提交结果尚未确认，请先到我的订单查看' : res.message || '下单失败，请重试'
       return
     }
 
+    if ([4, 5].includes(res.data.status)) {
+      uni.removeStorageSync(checkoutStorageKey)
+      submitError.value = '上次结算的订单已关闭，请重新提交'
+      return
+    }
     if (!buyNow && !await cartStore.removePurchased(purchased)) {
       uni.showToast({ title: '订单已提交，购物车更新失败', icon: 'none' })
     }
+    uni.removeStorageSync(checkoutStorageKey)
     const orderNo = encodeURIComponent(res.data.orderNo)
-    uni.redirectTo({ url: `/pages/payment/index?orderNo=${orderNo}`,
-      fail: () => uni.redirectTo({ url: `/pages/order-detail/index?orderNo=${orderNo}` })
+    const detail = `/pages/order-detail/index?orderNo=${orderNo}`
+    uni.redirectTo({ url: res.data.status === 0 ? `/pages/payment/index?orderNo=${orderNo}` : detail,
+      fail: () => uni.redirectTo({ url: detail })
     })
   } finally {
     submitting.value = false

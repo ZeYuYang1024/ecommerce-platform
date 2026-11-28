@@ -184,9 +184,9 @@ public class AfterSaleService {
             return;
         }
         if (!correlated && isExpectedPartial(result, order)) return;
-        boolean compensation = Boolean.TRUE.equals(order.getPaymentRefundRequired())
-                && Objects.equals(order.getStatus(), OrderStatus.CANCELLED);
-        if (!matchesFullRefund(result, order.getUserId(), order.getTotalAmount(), compensation)) {
+        boolean cancelled = Objects.equals(order.getStatus(), OrderStatus.CANCELLED);
+        if (!matchesFullRefund(result, order.getUserId(), order.getTotalAmount(),
+                cancelled || paidWithOnlyPoints(order))) {
             log.error("Refund outcome violates type, amount or buyer: orderNo={}, refundNo={}, type={}, amount={}",
                     result.getOrderNo(), result.getRefundNo(), result.getRefundType(), result.getRefundAmount());
             if (currentAttempt) fail(application, "退款结果的类型、金额或买家与订单不一致");
@@ -197,13 +197,14 @@ public class AfterSaleService {
             recordRefund(application, result, null);
             return;
         }
-        if (compensation) {
+        if (cancelled) {
             orders.transitionStatus(order.getId(), OrderStatus.CANCELLED, OrderStatus.REFUNDED);
             recordRefund(application, result, null);
             return;
         }
-        boolean migrated = Objects.equals(order.getStatus(), OrderStatus.PAID)
-                && orders.transitionStatus(order.getId(), OrderStatus.PAID, OrderStatus.REFUNDED);
+        Integer current = order.getStatus();
+        boolean migrated = (Objects.equals(current, OrderStatus.PAID) || Objects.equals(current, OrderStatus.PENDING))
+                && orders.transitionStatus(order.getId(), current, OrderStatus.REFUNDED);
         if (!migrated) {
             log.error("Refund succeeded but order state could not be migrated: orderNo={}, refundNo={}, orderStatus={}",
                     result.getOrderNo(), result.getRefundNo(), order.getStatus());
@@ -301,7 +302,13 @@ public class AfterSaleService {
 
     private boolean eligible(Order order) {
         return Objects.equals(order.getStatus(), OrderStatus.PAID) && order.getTotalAmount() != null
-                && order.getTotalAmount().signum() > 0 && !claimReaper.hasShipping(order.getId());
+                && (order.getTotalAmount().signum() > 0 || paidWithOnlyPoints(order))
+                && !claimReaper.hasShipping(order.getId());
+    }
+
+    private boolean paidWithOnlyPoints(Order order) {
+        return order.getTotalAmount() != null && order.getTotalAmount().signum() == 0
+                && order.getPointsUsed() != null && order.getPointsUsed() > 0;
     }
 
     private List<OrderItem> orderItems(Long orderId) {
@@ -309,7 +316,12 @@ public class AfterSaleService {
     }
 
     private Long resolveMerchant(Long orderId) {
-        List<Long> skuIds = orderItems(orderId).stream().map(OrderItem::getSkuId).distinct().toList();
+        List<OrderItem> orderRows = orderItems(orderId);
+        if (!orderRows.isEmpty() && orderRows.stream().allMatch(row -> Boolean.TRUE.equals(row.getMerchantScopeRecorded()))) {
+            List<Long> owners = orderRows.stream().map(OrderItem::getMerchantId).distinct().toList();
+            return owners.size() == 1 ? owners.getFirst() : null;
+        }
+        List<Long> skuIds = orderRows.stream().map(OrderItem::getSkuId).distinct().toList();
         if (skuIds.isEmpty() || skuIds.contains(null)) return null;
         var reply = catalog.batchQuerySkus(skuIds);
         if (reply == null || reply.getCode() != 200 || reply.getData() == null) {

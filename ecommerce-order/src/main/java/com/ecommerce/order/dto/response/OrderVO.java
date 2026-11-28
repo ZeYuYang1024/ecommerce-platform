@@ -18,6 +18,7 @@ public class OrderVO {
     private Integer pointsDeductionRatio;
     private Integer status;
     private boolean inventoryReserved;
+    private boolean merchantManaged = true;
     private boolean compensationRefundPending;
     private String statusText;
     private String fulfillmentStatus;
@@ -27,6 +28,7 @@ public class OrderVO {
     private String receiverAddress;
     private List<OrderItemVO> items;
     private LocalDateTime createdAt;
+    private LocalDateTime paymentExpiresAt;
 
     @Data
     public static class OrderItemVO {

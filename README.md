@@ -150,6 +150,7 @@ docker compose up -d --no-build --pull never minio
   done
   db < "$migrations/2026-11-28-buyer-after-sale.sql"
   db < "$migrations/2026-11-28-commerce-consistency.sql"
+  db < "$migrations/2026-11-28-checkout-operations.sql"
   db -Nse "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'ecommerce%';"
 )
 ```
@@ -186,6 +187,7 @@ foreach ($schema in 'ecommerce_inventory', 'ecommerce_order', 'ecommerce_payment
 }
 Import-ProjectSql "$migrations/2026-11-28-buyer-after-sale.sql"
 Import-ProjectSql "$migrations/2026-11-28-commerce-consistency.sql"
+Import-ProjectSql "$migrations/2026-11-28-checkout-operations.sql"
 docker compose exec -T mysql mysql -uroot -proot -Nse "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'ecommerce%';"
 ```
 
@@ -466,9 +468,11 @@ PC 和小程序首页都接入「猜你喜欢」。升级已有推荐库时，�
 
 买家提交订单后可以直接模拟支付。稍后也可以从待支付订单详情继续。支付与库存事件异步处理。对已支付、尚未开始发货的订单，买家可在小程序和 Web 订单详情申请一次全额退款，并查看审核结果。单一店铺订单由该商家在「订单管理 → 售后申请」审核。平台自营或跨店订单由平台管理员处理。同意退款后，支付服务记录退款，订单状态由退款结果驱动。库存服务只释放实际扣减过的库存。退款失败时，平台管理员可重试同一申请，拒绝仍是终态。发货占用的租约为 30 分钟，过期后先核对物流和托管仓记录，再由定时任务或平台后台释放无实际发货的占用。订单无法迁移时，已成功的退款仍会显示，后台保留异常说明，库存交由人工核对。
 
-升级已有本地数据库时，依次导入 `docs/sql/migrations/2026-11-28-buyer-after-sale.sql` 和 `docs/sql/migrations/2026-11-28-commerce-consistency.sql`，按第 3 节创建消息主题，再重建并重启商品、订单、支付、库存、物流、会员和秒杀服务。共享 MySQL 的迁移会保留已发货记录，并从库存事件补齐未取消订单的库存确认。数据库分开部署时，启用发货前需导入已有的 `order_id` 和 `shipping_no`，并为已成功扣减且未释放的待处理订单回填 `inventory_reserved`。
+升级已有本地数据库时，依次导入 `docs/sql/migrations/2026-11-28-buyer-after-sale.sql`、`docs/sql/migrations/2026-11-28-commerce-consistency.sql` 和 `docs/sql/migrations/2026-11-28-checkout-operations.sql`，按第 3 节创建消息主题，再重建并重启商品、订单、支付、库存、物流、会员、仓储、优惠券、推荐和秒杀服务。共享 MySQL 的迁移会保留已发货记录，并从库存事件补齐未取消订单的库存确认。数据库分开部署时，启用发货前需导入已有的 `order_id` 和 `shipping_no`，并为已成功扣减且未释放的待处理订单回填 `inventory_reserved`。
 
 库存确认后才允许整单发货。交运核销已锁库存，取消或缺货发生在收款之后时自动补偿退款。平台可以在订单列表重试补偿退款。全额退款返还抵扣积分，并按原始流水撤销订单奖励和成长值。秒杀页目前提供活动展示。
+
+一次结算的重试会返回原订单。待支付订单默认保留 30 分钟，可通过订单服务的 `order.payment-window` 调整。跨店订单由平台统一结算，商家只看本店明细。库存盘点差异由有权限的后台操作员确认后入账。
 
 ### 10. 关闭、重启和排错
 

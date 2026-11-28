@@ -17,6 +17,7 @@ import com.ecommerce.warehouse.mapper.StockCheckItemMapper;
 import com.ecommerce.warehouse.mapper.StockCheckMapper;
 import com.ecommerce.warehouse.mapper.WarehouseMapper;
 import com.ecommerce.warehouse.service.CheckService;
+import com.ecommerce.warehouse.service.StockService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,15 +32,17 @@ public class CheckServiceImpl implements CheckService {
     private final StockCheckItemMapper stockCheckItemMapper;
     private final PhysicalStockMapper physicalStockMapper;
     private final WarehouseMapper warehouseMapper;
+    private final StockService stockService;
 
     public CheckServiceImpl(StockCheckMapper stockCheckMapper,
                             StockCheckItemMapper stockCheckItemMapper,
                             PhysicalStockMapper physicalStockMapper,
-                            WarehouseMapper warehouseMapper) {
+                            WarehouseMapper warehouseMapper, StockService stockService) {
         this.stockCheckMapper = stockCheckMapper;
         this.stockCheckItemMapper = stockCheckItemMapper;
         this.physicalStockMapper = physicalStockMapper;
         this.warehouseMapper = warehouseMapper;
+        this.stockService = stockService;
     }
 
     // ======================== Query ========================
@@ -112,10 +115,8 @@ public class CheckServiceImpl implements CheckService {
     @Override
     @Transactional
     public void recordCheckItem(Long checkId, Long itemId, int actualQty) {
-        StockCheck check = stockCheckMapper.selectById(checkId);
-        if (check == null) {
-            throw new BusinessException(WarehouseErrorCode.CHECK_NOT_FOUND);
-        }
+        if (actualQty < 0) throw new BusinessException(WarehouseErrorCode.CHECK_COUNT_INVALID);
+        StockCheck check = lockCheck(checkId);
         if (check.getStatus() != CheckStatus.IN_PROGRESS) {
             throw new BusinessException(WarehouseErrorCode.INVALID_STATUS_TRANSITION);
         }
@@ -133,34 +134,53 @@ public class CheckServiceImpl implements CheckService {
     @Override
     @Transactional
     public void completeCheck(Long id) {
-        StockCheck check = stockCheckMapper.selectById(id);
-        if (check == null) {
-            throw new BusinessException(WarehouseErrorCode.CHECK_NOT_FOUND);
-        }
+        StockCheck check = lockCheck(id);
         if (check.getStatus() != CheckStatus.IN_PROGRESS) {
             throw new BusinessException(WarehouseErrorCode.INVALID_STATUS_TRANSITION);
         }
+        List<StockCheckItem> items = checkItems(id);
+        if (items.stream().anyMatch(item -> item.getActualQty() == null)) {
+            throw new BusinessException(WarehouseErrorCode.CHECK_COUNT_REQUIRED);
+        }
+        boolean hasDiff = items.stream().anyMatch(item -> !item.getActualQty().equals(item.getSystemQty()));
+        check.setStatus(hasDiff ? CheckStatus.DIFF_PENDING : CheckStatus.COMPLETED);
+        stockCheckMapper.updateById(check);
+    }
 
-        // Check if any items have non-zero diffs
-        List<StockCheckItem> items = stockCheckItemMapper.selectList(
-                new LambdaQueryWrapper<StockCheckItem>()
-                        .eq(StockCheckItem::getCheckId, id));
-        boolean hasDiff = false;
-        if (items != null) {
-            for (StockCheckItem item : items) {
-                if (item.getDiffQty() != null && item.getDiffQty() != 0) {
-                    hasDiff = true;
-                    break;
-                }
+    @Override
+    @Transactional
+    public void approveDifference(Long id, Long approver) {
+        StockCheck check = lockCheck(id);
+        if (check.getStatus() == CheckStatus.COMPLETED && check.getApprovedBy() != null) return;
+        if (check.getStatus() != CheckStatus.DIFF_PENDING) {
+            throw new BusinessException(WarehouseErrorCode.INVALID_STATUS_TRANSITION);
+        }
+        List<StockCheckItem> items = checkItems(id);
+        if (items.stream().anyMatch(item -> item.getActualQty() == null)) {
+            throw new BusinessException(WarehouseErrorCode.CHECK_COUNT_REQUIRED);
+        }
+        for (StockCheckItem item : items) {
+            if (!item.getActualQty().equals(item.getSystemQty())) {
+                stockService.reconcileCount(check.getWarehouseId(), item.getSkuId(), item.getBinId(),
+                        item.getSystemQty(), item.getActualQty());
             }
         }
-
-        if (hasDiff) {
-            check.setStatus(CheckStatus.DIFF_PENDING);
-        } else {
-            check.setStatus(CheckStatus.COMPLETED);
-        }
+        check.setApprovedBy(approver);
+        check.setApprovedAt(java.time.LocalDateTime.now());
+        check.setStatus(CheckStatus.COMPLETED);
         stockCheckMapper.updateById(check);
+    }
+
+    private StockCheck lockCheck(Long id) {
+        StockCheck check = stockCheckMapper.selectOne(new LambdaQueryWrapper<StockCheck>()
+                .eq(StockCheck::getId, id).last("FOR UPDATE"));
+        if (check == null) throw new BusinessException(WarehouseErrorCode.CHECK_NOT_FOUND);
+        return check;
+    }
+
+    private List<StockCheckItem> checkItems(Long id) {
+        return stockCheckItemMapper.selectList(new LambdaQueryWrapper<StockCheckItem>()
+                .eq(StockCheckItem::getCheckId, id).orderByAsc(StockCheckItem::getId));
     }
 
     // ======================== Private helpers ========================
@@ -179,6 +199,8 @@ public class CheckServiceImpl implements CheckService {
         vo.setStatusText(CheckStatus.text(entity.getStatus()));
         vo.setMerchantId(entity.getMerchantId());
         vo.setCreatedAt(entity.getCreatedAt());
+        vo.setApprovedBy(entity.getApprovedBy());
+        vo.setApprovedAt(entity.getApprovedAt());
 
         // Load items
         List<StockCheckItem> items = stockCheckItemMapper.selectList(

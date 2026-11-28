@@ -18,6 +18,8 @@ public class ReconciliationVO {
     private Integer totalPaymentCount;
     private Integer matchedCount;
     private Integer unmatchedCount;
+    private Integer processingCount;
+    private String failureReason;
     private Integer status;
     private String statusText;
     private LocalDateTime createdAt;

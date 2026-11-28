@@ -11,6 +11,8 @@ import java.math.BigDecimal;
 @TableName("`order`")
 public class Order extends BaseEntity {
     private String orderNo;
+    private String clientRequestId;
+    private String checkoutFingerprint;
     private Long userId;
     private BigDecimal totalAmount;
     private BigDecimal originalAmount;

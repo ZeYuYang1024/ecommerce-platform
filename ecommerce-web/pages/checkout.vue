@@ -157,6 +157,20 @@ async function saveAddress() {
   } finally { savingAddr.value = false }
 }
 
+const checkoutStorageKey = 'pending-checkout'
+
+function checkoutRequestId(address: any, items: { skuId: string | number; quantity: number }[]) {
+  const signature = JSON.stringify([address.id, ...items.map(item => [String(item.skuId), item.quantity]).sort()])
+  const saved = sessionStorage.getItem(checkoutStorageKey)
+  if (saved) {
+    const previous = JSON.parse(saved)
+    if (previous.signature === signature) return previous.id
+  }
+  const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, '0')).join('')
+  sessionStorage.setItem(checkoutStorageKey, JSON.stringify({ signature, id }))
+  return id
+}
+
 async function submitOrder() {
   const addr = selectedAddr.value
   if (!addr || submitting.value) return
@@ -170,12 +184,21 @@ async function submitOrder() {
       receiverName: addr.receiverName,
       receiverPhone: addr.receiverPhone,
       receiverAddress: `${addr.province}${addr.city}${addr.district} ${addr.detail}`,
-      items
+      items,
+      clientRequestId: checkoutRequestId(addr, items)
     })
     if (res.code === 200) {
+      if ([4, 5].includes(res.data.status)) {
+        sessionStorage.removeItem(checkoutStorageKey)
+        orderError.value = '上次结算的订单已关闭，请重新提交'
+        return
+      }
       void cart.removePurchased(items).catch(() => {})
-      await router.push(`/payment/${encodeURIComponent(res.data.orderNo)}`)
+      const orderNo = encodeURIComponent(res.data.orderNo)
+      await router.push(res.data.status === 0 ? `/payment/${orderNo}` : `/user/orders/${orderNo}`)
+      sessionStorage.removeItem(checkoutStorageKey)
     } else {
+      if (res.code === 40010020) sessionStorage.removeItem(checkoutStorageKey)
       orderError.value = res.message || '下单失败，请重试'
     }
   } catch {

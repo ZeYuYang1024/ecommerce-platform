@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 
@@ -21,6 +22,7 @@ public class CreateOrderRequest {
     private String receiverAddress;
     private Boolean usePoints;
     private Integer pointsToUse;
+    @Pattern(regexp = "[a-z0-9_-]{1,64}")
     private String clientRequestId;
 
     @Data

@@ -7,6 +7,7 @@
     </div>
 
     <div v-if="rec" class="detail-wrap">
+      <el-alert v-if="rec.failureReason" :title="rec.failureReason" type="error" :closable="false" />
       <div class="summary-card">
         <div class="summary-item">
           <span class="summary-label">批次号</span>
@@ -109,7 +110,9 @@ function matchText(status) {
     ORDER_ONLY: '仅有订单',
     PAYMENT_ONLY: '仅有支付',
     AMOUNT_MISMATCH: '金额不符',
-    STATUS_MISMATCH: '状态不符'
+    STATUS_MISMATCH: '状态不符',
+    PROCESSING: '同步中',
+    NOT_REQUIRED: '无须支付'
   }
   return map[status] || status
 }

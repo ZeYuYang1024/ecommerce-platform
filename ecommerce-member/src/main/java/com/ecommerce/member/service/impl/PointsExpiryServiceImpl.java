@@ -11,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -22,75 +24,64 @@ public class PointsExpiryServiceImpl {
 
     private final PointsTransactionMapper pointsTransactionMapper;
     private final MemberProfileMapper memberProfileMapper;
+    private final PlatformTransactionManager transactions;
 
     private static final int BATCH_SIZE = 500;
 
     /**
      * 每日凌晨 2:00 扫描过期积分
      */
-    @Scheduled(cron = "0 0 2 * * ?")
+    @Scheduled(cron = "${member.points.expiry-cron:0 0 2 * * ?}")
     public void expirePoints() {
-        log.info("Points expiry scan started");
-
-        int totalExpired = 0;
+        var transaction = new TransactionTemplate(transactions);
         LocalDateTime now = LocalDateTime.now();
-
+        long cursor = 0;
         while (true) {
-            // 查询未过期、有剩余可用量的 EARN 记录
-            List<PointsTransaction> expiredList = pointsTransactionMapper.selectList(
-                    new LambdaQueryWrapper<PointsTransaction>()
-                            .eq(PointsTransaction::getDirection, "EARN")
-                            .lt(PointsTransaction::getExpireAt, now)
-                            .apply("amount > consumed_amount")
-                            .last("LIMIT " + BATCH_SIZE));
-
-            if (expiredList.isEmpty()) {
-                break;
-            }
-
-            for (PointsTransaction tx : expiredList) {
-                int remaining = tx.getAmount() - tx.getConsumedAmount();
-                if (remaining <= 0) continue;
-
-                // 乐观锁更新 profile 积分余额
-                MemberProfile profile = memberProfileMapper.selectOne(
-                        new LambdaQueryWrapper<MemberProfile>()
-                                .eq(MemberProfile::getUserId, tx.getUserId()));
-                if (profile == null) continue;
-
-                int rows = memberProfileMapper.update(null,
-                        new LambdaUpdateWrapper<MemberProfile>()
-                                .eq(MemberProfile::getId, profile.getId())
-                                .eq(MemberProfile::getVersion, profile.getVersion())
-                                .setSql("available_points = available_points - " + remaining)
-                                .setSql("version = version + 1"));
-                if (rows == 0) {
-                    log.warn("Concurrent update failed on expiry for userId={}", tx.getUserId());
-                    continue;
+            List<PointsTransaction> lots = pointsTransactionMapper.selectList(new LambdaQueryWrapper<PointsTransaction>()
+                    .gt(PointsTransaction::getId, cursor)
+                    .eq(PointsTransaction::getDirection, "EARN")
+                    .lt(PointsTransaction::getExpireAt, now)
+                    .apply("amount > consumed_amount")
+                    .orderByAsc(PointsTransaction::getId).last("LIMIT " + BATCH_SIZE));
+            if (lots.isEmpty()) return;
+            for (PointsTransaction lot : lots) {
+                try {
+                    transaction.executeWithoutResult(status -> expireLot(lot.getId(), lot.getUserId()));
+                } catch (RuntimeException failure) {
+                    log.warn("Could not expire points lot {}", lot.getId(), failure);
                 }
-
-                // 标记原记录已全部消耗
-                tx.setConsumedAmount(tx.getAmount());
-                pointsTransactionMapper.updateById(tx);
-
-                // 插入 EXPIRE 流水
-                MemberProfile updated = memberProfileMapper.selectById(profile.getId());
-                PointsTransaction expireTx = new PointsTransaction();
-                expireTx.setId(SnowflakeUtils.nextId());
-                expireTx.setUserId(tx.getUserId());
-                expireTx.setDirection("EXPIRE");
-                expireTx.setAmount(remaining);
-                expireTx.setBalanceAfter(updated.getAvailablePoints());
-                expireTx.setSourceType("EXPIRE");
-                expireTx.setSourceId("expire-" + tx.getId());
-                expireTx.setBizKey("EXPIRE:" + tx.getId());
-                expireTx.setRemark("积分过期: " + tx.getSourceType() + " " + tx.getSourceId());
-                pointsTransactionMapper.insert(expireTx);
-
-                totalExpired += remaining;
             }
+            cursor = lots.getLast().getId();
         }
+    }
 
-        log.info("Points expiry scan completed, total expired: {}", totalExpired);
+    private void expireLot(Long id, Long userId) {
+        MemberProfile profile = memberProfileMapper.selectOne(new LambdaQueryWrapper<MemberProfile>()
+                .eq(MemberProfile::getUserId, userId).last("FOR UPDATE"));
+        if (profile == null) return;
+        PointsTransaction lot = pointsTransactionMapper.selectOne(new LambdaQueryWrapper<PointsTransaction>()
+                .eq(PointsTransaction::getId, id).last("FOR UPDATE"));
+        if (lot == null || lot.getExpireAt() == null || lot.getExpireAt().isAfter(LocalDateTime.now())) return;
+        int remaining = lot.getAmount() - lot.getConsumedAmount();
+        if (remaining <= 0) return;
+
+        memberProfileMapper.update(null, new LambdaUpdateWrapper<MemberProfile>()
+                .eq(MemberProfile::getId, profile.getId())
+                .setSql("available_points = available_points - " + remaining)
+                .setSql("version = version + 1"));
+        lot.setConsumedAmount(lot.getAmount());
+        pointsTransactionMapper.updateById(lot);
+
+        PointsTransaction expired = new PointsTransaction();
+        expired.setId(SnowflakeUtils.nextId());
+        expired.setUserId(userId);
+        expired.setDirection("EXPIRE");
+        expired.setAmount(remaining);
+        expired.setBalanceAfter(profile.getAvailablePoints() - remaining);
+        expired.setSourceType("EXPIRE");
+        expired.setSourceId("expire-" + lot.getId());
+        expired.setBizKey("EXPIRE:" + lot.getId());
+        expired.setRemark("积分过期");
+        pointsTransactionMapper.insert(expired);
     }
 }

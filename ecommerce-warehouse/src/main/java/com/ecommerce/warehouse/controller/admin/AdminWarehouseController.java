@@ -7,6 +7,7 @@ import com.ecommerce.common.result.Result;
 import com.ecommerce.common.tenant.MerchantTenantSupport;
 import com.ecommerce.warehouse.common.WarehouseErrorCode;
 import com.ecommerce.warehouse.dto.request.CreateCheckRequest;
+import com.ecommerce.warehouse.dto.request.ShelveInboundRequest;
 import com.ecommerce.warehouse.dto.request.CreateInboundRequest;
 import com.ecommerce.warehouse.dto.request.CreateOutboundRequest;
 import com.ecommerce.warehouse.dto.request.CreateWarehouseRequest;
@@ -240,12 +241,12 @@ public class AdminWarehouseController {
     }
 
     @PutMapping("/warehouse/inbounds/{id}/shelve")
-    public Result<Void> confirmShelved(@PathVariable Long id,
+    public Result<Void> confirmShelved(@PathVariable Long id, @Valid @RequestBody ShelveInboundRequest request,
                                        @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
                                        @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
         requireInbound(id, MerchantTenantSupport.resolveRequestMerchantId(
                 userType, headerMerchantId, WarehouseErrorCode.WAREHOUSE_FORBIDDEN));
-        inboundService.confirmShelved(id);
+        inboundService.confirmShelved(id, request);
         return Result.ok();
     }
 
@@ -379,6 +380,17 @@ public class AdminWarehouseController {
         requireCheck(id, MerchantTenantSupport.resolveRequestMerchantId(
                 userType, headerMerchantId, WarehouseErrorCode.WAREHOUSE_FORBIDDEN));
         checkService.completeCheck(id);
+        return Result.ok();
+    }
+
+    @PutMapping("/warehouse/checks/{id}/approve-difference")
+    public Result<Void> approveDifference(@PathVariable Long id,
+                                          @RequestHeader("X-User-Id") Long approver,
+                                          @RequestHeader(value = "X-User-Type", defaultValue = "super_admin") String userType,
+                                          @RequestHeader(value = "X-Merchant-Id", required = false) Long headerMerchantId) {
+        requireCheck(id, MerchantTenantSupport.resolveRequestMerchantId(
+                userType, headerMerchantId, WarehouseErrorCode.WAREHOUSE_FORBIDDEN));
+        checkService.approveDifference(id, approver);
         return Result.ok();
     }
 

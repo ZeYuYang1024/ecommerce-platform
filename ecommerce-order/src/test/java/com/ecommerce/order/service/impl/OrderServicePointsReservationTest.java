@@ -67,7 +67,7 @@ class OrderServicePointsReservationTest {
     }
 
     @Test
-    void createOrderShouldReservePointsBeforePersistingOrder() {
+    void createOrderShouldAttachReservationToPersistedOrder() {
         when(orderMapper.insert(any(Order.class))).thenReturn(1);
         when(itemMapper.insert(any(OrderItem.class))).thenReturn(1);
         when(productSpuClient.batchQuerySkus(anyList()))
@@ -160,16 +160,15 @@ class OrderServicePointsReservationTest {
 
         assertThatThrownBy(() -> service.createOrder(1L, req))
                 .isInstanceOf(BusinessException.class);
-        verify(orderMapper, never()).insert(any(Order.class));
+        verify(orderMapper, never()).setPointsReservation(any(), any());
     }
 
     @Test
-    void createOrderShouldReleaseReservedPointsWhenItemPersistenceFails() {
+    void createOrderShouldNotReservePointsWhenItemPersistenceFails() {
         when(orderMapper.insert(any(Order.class))).thenReturn(1);
         when(itemMapper.insert(any(OrderItem.class))).thenThrow(new RuntimeException("item insert failed"));
         when(productSpuClient.batchQuerySkus(anyList()))
                 .thenReturn(Result.ok(List.of(buildSku(1L, 1L, "Product", "img-1", "99.00"))));
-        when(memberClient.reservePoints(any())).thenReturn(Result.ok(buildReserveResponse("PR1", 200, "RESERVED")));
 
         CreateOrderRequest req = buildRequest(List.of(buildRequestItem(1L, 2, "99.00")));
         req.setUsePoints(true);
@@ -180,10 +179,7 @@ class OrderServicePointsReservationTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("item insert failed");
 
-        verify(memberClient).releasePoints(argThat((String reservationNo) -> "PR1".equals(reservationNo)),
-                argThat((MemberPointsReservationReleaseRequest release) ->
-                        release != null
-                                && "ORDER_CREATE_FAILED".equals(release.getReason())));
+        verify(memberClient, never()).reservePoints(any());
     }
 
     private CreateOrderRequest buildRequest(List<CreateOrderRequest.OrderItemRequest> items) {

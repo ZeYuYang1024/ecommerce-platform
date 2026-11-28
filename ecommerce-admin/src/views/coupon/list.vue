@@ -182,15 +182,11 @@ function edit(row) {
 }
 
 async function save() {
-  const payload = {
-    ...form.value,
-    remainingCount: form.value.remainingCount ?? form.value.totalCount
-  }
-  if (editing.value) {
-    await axios.put(`${saveBaseUrl.value}/${payload.id}`, payload)
-  } else {
-    await axios.post(saveBaseUrl.value, payload)
-  }
+  const { remainingCount: _remaining, ...payload } = form.value
+  const response = editing.value
+    ? await axios.put(`${saveBaseUrl.value}/${payload.id}`, payload)
+    : await axios.post(saveBaseUrl.value, payload)
+  if (response.data.code !== 200) { ElMessage.error(response.data.message); return }
   ElMessage.success('优惠券已保存')
   showDialog.value = false
   resetForm()
@@ -198,10 +194,10 @@ async function save() {
 }
 
 async function toggleStatus(row) {
-  await axios.put(`${saveBaseUrl.value}/${row.id}`, {
-    ...row,
-    status: row.status === 1 ? 0 : 1
+  const { data } = await axios.put(`${saveBaseUrl.value}/${row.id}/status`, null, {
+    params: { status: row.status === 1 ? 0 : 1 }
   })
+  if (data.code !== 200) { ElMessage.error(data.message); return }
   ElMessage.success('状态已更新')
   fetchData()
 }

@@ -17,6 +17,8 @@ public interface CouponService {
 
     CouponTemplate updateTemplate(CouponTemplate template, Long merchantId);
 
+    void changeStatus(Long id, int status, Long merchantId);
+
     Page<CouponTemplate> listTemplates(Integer status, int page, int size);
 
     Page<CouponTemplate> listTemplates(Integer status, int page, int size, Long merchantId);

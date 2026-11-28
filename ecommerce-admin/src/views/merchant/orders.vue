@@ -21,7 +21,8 @@
           <template #default="{ row }"><span class="font-mono" style="font-size:12px">{{ row.orderNo }}</span></template>
         </el-table-column>
         <el-table-column label="金额" width="120" align="right">
-          <template #default="{ row }"><span class="amount-text">¥{{ row.totalAmount }}</span></template>
+          <template #default="{ row }"><span class="amount-text" v-if="row.merchantManaged">¥{{ row.totalAmount }}</span>
+            <span v-else>本店商品 ¥{{ row.originalAmount }} · 平台结算</span></template>
         </el-table-column>
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ row.status === 5 ? '已退款' : row.statusText }}</el-tag></template>

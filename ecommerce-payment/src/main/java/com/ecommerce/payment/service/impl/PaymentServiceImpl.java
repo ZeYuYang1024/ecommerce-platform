@@ -73,6 +73,9 @@ public class PaymentServiceImpl implements PaymentService {
         if (order.getStatus() == null || order.getStatus() != 0) {
             throw new BusinessException(PaymentErrorCode.PAYMENT_NOT_PAID);
         }
+        if (order.getPaymentExpiresAt() != null && !LocalDateTime.now().isBefore(order.getPaymentExpiresAt())) {
+            throw new BusinessException(PaymentErrorCode.PAYMENT_ORDER_EXPIRED);
+        }
         if (order.getTotalAmount() == null || request.getAmount() == null
                 || order.getTotalAmount().signum() < 0 || order.getTotalAmount().compareTo(request.getAmount()) != 0) {
             throw new BusinessException(PaymentErrorCode.REFUND_AMOUNT_INVALID);
@@ -139,7 +142,8 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         BigDecimal refundAmount = request.getAmount() != null ? request.getAmount() : payment.getAmount();
-        if (refundAmount.compareTo(BigDecimal.ZERO) <= 0 || refundAmount.compareTo(payment.getAmount()) > 0) {
+        if (refundAmount.signum() < 0 || (refundAmount.signum() == 0 && payment.getAmount().signum() != 0)
+                || refundAmount.compareTo(payment.getAmount()) > 0) {
             throw new BusinessException(PaymentErrorCode.REFUND_AMOUNT_INVALID);
         }
 
@@ -177,7 +181,7 @@ public class PaymentServiceImpl implements PaymentService {
             }
             return;
         }
-        if (!Integer.valueOf(1).equals(payment.getStatus()) || payment.getAmount().signum() <= 0) {
+        if (!Integer.valueOf(1).equals(payment.getStatus()) || payment.getAmount().signum() < 0) {
             publishAfterSaleFailure(request, "支付状态不支持全额退款");
             return;
         }

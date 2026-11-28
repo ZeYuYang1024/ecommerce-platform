@@ -15,4 +15,6 @@ public interface CheckService {
     void recordCheckItem(Long checkId, Long itemId, int actualQty);
 
     void completeCheck(Long id);
+
+    void approveDifference(Long id, Long approver);
 }

@@ -20,7 +20,11 @@ public enum WarehouseErrorCode implements ErrorCode {
     DUPLICATE_INBOUND_NO(50030015, "duplicate inbound order number"),
     ZONE_CODE_EXISTS(50030016, "zone code already exists"),
     BIN_CODE_EXISTS(50030017, "bin code already exists"),
-    WAREHOUSE_FORBIDDEN(50030018, "forbidden warehouse access");
+    WAREHOUSE_FORBIDDEN(50030018, "forbidden warehouse access"),
+    INBOUND_PLACEMENT_REQUIRED(50030019, "请为每条入库明细选择一个库位"),
+    CHECK_COUNT_REQUIRED(50030020, "请录入全部实盘数量"),
+    CHECK_STOCK_CHANGED(50030021, "账面库存已变化或实盘数低于锁定库存，请重新盘点"),
+    CHECK_COUNT_INVALID(50030022, "实盘数量不能小于零");
 
     private final int code;
     private final String message;

@@ -40,6 +40,7 @@ public class CouponServiceImpl implements CouponService {
     @Override
     public CouponTemplate createTemplate(CouponTemplate template) {
         template.setMerchantId(null);
+        template.setRemainingCount(validTotal(template.getTotalCount()));
         templateMapper.insert(template);
         return template;
     }
@@ -47,31 +48,67 @@ public class CouponServiceImpl implements CouponService {
     @Override
     public CouponTemplate createTemplate(CouponTemplate template, Long merchantId) {
         template.setMerchantId(MerchantTenantSupport.requireMerchantId(merchantId, CouponErrorCode.COUPON_FORBIDDEN));
+        template.setRemainingCount(validTotal(template.getTotalCount()));
         templateMapper.insert(template);
         return template;
     }
 
     @Override
+    @Transactional
     public CouponTemplate updateTemplate(CouponTemplate template) {
-        CouponTemplate exist = templateMapper.selectById(template.getId());
-        if (exist == null) {
-            throw new BusinessException(CouponErrorCode.TEMPLATE_NOT_FOUND);
+        return updateTemplateLocked(template, null);
+    }
+
+    @Override
+    @Transactional
+    public CouponTemplate updateTemplate(CouponTemplate template, Long merchantId) {
+        return updateTemplateLocked(template, MerchantTenantSupport.requireMerchantId(
+                merchantId, CouponErrorCode.COUPON_FORBIDDEN));
+    }
+
+    private CouponTemplate updateTemplateLocked(CouponTemplate template, Long merchantId) {
+        CouponTemplate existing = lockTemplate(template.getId());
+        if (merchantId != null) {
+            MerchantTenantSupport.requireMerchantScope("merchant", merchantId,
+                    existing.getMerchantId(), CouponErrorCode.COUPON_FORBIDDEN);
         }
-        template.setMerchantId(exist.getMerchantId());
+        int target = validTotal(template.getTotalCount() == null ? existing.getTotalCount() : template.getTotalCount());
+        long issued = issuedCount(existing.getId());
+        if (target < issued) throw new BusinessException(CouponErrorCode.COUPON_TOTAL_BELOW_ISSUED);
+        template.setMerchantId(existing.getMerchantId());
+        template.setTotalCount(target);
+        template.setRemainingCount(target - (int) issued);
         templateMapper.updateById(template);
         return template;
     }
 
     @Override
-    public CouponTemplate updateTemplate(CouponTemplate template, Long merchantId) {
-        CouponTemplate exist = templateMapper.selectById(template.getId());
-        if (exist == null) {
-            throw new BusinessException(CouponErrorCode.TEMPLATE_NOT_FOUND);
+    @Transactional
+    public void changeStatus(Long id, int status, Long merchantId) {
+        if (status != 0 && status != 1) throw new BusinessException(CouponErrorCode.COUPON_NOT_AVAILABLE);
+        CouponTemplate existing = lockTemplate(id);
+        if (merchantId != null) {
+            MerchantTenantSupport.requireMerchantScope("merchant", merchantId,
+                    existing.getMerchantId(), CouponErrorCode.COUPON_FORBIDDEN);
         }
-        MerchantTenantSupport.requireMerchantScope("merchant", merchantId, exist.getMerchantId(), CouponErrorCode.COUPON_FORBIDDEN);
-        template.setMerchantId(exist.getMerchantId());
-        templateMapper.updateById(template);
-        return template;
+        templateMapper.update(null, new LambdaUpdateWrapper<CouponTemplate>()
+                .eq(CouponTemplate::getId, id).setSql("status = " + status));
+    }
+
+    private CouponTemplate lockTemplate(Long id) {
+        CouponTemplate existing = templateMapper.selectOne(new LambdaQueryWrapper<CouponTemplate>()
+                .eq(CouponTemplate::getId, id).last("FOR UPDATE"));
+        if (existing == null) throw new BusinessException(CouponErrorCode.TEMPLATE_NOT_FOUND);
+        return existing;
+    }
+
+    private long issuedCount(Long id) {
+        return userCouponMapper.selectCount(new LambdaQueryWrapper<UserCoupon>().eq(UserCoupon::getTemplateId, id));
+    }
+
+    private int validTotal(Integer total) {
+        if (total == null || total < 0) throw new BusinessException(CouponErrorCode.COUPON_TOTAL_BELOW_ISSUED);
+        return total;
     }
 
     @Override
@@ -96,26 +133,22 @@ public class CouponServiceImpl implements CouponService {
         return templateMapper.selectPage(new Page<>(page, size), query);
     }
 
-    private List<CouponTemplate> listAllTemplates(Integer status) {
-        LambdaQueryWrapper<CouponTemplate> query = new LambdaQueryWrapper<>();
-        if (status != null) {
-            query.eq(CouponTemplate::getStatus, status);
-        }
-        query.orderByDesc(CouponTemplate::getCreatedAt);
-        return templateMapper.selectList(query);
-    }
-
     @Override
     @Transactional
     public void claim(Long userId, Long templateId) {
-        CouponTemplate template = templateMapper.selectById(templateId);
-        if (template == null || template.getStatus() == 0) {
+        CouponTemplate template = lockTemplate(templateId);
+        if (!Integer.valueOf(1).equals(template.getStatus())) {
             throw new BusinessException(CouponErrorCode.TEMPLATE_NOT_FOUND);
         }
-        if (template.getRemainingCount() != null && template.getRemainingCount() <= 0) {
+        if (template.getTotalCount() == null || issuedCount(templateId) >= template.getTotalCount()
+                || template.getRemainingCount() == null || template.getRemainingCount() <= 0) {
             throw new BusinessException(CouponErrorCode.COUPON_EXHAUSTED);
         }
-        if (template.getEndTime() != null && template.getEndTime().isBefore(LocalDateTime.now())) {
+        LocalDateTime now = LocalDateTime.now();
+        if (template.getStartTime() != null && template.getStartTime().isAfter(now)) {
+            throw new BusinessException(CouponErrorCode.COUPON_NOT_AVAILABLE);
+        }
+        if (template.getEndTime() != null && !template.getEndTime().isAfter(now)) {
             throw new BusinessException(CouponErrorCode.COUPON_EXPIRED);
         }
 
@@ -146,7 +179,7 @@ public class CouponServiceImpl implements CouponService {
 
     @Override
     public List<CouponVO> listAvailableCoupons() {
-        List<CouponTemplate> templates = listAllTemplates(1);
+        List<CouponTemplate> templates = templateMapper.selectList(availableTemplates());
         List<CouponVO> vos = new ArrayList<>();
         for (CouponTemplate template : templates) {
             vos.add(toVO(template));
@@ -156,14 +189,20 @@ public class CouponServiceImpl implements CouponService {
 
     @Override
     public Page<CouponVO> listAvailableCoupons(int page, int size) {
-        LambdaQueryWrapper<CouponTemplate> query = new LambdaQueryWrapper<CouponTemplate>()
-                .eq(CouponTemplate::getStatus, 1)
-                .orderByDesc(CouponTemplate::getCreatedAt);
-        IPage<CouponTemplate> pageResult = templateMapper.selectPage(new Page<>(page, size), query);
+        IPage<CouponTemplate> pageResult = templateMapper.selectPage(new Page<>(page, size), availableTemplates());
         Page<CouponVO> result = new Page<>(page, size);
         result.setTotal(pageResult.getTotal());
         result.setRecords(pageResult.getRecords().stream().map(this::toVO).collect(Collectors.toList()));
         return result;
+    }
+
+    private LambdaQueryWrapper<CouponTemplate> availableTemplates() {
+        LocalDateTime now = LocalDateTime.now();
+        return new LambdaQueryWrapper<CouponTemplate>()
+                .eq(CouponTemplate::getStatus, 1).gt(CouponTemplate::getRemainingCount, 0)
+                .and(start -> start.isNull(CouponTemplate::getStartTime).or().le(CouponTemplate::getStartTime, now))
+                .and(end -> end.isNull(CouponTemplate::getEndTime).or().gt(CouponTemplate::getEndTime, now))
+                .orderByDesc(CouponTemplate::getCreatedAt, CouponTemplate::getId);
     }
 
     @Override

@@ -29,6 +29,10 @@ public interface PointsService {
     void reverseSpend(Long userId, Integer amount, String sourceType, String sourceId, String bizKey,
                       String remark, String relatedReservationNo, Long reversalOfTxId);
 
+    void holdEarnLots(Long userId, int amount, String reservationNo);
+
+    int releaseEarnLots(Long reservationId, int legacyAmount);
+
     void reverseEarn(PointsTransaction original, String orderNo);
 
     /**
